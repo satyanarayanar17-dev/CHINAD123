@@ -1,0 +1,68 @@
+version: '3.8'
+
+# ============================================================================
+# CHETTINAD CARE — RESTRICTED WEB PILOT DEPLOYMENT STACK
+# ============================================================================
+#
+# BEFORE STARTING:
+# 1. Copy .env.compose.example to .env.compose
+# 2. Edit .env.compose with REAL values (especially JWT_SECRET)
+# 3. Run: docker compose --env-file .env.compose up -d
+#
+# FIRST-TIME SETUP (after containers start):
+# 4. Run (ONCE — destructive): docker compose exec backend node scripts/deploy-seed.js --confirm-destroy
+#
+# BACKUP BEFORE RE-SEED:
+#   docker compose exec db pg_dump -U $POSTGRES_USER $POSTGRES_DB > backup_$(date +%Y%m%d).sql
+# ============================================================================
+
+services:
+
+  db:
+    image: postgres:15-alpine
+    env_file:
+      - .env.compose
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - .env.compose
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health | grep -q 'ok' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    # NOTE: Seed is run separately (see FIRST-TIME SETUP above).
+    # Do NOT auto-run deploy-seed.js on every container start — it destroys data.
+    command: ["node", "server.js"]
+
+  frontend:
+    build:
+      context: .
+      args:
+        - VITE_API_BASE=/api/v1
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files
+.env
+.env.local
+.env.compose
+*.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# SQLite dev databases
+*.sqlite
+*.sqlite3
+*.db
+
+# Zip archives
+*.zip
+
+# Antigravity agent state
+.gemini/
+
+.vite/
+node_modules/
+backend/node_modules/
+dist/

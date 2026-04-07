@@ -21,9 +21,9 @@ import { Login } from './pages/Login'
 import { PatientActivation } from './pages/patient/PatientActivation'
 import { PublicLayout } from './components/layout/PublicLayout'
 import { Home } from './pages/public/Home'
-import { About } from './pages/public/About'
-import { Specialties } from './pages/public/Specialties'
-import { Contact } from './pages/public/Contact'
+import { About } from './pages/public/about'
+import { Specialties } from './pages/public/specialties'
+import { Contact } from './pages/public/contact'
 
 // Clinical Staff Pages
 import { DoctorCommandCenter } from './pages/DoctorCommandCenter'

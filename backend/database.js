@@ -140,6 +140,13 @@ async function resetAndSeedDatabase() {
       user_id TEXT PRIMARY KEY,
       revoked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
 
+    // Refresh tokens — long-lived tokens for JWT rotation
+    await run(`CREATE TABLE refresh_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      expires_at TIMESTAMP NOT NULL,
+      revoked INTEGER DEFAULT 0)`);
+
     await run(`CREATE INDEX IF NOT EXISTS idx_encounters_patient_id ON encounters(patient_id)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_encounters_is_discharged ON encounters(is_discharged)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_clinical_notes_encounter_id ON clinical_notes(encounter_id)`);
@@ -227,6 +234,14 @@ async function resetAndSeedDatabase() {
     await run(`CREATE TABLE revoked_tokens (
       user_id TEXT PRIMARY KEY,
       revoked_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+
+    // Refresh tokens — long-lived tokens for JWT rotation
+    await run(`CREATE TABLE refresh_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      expires_at DATETIME NOT NULL,
+      revoked INTEGER DEFAULT 0,
+      FOREIGN KEY(user_id) REFERENCES users(id))`);
 
     // SQLite dev seed data (matches deploy-seed.js patient IDs)
     await run(`INSERT INTO patients VALUES ('pat-1','John Doe','1980-01-01','Male')`);

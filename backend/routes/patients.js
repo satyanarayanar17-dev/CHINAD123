@@ -21,7 +21,7 @@ function mapPatient(p) {
   };
 }
 
-router.get('/', requireAuth, async (req, res, next) => {
+router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const q = req.query.q || '';
     const patients = q.length >= 2
@@ -31,7 +31,7 @@ router.get('/', requireAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.get('/:patientId', requireAuth, async (req, res, next) => {
+router.get('/:patientId', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const p = await get(`SELECT id,name,dob,gender FROM patients WHERE id = ?`, [req.params.patientId]);
     if (!p) return next({ status: 404, code: 'NOT_FOUND', message: 'Patient not found.' });
@@ -39,7 +39,7 @@ router.get('/:patientId', requireAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.get('/:patientId/timeline', requireAuth, async (req, res, next) => {
+router.get('/:patientId/timeline', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const { patientId } = req.params;
 

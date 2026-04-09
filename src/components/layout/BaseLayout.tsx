@@ -14,7 +14,7 @@ export const BaseLayout = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
   
-  const { unreadCount } = useNotifications();
+  const { unreadCount, isLive } = useNotifications();
   const { logout, user } = useAuth();
 
   const handleLogout = () => {
@@ -168,17 +168,27 @@ export const BaseLayout = () => {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowNotifications(true)}
-              className="p-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors rounded-full relative"
-            >
-              <Bell size={20} />
-              {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 bg-error text-white text-[9px] font-black rounded-full flex items-center justify-center">
-                  {unreadCount}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setShowNotifications(true)}
+                className="p-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors rounded-full relative"
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 w-4 h-4 bg-error text-white text-[9px] font-black rounded-full flex items-center justify-center">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+              {isLive && (
+                <span
+                  className="text-[9px] font-bold text-green-500 flex items-center gap-0.5 select-none"
+                  title="Real-time notifications active"
+                >
+                  ● Live
                 </span>
               )}
-            </button>
+            </div>
             <button 
               onClick={handleHelp}
               className="p-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors rounded-full"

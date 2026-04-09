@@ -2,6 +2,7 @@ const express = require('express');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { get, run } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
+const { writeNotification } = require('./notifications');
 
 const router = express.Router();
 
@@ -58,15 +59,32 @@ router.post('/:noteId/finalize', requireAuth, requireRole(['DOCTOR']), async (re
   const { version } = req.body;
   if (version === undefined) return next({ status: 400, code: 'MISSING_VERSION' });
   try {
-    const note = await get(`SELECT * FROM clinical_notes WHERE id = ?`, [noteId]);
+    const note = await get(
+      `SELECT cn.*, e.patient_id FROM clinical_notes cn JOIN encounters e ON cn.encounter_id = e.id WHERE cn.id = ?`,
+      [noteId]
+    );
     if (!note) return next({ status: 404, code: 'NOT_FOUND' });
     if (note.status === 'FINALIZED') return next({ status: 422, code: 'INVALID_STATE', message: 'Already finalized.' });
     if (note.__v !== version) return next({ status: 409, code: 'STALE_STATE', message: 'Note modified. Review before finalizing.' });
+
     await run(
       `UPDATE clinical_notes SET status='FINALIZED', updated_at=CURRENT_TIMESTAMP, __v=__v+1 WHERE id=? AND __v=?`,
       [noteId, version]
     );
+
     await writeAuditDirect({ correlation_id: req.correlationId, actor_id: req.user.id, action: `NOTE_FINALIZE:${noteId}` });
+
+    // Phase 2: Emit notification to nursing staff
+    const patient = await get(`SELECT name FROM patients WHERE id = ?`, [note.patient_id]);
+    await writeNotification({
+      type: 'info',
+      title: 'Clinical Note Finalized',
+      body: `Dr. ${req.user.id} finalized a note for ${patient?.name || note.patient_id}.`,
+      patient_id: note.patient_id,
+      actor_id: req.user.id,
+      target_role: 'NURSE'
+    });
+
     res.json({ message: 'Note finalized successfully' });
   } catch (err) { next(err); }
 });

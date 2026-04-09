@@ -22,17 +22,7 @@ interface NotificationDrawerProps {
 }
 
 export const NotificationDrawer = ({ onClose }: NotificationDrawerProps) => {
-  const { notifications, unreadCount: unread, updateNotifications, isLoading } = useNotifications();
-
-  const markAllRead = () => {
-    const marked = notifications.map((n: Notification) => ({...n, read: true}));
-    updateNotifications(marked);
-  };
-
-  const markRead = (id: string) => {
-    const marked = notifications.map((n: Notification) => n.id === id ? {...n, read: true} : n);
-    updateNotifications(marked);
-  };
+  const { notifications, unreadCount, markRead, markAllRead, isLoading } = useNotifications();
 
   return (
     <>
@@ -49,8 +39,8 @@ export const NotificationDrawer = ({ onClose }: NotificationDrawerProps) => {
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div>
             <h2 className="font-extrabold text-on-surface">Notifications</h2>
-            {unread > 0 && (
-              <p className="text-xs text-on-surface-variant">{unread} unread</p>
+            {unreadCount > 0 && (
+              <p className="text-xs text-on-surface-variant">{unreadCount} unread</p>
             )}
           </div>
           <button
@@ -73,11 +63,11 @@ export const NotificationDrawer = ({ onClose }: NotificationDrawerProps) => {
             notifications.map((n: Notification) => (
               <div
                 key={n.id}
-                onClick={() => markRead(n.id)}
+                onClick={() => !n.read && markRead(n.id)}
                 className={`flex gap-3 px-5 py-4 hover:bg-gray-50 transition-colors cursor-pointer ${!n.read ? 'bg-blue-50/30' : ''}`}
               >
-                <div className={`w-8 h-8 rounded-xl ${bgMap[n.type as keyof typeof bgMap]} flex items-center justify-center shrink-0 mt-0.5`}>
-                  {iconMap[n.type as keyof typeof iconMap]}
+                <div className={`w-8 h-8 rounded-xl ${bgMap[n.type as keyof typeof bgMap] || 'bg-gray-100'} flex items-center justify-center shrink-0 mt-0.5`}>
+                  {iconMap[n.type as keyof typeof iconMap] || iconMap.info}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
@@ -98,7 +88,10 @@ export const NotificationDrawer = ({ onClose }: NotificationDrawerProps) => {
 
         {/* Footer */}
         <div className="px-5 py-4 border-t border-gray-100">
-          <button onClick={markAllRead} className="w-full text-center text-xs font-bold text-primary hover:underline">
+          <button
+            onClick={() => markAllRead()}
+            className="w-full text-center text-xs font-bold text-primary hover:underline"
+          >
             Mark all as read
           </button>
         </div>

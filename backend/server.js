@@ -86,6 +86,7 @@ const internalRouter = require('./routes/internal');
 const portalRouter = require('./routes/portal');
 const adminRouter = require('./routes/admin');
 const activationRouter = require('./routes/activation');
+const { router: sseRouter } = require('./routes/sse');
 
 app.use('/api/auth', authRouter);
 app.use('/api/queue', queueRouter);
@@ -99,6 +100,7 @@ app.use('/api/internal', internalRouter);
 app.use('/api/my', portalRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/activation', activationRouter);
+app.use('/api/sse', sseRouter);
 
 // ===========================================================================
 // 5. HEALTH CHECK
@@ -133,6 +135,22 @@ app.use((err, req, res, next) => {
 
   res.status(status).json(errorEnvelope);
 });
+
+// ===========================================================================
+// 7. DRAFT CLEANUP JOB
+// Purge clinical_drafts older than 48 hours that were never finalized.
+// Runs every 6 hours to prevent orphaned draft accumulation.
+// ===========================================================================
+setInterval(async () => {
+  try {
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const { run } = require('./database');
+    await run(`DELETE FROM clinical_drafts WHERE updated_at < ?`, [cutoff]);
+    console.log('[CLEANUP] Pruned stale clinical drafts older than 48h');
+  } catch (err) {
+    console.error('[CLEANUP] Draft cleanup failed:', err.message);
+  }
+}, 6 * 60 * 60 * 1000);
 
 module.exports = app;
 

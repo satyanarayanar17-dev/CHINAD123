@@ -1,51 +1,101 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
+const { get, run } = require('../database');
 
 const router = express.Router();
-
-// In-memory draft store with ETag-based OCC
-// Drafts are ephemeral by design — they don't survive server restart
-// Production would use Redis or a separate draft table
-const drafts = new Map(); // key -> { data, etag }
 
 function generateEtag() {
   return `W/"${Date.now()}-${Math.random().toString(36).slice(2, 8)}"`;
 }
 
-// GET /api/drafts/:key
-router.get('/:key', requireAuth, (req, res) => {
-  const entry = drafts.get(req.params.key);
-  if (!entry) {
-    return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'No draft found.' } });
+/**
+ * GET /api/drafts/:key
+ * Load a persisted draft by key. Returns 404 if none exists.
+ */
+router.get('/:key', requireAuth, async (req, res, next) => {
+  try {
+    const entry = await get(
+      `SELECT data, etag FROM clinical_drafts WHERE key = ?`,
+      [req.params.key]
+    );
+
+    if (!entry) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'No draft found.' } });
+    }
+
+    res.setHeader('ETag', entry.etag);
+
+    let parsed;
+    try {
+      parsed = JSON.parse(entry.data);
+    } catch {
+      parsed = entry.data;
+    }
+
+    res.json(parsed);
+  } catch (err) {
+    next(err);
   }
-  res.setHeader('ETag', entry.etag);
-  res.json(entry.data);
 });
 
-// PUT /api/drafts/:key — upsert with optional If-Match for OCC
-router.put('/:key', requireAuth, (req, res) => {
+/**
+ * PUT /api/drafts/:key
+ * Upsert a draft. Supports If-Match OCC — returns 412 on ETag mismatch.
+ * First write (no existing draft) ignores If-Match.
+ */
+router.put('/:key', requireAuth, async (req, res, next) => {
   const key = req.params.key;
   const ifMatch = req.headers['if-match'];
-  const existing = drafts.get(key);
 
-  // If client sends If-Match and it doesn't match current ETag → 412
-  if (ifMatch && existing && existing.etag !== ifMatch) {
-    return res.status(412).json({ 
-      error: { code: 'PRECONDITION_FAILED', message: 'Draft was modified by another session.' }
-    });
+  try {
+    const existing = await get(
+      `SELECT etag FROM clinical_drafts WHERE key = ?`,
+      [key]
+    );
+
+    // ETag conflict check — only enforce when a draft already exists
+    if (ifMatch && existing && existing.etag !== ifMatch) {
+      return res.status(412).json({
+        error: {
+          code: 'PRECONDITION_FAILED',
+          message: 'Draft was modified by another session.'
+        }
+      });
+    }
+
+    const newEtag = generateEtag();
+    const dataStr = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+
+    if (existing) {
+      await run(
+        `UPDATE clinical_drafts SET data = ?, etag = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?`,
+        [dataStr, newEtag, key]
+      );
+    } else {
+      await run(
+        `INSERT INTO clinical_drafts (key, data, etag) VALUES (?, ?, ?)`,
+        [key, dataStr, newEtag]
+      );
+    }
+
+    res.setHeader('ETag', newEtag);
+    res.json({ message: 'Draft saved', etag: newEtag });
+  } catch (err) {
+    next(err);
   }
-
-  const newEtag = generateEtag();
-  drafts.set(key, { data: req.body, etag: newEtag });
-  
-  res.setHeader('ETag', newEtag);
-  res.json({ message: 'Draft saved', etag: newEtag });
 });
 
-// DELETE /api/drafts/:key
-router.delete('/:key', requireAuth, (req, res) => {
-  drafts.delete(req.params.key);
-  res.json({ message: 'Draft cleared' });
+/**
+ * DELETE /api/drafts/:key
+ * Remove a draft once the clinical note or prescription has been finalized.
+ */
+router.delete('/:key', requireAuth, async (req, res, next) => {
+  try {
+    await run(`DELETE FROM clinical_drafts WHERE key = ?`, [req.params.key]);
+    res.json({ message: 'Draft cleared' });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

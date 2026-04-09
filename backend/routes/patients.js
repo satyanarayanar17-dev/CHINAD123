@@ -1,8 +1,12 @@
 const express = require('express');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { get, all } = require('../database');
+const { writeAuditDirect } = require('../middleware/audit');
+const { writeNotification } = require('./notifications');
 
 const router = express.Router();
+
+const BREAK_GLASS_MIN_LENGTH = 50;
 
 function mapPatient(p) {
   return {
@@ -21,7 +25,7 @@ router.get('/', requireAuth, async (req, res, next) => {
   try {
     const q = req.query.q || '';
     const patients = q.length >= 2
-      ? await all(`SELECT id,name,dob,gender FROM patients WHERE name LIKE ? OR id LIKE ? LIMIT 20`, [`%${q}%`,`%${q}%`])
+      ? await all(`SELECT id,name,dob,gender FROM patients WHERE name LIKE ? OR id LIKE ? LIMIT 20`, [`%${q}%`, `%${q}%`])
       : await all(`SELECT id,name,dob,gender FROM patients LIMIT 20`);
     res.json(patients.map(mapPatient));
   } catch (err) { next(err); }
@@ -87,7 +91,7 @@ router.get('/:patientId/timeline', requireAuth, async (req, res, next) => {
       timeline.push({
         id: `tl-note-${note.id}`, patientId,
         date: note.created_at
-          ? new Date(note.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
+          ? new Date(note.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
           : new Date().toISOString().split('T')[0],
         type: 'consultation',
         title: 'Clinical Consultation Note',
@@ -107,7 +111,7 @@ router.get('/:patientId/timeline', requireAuth, async (req, res, next) => {
       timeline.push({
         id: `tl-rx-${rx.id}`, patientId,
         date: rx.created_at
-          ? new Date(rx.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
+          ? new Date(rx.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
           : new Date().toISOString().split('T')[0],
         type: 'lab', title: 'Prescription Authorized',
         summary: display,
@@ -121,21 +125,44 @@ router.get('/:patientId/timeline', requireAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/:patientId/break-glass', requireAuth, requireRole(['DOCTOR','NURSE']), async (req, res, next) => {
+router.post('/:patientId/break-glass', requireAuth, requireRole(['DOCTOR', 'NURSE']), async (req, res, next) => {
   const { patientId } = req.params;
   const { justification } = req.body;
-  if (!justification || justification.trim().length < 10)
-    return next({ status: 400, code: 'INSUFFICIENT_JUSTIFICATION', message: 'Minimum 10 characters required.' });
-  try {
-    const patient = await get(`SELECT id FROM patients WHERE id = ?`, [patientId]);
-    if (!patient) return next({ status: 404, code: 'NOT_FOUND' });
-    const { writeAuditDirect } = require('../middleware/audit');
-    await writeAuditDirect({
-      correlation_id: req.correlationId, actor_id: req.user.id, patient_id: patientId,
-      action: `BREAK_GLASS:patient:${patientId}:reason:${justification.substring(0,200)}`
+
+  if (!justification || justification.trim().length < BREAK_GLASS_MIN_LENGTH) {
+    return next({
+      status: 400,
+      code: 'INSUFFICIENT_JUSTIFICATION',
+      message: `Break-glass requires a clinical justification of at least ${BREAK_GLASS_MIN_LENGTH} characters.`
     });
-    res.json({ granted: true, message: 'Emergency access granted. All actions are being recorded.',
-      patientId, actor: req.user.id, timestamp: new Date().toISOString() });
+  }
+
+  try {
+    const patient = await get(`SELECT id, name FROM patients WHERE id = ?`, [patientId]);
+    if (!patient) return next({ status: 404, code: 'NOT_FOUND' });
+
+    await writeAuditDirect({
+      correlation_id: req.correlationId,
+      actor_id: req.user.id,
+      patient_id: patientId,
+      action: `BREAK_GLASS:patient:${patientId}:reason:${justification.substring(0, 200)}`
+    });
+
+    // Notify admin of break-glass
+    await writeNotification({
+      type: 'critical',
+      title: '⚠️ Break-Glass Override Used',
+      body: `${req.user.id} invoked emergency override for ${patient.name}: "${justification.substring(0, 80)}"`,
+      patient_id: patientId,
+      actor_id: req.user.id,
+      target_role: 'ADMIN'
+    });
+
+    res.json({
+      granted: true,
+      message: 'Emergency access granted. All actions are being recorded.',
+      patientId, actor: req.user.id, timestamp: new Date().toISOString()
+    });
   } catch (err) { next(err); }
 });
 

@@ -6,7 +6,7 @@ const { writeNotification } = require('./notifications');
 
 const router = express.Router();
 
-router.get('/:rxId', requireAuth, async (req, res, next) => {
+router.get('/:rxId', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const rx = await get(
       `SELECT p.*, e.patient_id FROM prescriptions p JOIN encounters e ON p.encounter_id = e.id WHERE p.id = ?`,

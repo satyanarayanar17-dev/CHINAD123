@@ -66,6 +66,8 @@ async function resetAndSeedDatabase() {
   console.log(`[DB] Initiating schema reset (${dbDialect})...`);
 
   if (dbDialect === 'postgres') {
+    await run(`DROP TABLE IF EXISTS drafts CASCADE`);
+    await run(`DROP TABLE IF EXISTS refresh_tokens CASCADE`);
     await run(`DROP TABLE IF EXISTS audit_logs CASCADE`);
     await run(`DROP TABLE IF EXISTS prescriptions CASCADE`);
     await run(`DROP TABLE IF EXISTS clinical_notes CASCADE`);
@@ -81,7 +83,9 @@ async function resetAndSeedDatabase() {
     await run(`CREATE TABLE users (
       id TEXT PRIMARY KEY, role TEXT NOT NULL, name TEXT NOT NULL,
       password_hash TEXT, is_active INTEGER DEFAULT 1,
-      patient_id TEXT REFERENCES patients(id))`);
+      patient_id TEXT REFERENCES patients(id),
+      failed_attempts INTEGER DEFAULT 0,
+      locked_until TIMESTAMP)`);
 
     await run(`CREATE TABLE patient_activation_tokens (
       patient_id TEXT PRIMARY KEY REFERENCES patients(id),
@@ -107,6 +111,19 @@ async function resetAndSeedDatabase() {
       correlation_id TEXT, actor_id TEXT, patient_id TEXT,
       action TEXT NOT NULL, prior_state TEXT, new_state TEXT)`);
 
+    await run(`CREATE TABLE refresh_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      revoked INTEGER DEFAULT 0)`);
+
+    await run(`CREATE TABLE drafts (
+      key TEXT PRIMARY KEY,
+      user_id TEXT,
+      data TEXT NOT NULL,
+      etag TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+
     await run(`CREATE INDEX IF NOT EXISTS idx_encounters_patient_id ON encounters(patient_id)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_clinical_notes_encounter_id ON clinical_notes(encounter_id)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_clinical_notes_status ON clinical_notes(status)`);
@@ -115,6 +132,8 @@ async function resetAndSeedDatabase() {
     await run(`CREATE INDEX IF NOT EXISTS idx_users_patient_id ON users(patient_id)`);
 
   } else {
+    await run(`DROP TABLE IF EXISTS drafts`);
+    await run(`DROP TABLE IF EXISTS refresh_tokens`);
     await run(`DROP TABLE IF EXISTS audit_logs`);
     await run(`DROP TABLE IF EXISTS prescriptions`);
     await run(`DROP TABLE IF EXISTS clinical_notes`);
@@ -130,6 +149,7 @@ async function resetAndSeedDatabase() {
     await run(`CREATE TABLE users (
       id TEXT PRIMARY KEY, role TEXT NOT NULL, name TEXT NOT NULL,
       password_hash TEXT, is_active INTEGER DEFAULT 1,
+      failed_attempts INTEGER DEFAULT 0, locked_until DATETIME,
       patient_id TEXT, FOREIGN KEY(patient_id) REFERENCES patients(id))`);
 
     await run(`CREATE TABLE patient_activation_tokens (
@@ -159,6 +179,19 @@ async function resetAndSeedDatabase() {
       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
       correlation_id TEXT, actor_id TEXT, patient_id TEXT,
       action TEXT NOT NULL, prior_state TEXT, new_state TEXT)`);
+
+    await run(`CREATE TABLE refresh_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      expires_at DATETIME NOT NULL,
+      revoked INTEGER DEFAULT 0)`);
+
+    await run(`CREATE TABLE drafts (
+      key TEXT PRIMARY KEY,
+      user_id TEXT,
+      data TEXT NOT NULL,
+      etag TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
 
     await run(`INSERT INTO patients VALUES ('pat-1','Ramesh Sivakumar','1980-01-01','Male')`);
     await run(`INSERT INTO patients VALUES ('pat-2','Priya Nair','1990-05-15','Female')`);

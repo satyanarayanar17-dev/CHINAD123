@@ -55,6 +55,7 @@ api.interceptors.response.use(
     if (originalRequest.url?.includes('/auth/refresh')) {
       // If refresh fails, we MUST logout and stop everything.
       localStorage.removeItem('cc_token');
+      localStorage.removeItem('cc_refresh_token');
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
@@ -83,31 +84,31 @@ api.interceptors.response.use(
          * Use a clean axios instance to avoid internal interceptor conflicts.
          * withCredentials ensured for HttpOnly cookie refreshes if backend supports it.
          */
-        const refreshResponse = await axios.post('/api/v1/auth/refresh', {}, { withCredentials: true });
-        
+        const storedRefreshToken = localStorage.getItem('cc_refresh_token');
+        const refreshResponse = await axios.post('/api/v1/auth/refresh', { refresh_token: storedRefreshToken }, { withCredentials: true });
+
         const newToken = refreshResponse.data?.access_token;
-        
+
         if (newToken) {
           localStorage.setItem('cc_token', newToken);
 
-          // 4. LIKELY CAUSE: Headers guard. 
-          // Ensure headers exists before assigning nested properties.
           if (!originalRequest.headers) {
             originalRequest.headers = {};
           }
-          
+
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
 
           // Re-issue the fixed request
           return api(originalRequest);
         }
-        
+
         // No token returned? Treat as failure.
         throw new Error('NO_TOKEN_RETURNED');
 
       } catch (refreshError) {
         // Hard boot on refresh failure
         localStorage.removeItem('cc_token');
+        localStorage.removeItem('cc_refresh_token');
         if (window.location.pathname !== '/login') {
           window.location.href = '/login';
         }

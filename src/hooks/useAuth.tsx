@@ -35,6 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (e: any) {
       localStorage.removeItem('cc_token');
+      localStorage.removeItem('cc_refresh_token');
       setRole(null);
       setUser(null);
       
@@ -57,6 +58,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const res = await authApi.login(payload);
     localStorage.setItem('cc_token', res.access_token);
     localStorage.setItem('cc_role', res.role || 'doctor');
+    if (res.refresh_token) {
+      localStorage.setItem('cc_refresh_token', res.refresh_token);
+    }
     setRole(res.role);
     setUser(res.userId);
     setStatus('authenticated');
@@ -64,7 +68,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    const refreshToken = localStorage.getItem('cc_refresh_token');
+    if (refreshToken) {
+      // Fire-and-forget: revoke server-side. Client state clears regardless.
+      authApi.logout(refreshToken).catch(() => {});
+    }
     localStorage.removeItem('cc_token');
+    localStorage.removeItem('cc_refresh_token');
     setRole(null);
     setUser(null);
     setStatus('unauthenticated');

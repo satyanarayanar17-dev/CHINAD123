@@ -74,6 +74,9 @@ app.use((req, res, next) => {
 // ===========================================================================
 // 4. ROUTE MOUNTING
 // ===========================================================================
+const { auditMutations } = require('./middleware/auditMutations');
+app.use(auditMutations);
+
 const authRouter = require('./routes/auth');
 const queueRouter = require('./routes/queue');
 const notesRouter = require('./routes/notes');
@@ -87,23 +90,23 @@ const portalRouter = require('./routes/portal');
 const adminRouter = require('./routes/admin');
 const activationRouter = require('./routes/activation');
 
-app.use('/api/auth', authRouter);
-app.use('/api/queue', queueRouter);
-app.use('/api/notes', notesRouter);
-app.use('/api/prescriptions', prescriptionsRouter);
-app.use('/api/encounters', encountersRouter);
-app.use('/api/patients', patientsRouter);
-app.use('/api/notifications', notificationsRouter);
-app.use('/api/drafts', draftsRouter);
-app.use('/api/internal', internalRouter);
-app.use('/api/my', portalRouter);
-app.use('/api/admin', adminRouter);
-app.use('/api/activation', activationRouter);
+app.use('/api/v1/auth', authRouter);
+app.use('/api/v1/queue', queueRouter);
+app.use('/api/v1/notes', notesRouter);
+app.use('/api/v1/prescriptions', prescriptionsRouter);
+app.use('/api/v1/encounters', encountersRouter);
+app.use('/api/v1/patients', patientsRouter);
+app.use('/api/v1/notifications', notificationsRouter);
+app.use('/api/v1/drafts', draftsRouter);
+app.use('/api/v1/internal', internalRouter);
+app.use('/api/v1/my', portalRouter);
+app.use('/api/v1/admin', adminRouter);
+app.use('/api/v1/activation', activationRouter);
 
 // ===========================================================================
 // 5. HEALTH CHECK
 // ===========================================================================
-app.get('/api/health', (req, res) => {
+app.get('/api/v1/health', (req, res) => {
   res.json({
     status: 'ok',
     env: process.env.NODE_ENV || 'development',

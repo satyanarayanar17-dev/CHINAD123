@@ -1,6 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const { Pool } = require('pg');
+const { seedDatabase } = require('./seed');
 
 const dbDialect = process.env.DB_DIALECT || 'sqlite';
 let db;
@@ -62,7 +63,7 @@ const all = (sql, params = []) => new Promise(async (resolve, reject) => {
   }
 });
 
-async function resetAndSeedDatabase() {
+async function resetAndSeedDatabase(options = {}) {
   console.log(`[DB] Initiating schema reset (${dbDialect})...`);
 
   if (dbDialect === 'postgres') {
@@ -243,22 +244,10 @@ async function resetAndSeedDatabase() {
       revoked INTEGER DEFAULT 0,
       FOREIGN KEY(user_id) REFERENCES users(id))`);
 
-    // SQLite dev seed data (matches deploy-seed.js patient IDs)
-    await run(`INSERT INTO patients VALUES ('pat-1','John Doe','1980-01-01','Male')`);
-    await run(`INSERT INTO patients VALUES ('pat-2','Jane Smith','1990-05-15','Female')`);
-    await run(`INSERT INTO patients VALUES ('pat-3','Ramesh Sivakumar','1975-03-22','Male')`);
+  }
 
-    await run(`INSERT INTO users (id,role,name) VALUES ('nurse_qa','NURSE','Nurse QA')`);
-    await run(`INSERT INTO users (id,role,name) VALUES ('doc1_qa','DOCTOR','Dr. S. Nair')`);
-    await run(`INSERT INTO users (id,role,name) VALUES ('doc2_qa','DOCTOR','Dr. V. Raman')`);
-    await run(`INSERT INTO users (id,role,name) VALUES ('admin_qa','ADMIN','Admin QA')`);
-
-    await run(`INSERT INTO encounters VALUES ('enc-1','pat-1','RECEPTION',0,1)`);
-    await run(`INSERT INTO encounters VALUES ('enc-2','pat-2','IN_CONSULTATION',0,1)`);
-    await run(`INSERT INTO encounters VALUES ('enc-3','pat-3','AWAITING',0,1)`);
-
-    await run(`INSERT INTO clinical_notes VALUES ('note-1','enc-2','Patient presents with general fatigue. Vitals stable.','DRAFT','doc1_qa',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,1)`);
-    await run(`INSERT INTO prescriptions VALUES ('rx-1','enc-2','Paracetamol 500mg TDS x 5 days','DRAFT',NULL,CURRENT_TIMESTAMP,1)`);
+  if (!options.skipDataSeed) {
+    await seedDatabase({ run, dialect: dbDialect });
   }
 
   console.log('[DB] Schema boot complete.');

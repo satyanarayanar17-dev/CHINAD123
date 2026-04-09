@@ -39,7 +39,6 @@ if (isProduction) {
     process.exit(1);
   }
 } else {
-  // Non-production warnings
   if (!process.env.JWT_SECRET) {
     console.warn('[WARN] JWT_SECRET is not set. Using insecure development fallback. DO NOT use for pilot.');
   }
@@ -53,7 +52,7 @@ if (isProduction) {
 // ===========================================================================
 const corsOptions = {
   origin: isProduction
-    ? (process.env.CORS_ORIGIN || false)  // false = deny all if somehow not set
+    ? (process.env.CORS_ORIGIN || false)
     : '*'
 };
 app.use(cors(corsOptions));
@@ -89,6 +88,7 @@ const internalRouter = require('./routes/internal');
 const portalRouter = require('./routes/portal');
 const adminRouter = require('./routes/admin');
 const activationRouter = require('./routes/activation');
+const { router: sseRouter } = require('./routes/sse');
 
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/queue', queueRouter);
@@ -102,6 +102,7 @@ app.use('/api/v1/internal', internalRouter);
 app.use('/api/v1/my', portalRouter);
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/activation', activationRouter);
+app.use('/api/v1/sse', sseRouter);
 
 // ===========================================================================
 // 5. HEALTH CHECK
@@ -136,6 +137,22 @@ app.use((err, req, res, next) => {
 
   res.status(status).json(errorEnvelope);
 });
+
+// ===========================================================================
+// 7. DRAFT CLEANUP JOB
+// Purge clinical_drafts older than 48 hours that were never finalized.
+// Runs every 6 hours to prevent orphaned draft accumulation.
+// ===========================================================================
+setInterval(async () => {
+  try {
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const { run } = require('./database');
+    await run(`DELETE FROM clinical_drafts WHERE updated_at < ?`, [cutoff]);
+    console.log('[CLEANUP] Pruned stale clinical drafts older than 48h');
+  } catch (err) {
+    console.error('[CLEANUP] Draft cleanup failed:', err.message);
+  }
+}, 6 * 60 * 60 * 1000);
 
 module.exports = app;
 

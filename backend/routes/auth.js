@@ -8,6 +8,45 @@ const { JWT_SECRET } = require('../middleware/auth');
 
 const router = express.Router();
 
+// ---------------------------------------------------------------------------
+// IP-based rate limiter — additional layer on top of per-user DB lockout.
+// Tracks failed login attempts per IP. Resets after window expires.
+// ---------------------------------------------------------------------------
+const loginAttempts = new Map(); // key: ip -> { count, resetAt }
+
+const LOGIN_MAX_ATTEMPTS = 10;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+function loginRateLimit(req, res, next) {
+  const key = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+  const now = Date.now();
+  const record = loginAttempts.get(key);
+
+  if (record && now < record.resetAt) {
+    if (record.count >= LOGIN_MAX_ATTEMPTS) {
+      console.warn(`[RATE_LIMIT] Login blocked for ${key} — ${record.count} attempts in window`);
+      return res.status(429).json({
+        error: {
+          code: 'RATE_LIMITED',
+          message: `Too many login attempts. Try again in ${Math.ceil((record.resetAt - now) / 60000)} minutes.`
+        }
+      });
+    }
+    record.count++;
+  } else {
+    loginAttempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+  }
+
+  next();
+}
+
+function clearRateLimit(key) {
+  loginAttempts.delete(key || 'unknown');
+}
+
+// ---------------------------------------------------------------------------
+// Refresh token config
+// ---------------------------------------------------------------------------
 const REFRESH_TOKEN_TTL_DAYS = 30;
 const ACCESS_TOKEN_TTL = '15m';
 const LOCKOUT_THRESHOLD = 5;
@@ -19,9 +58,12 @@ function refreshTokenExpiresAt() {
   return d.toISOString();
 }
 
-router.post('/login', async (req, res, next) => {
+// ---------------------------------------------------------------------------
+
+router.post('/login', loginRateLimit, async (req, res, next) => {
   const { username, password } = req.body;
   const isPilotMode = process.env.PILOT_AUTH_BYPASS === 'true';
+  const ipKey = req.ip || req.headers['x-forwarded-for'] || 'unknown';
 
   if (process.env.NODE_ENV === 'production' && isPilotMode) {
     return next({ status: 500, code: 'AUTH_ENVELOPE_BREACH', message: 'Deployment environment is misconfigured. Access halted.' });
@@ -41,7 +83,7 @@ router.post('/login', async (req, res, next) => {
       return res.status(401).json({ error: 'ACCOUNT_DISABLED', message: 'This account has been disabled.' });
     }
 
-    // Account lockout check
+    // Per-user DB lockout check
     if (userRow.locked_until && new Date(userRow.locked_until) > new Date()) {
       const retryAfter = Math.ceil((new Date(userRow.locked_until) - new Date()) / 1000);
       await writeAuditDirect({ correlation_id: req.correlationId, actor_id: username, action: 'SYS_AUTH_FAILED:LOCKED' });
@@ -61,7 +103,7 @@ router.post('/login', async (req, res, next) => {
     }
 
     if (!isValidPassword) {
-      // Increment failure count; lock if threshold reached
+      // Increment failure count; lock account if threshold reached
       const newAttempts = (userRow.failed_attempts || 0) + 1;
       const lockedUntil = newAttempts >= LOCKOUT_THRESHOLD
         ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000).toISOString()
@@ -76,7 +118,8 @@ router.post('/login', async (req, res, next) => {
       return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Invalid username or password.' });
     }
 
-    // Success — reset lockout state
+    // Success — clear both IP rate limit record and DB lockout state
+    clearRateLimit(ipKey);
     await run(`UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?`, [username]);
 
     const { id: actorId, role, name } = userRow;
@@ -103,7 +146,10 @@ router.post('/login', async (req, res, next) => {
       userId: actorId,
       name,
       role: role.toLowerCase(),
-      _meta: { mode: isPilotMode ? 'PILOT_CONTROLLED' : 'RESTRICTED_DEPLOYMENT', safety: isPilotMode ? 'non-production' : 'hardened' }
+      _meta: {
+        mode: isPilotMode ? 'PILOT_CONTROLLED' : 'RESTRICTED_DEPLOYMENT',
+        safety: isPilotMode ? 'non-production' : 'hardened'
+      }
     });
   } catch (err) {
     next(err);
@@ -156,7 +202,6 @@ router.post('/logout', async (req, res, next) => {
     try {
       await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refresh_token]);
     } catch (err) {
-      // Non-fatal — client-side token clear still proceeds
       console.error('[AUTH] Failed to revoke refresh token:', err.message);
     }
   }

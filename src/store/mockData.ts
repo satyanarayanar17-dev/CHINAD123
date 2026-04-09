@@ -257,6 +257,7 @@ export interface Notification {
   body: string;
   time: string;
   read: boolean;
+  targetPatientId?: string;
 }
 
 export const MOCK_NOTIFICATIONS: Notification[] = [

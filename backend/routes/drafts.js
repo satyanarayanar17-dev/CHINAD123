@@ -1,6 +1,6 @@
 const express = require('express');
-const { run, get } = require('../database');
 const { requireAuth } = require('../middleware/auth');
+const { get, run } = require('../database');
 
 const router = express.Router();
 
@@ -8,46 +8,53 @@ function generateEtag() {
   return `W/"${Date.now()}-${Math.random().toString(36).slice(2, 8)}"`;
 }
 
-// GET /api/v1/drafts/:key
+// GET /api/drafts/:key
 router.get('/:key', requireAuth, async (req, res, next) => {
   try {
-    const row = await get(`SELECT data, etag FROM drafts WHERE key = ?`, [req.params.key]);
-    if (!row) {
+    const entry = await get(
+      `SELECT data, etag FROM clinical_drafts WHERE key = ?`,
+      [req.params.key]
+    );
+    if (!entry) {
       return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'No draft found.' } });
     }
-    res.setHeader('ETag', row.etag);
-    res.json(JSON.parse(row.data));
+    res.setHeader('ETag', entry.etag);
+    let parsed;
+    try { parsed = JSON.parse(entry.data); } catch { parsed = entry.data; }
+    res.json(parsed);
   } catch (err) {
     next(err);
   }
 });
 
-// PUT /api/v1/drafts/:key — upsert with optional If-Match for OCC
+// PUT /api/drafts/:key — upsert with If-Match OCC (412 on mismatch)
 router.put('/:key', requireAuth, async (req, res, next) => {
+  const key = req.params.key;
+  const ifMatch = req.headers['if-match'];
   try {
-    const key = req.params.key;
-    const ifMatch = req.headers['if-match'];
-
-    if (ifMatch) {
-      const existing = await get(`SELECT etag FROM drafts WHERE key = ?`, [key]);
-      if (existing && existing.etag !== ifMatch) {
-        return res.status(412).json({
-          error: { code: 'PRECONDITION_FAILED', message: 'Draft was modified by another session.' }
-        });
-      }
-    }
-
-    const newEtag = generateEtag();
-    const data = JSON.stringify(req.body);
-    const userId = req.user?.id || null;
-    const now = new Date().toISOString();
-
-    await run(
-      `INSERT INTO drafts (key, user_id, data, etag, updated_at) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET user_id=excluded.user_id, data=excluded.data, etag=excluded.etag, updated_at=excluded.updated_at`,
-      [key, userId, data, newEtag, now]
+    const existing = await get(
+      `SELECT etag FROM clinical_drafts WHERE key = ?`,
+      [key]
     );
-
+    // Only enforce ETag when a draft already exists
+    if (ifMatch && existing && existing.etag !== ifMatch) {
+      return res.status(412).json({
+        error: { code: 'PRECONDITION_FAILED', message: 'Draft was modified by another session.' }
+      });
+    }
+    const newEtag = generateEtag();
+    const dataStr = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    if (existing) {
+      await run(
+        `UPDATE clinical_drafts SET data = ?, etag = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?`,
+        [dataStr, newEtag, key]
+      );
+    } else {
+      await run(
+        `INSERT INTO clinical_drafts (key, data, etag) VALUES (?, ?, ?)`,
+        [key, dataStr, newEtag]
+      );
+    }
     res.setHeader('ETag', newEtag);
     res.json({ message: 'Draft saved', etag: newEtag });
   } catch (err) {
@@ -55,10 +62,10 @@ router.put('/:key', requireAuth, async (req, res, next) => {
   }
 });
 
-// DELETE /api/v1/drafts/:key
+// DELETE /api/drafts/:key
 router.delete('/:key', requireAuth, async (req, res, next) => {
   try {
-    await run(`DELETE FROM drafts WHERE key = ?`, [req.params.key]);
+    await run(`DELETE FROM clinical_drafts WHERE key = ?`, [req.params.key]);
     res.json({ message: 'Draft cleared' });
   } catch (err) {
     next(err);

@@ -66,9 +66,14 @@ async function resetAndSeedDatabase() {
   console.log(`[DB] Initiating schema reset (${dbDialect})...`);
 
   if (dbDialect === 'postgres') {
+    // Drop in dependency-safe order.
+    // revoked_tokens = Phase 3. drafts/refresh_tokens = old names (safe to drop if they exist).
+    await run(`DROP TABLE IF EXISTS revoked_tokens CASCADE`);
     await run(`DROP TABLE IF EXISTS drafts CASCADE`);
     await run(`DROP TABLE IF EXISTS refresh_tokens CASCADE`);
     await run(`DROP TABLE IF EXISTS audit_logs CASCADE`);
+    await run(`DROP TABLE IF EXISTS clinical_drafts CASCADE`);
+    await run(`DROP TABLE IF EXISTS notifications CASCADE`);
     await run(`DROP TABLE IF EXISTS prescriptions CASCADE`);
     await run(`DROP TABLE IF EXISTS clinical_notes CASCADE`);
     await run(`DROP TABLE IF EXISTS encounters CASCADE`);
@@ -111,30 +116,49 @@ async function resetAndSeedDatabase() {
       correlation_id TEXT, actor_id TEXT, patient_id TEXT,
       action TEXT NOT NULL, prior_state TEXT, new_state TEXT)`);
 
-    await run(`CREATE TABLE refresh_tokens (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      expires_at TIMESTAMP NOT NULL,
-      revoked INTEGER DEFAULT 0)`);
-
-    await run(`CREATE TABLE drafts (
+    // Phase 2: Persistent draft store — key/data column names match drafts.js
+    await run(`CREATE TABLE clinical_drafts (
       key TEXT PRIMARY KEY,
-      user_id TEXT,
       data TEXT NOT NULL,
       etag TEXT NOT NULL,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
 
+    // Phase 2: Persistent notifications — auto-increment id, role-filtered
+    await run(`CREATE TABLE notifications (
+      id SERIAL PRIMARY KEY,
+      type TEXT NOT NULL DEFAULT 'info',
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      patient_id TEXT,
+      actor_id TEXT,
+      target_role TEXT,
+      read INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+
+    // Phase 3: Token revocation — per-user revocation timestamp
+    await run(`CREATE TABLE revoked_tokens (
+      user_id TEXT PRIMARY KEY,
+      revoked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+
     await run(`CREATE INDEX IF NOT EXISTS idx_encounters_patient_id ON encounters(patient_id)`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_encounters_is_discharged ON encounters(is_discharged)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_clinical_notes_encounter_id ON clinical_notes(encounter_id)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_clinical_notes_status ON clinical_notes(status)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_prescriptions_encounter_id ON prescriptions(encounter_id)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id ON audit_logs(actor_id)`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_audit_logs_patient_id ON audit_logs(patient_id)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_users_patient_id ON users(patient_id)`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read)`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at)`);
 
   } else {
+    // SQLite schema
+    await run(`DROP TABLE IF EXISTS revoked_tokens`);
     await run(`DROP TABLE IF EXISTS drafts`);
     await run(`DROP TABLE IF EXISTS refresh_tokens`);
     await run(`DROP TABLE IF EXISTS audit_logs`);
+    await run(`DROP TABLE IF EXISTS clinical_drafts`);
+    await run(`DROP TABLE IF EXISTS notifications`);
     await run(`DROP TABLE IF EXISTS prescriptions`);
     await run(`DROP TABLE IF EXISTS clinical_notes`);
     await run(`DROP TABLE IF EXISTS encounters`);
@@ -180,22 +204,34 @@ async function resetAndSeedDatabase() {
       correlation_id TEXT, actor_id TEXT, patient_id TEXT,
       action TEXT NOT NULL, prior_state TEXT, new_state TEXT)`);
 
-    await run(`CREATE TABLE refresh_tokens (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      expires_at DATETIME NOT NULL,
-      revoked INTEGER DEFAULT 0)`);
-
-    await run(`CREATE TABLE drafts (
+    // Phase 2: Persistent draft store — key/data column names match drafts.js
+    await run(`CREATE TABLE clinical_drafts (
       key TEXT PRIMARY KEY,
-      user_id TEXT,
       data TEXT NOT NULL,
       etag TEXT NOT NULL,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
 
-    await run(`INSERT INTO patients VALUES ('pat-1','Ramesh Sivakumar','1980-01-01','Male')`);
-    await run(`INSERT INTO patients VALUES ('pat-2','Priya Nair','1990-05-15','Female')`);
-    await run(`INSERT INTO patients VALUES ('pat-3','Arjun Krishnan','1975-03-22','Male')`);
+    // Phase 2: Persistent notifications — auto-increment id, role-filtered
+    await run(`CREATE TABLE notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL DEFAULT 'info',
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      patient_id TEXT,
+      actor_id TEXT,
+      target_role TEXT,
+      read INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+
+    // Phase 3: Token revocation — per-user revocation timestamp
+    await run(`CREATE TABLE revoked_tokens (
+      user_id TEXT PRIMARY KEY,
+      revoked_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+
+    // SQLite dev seed data (matches deploy-seed.js patient IDs)
+    await run(`INSERT INTO patients VALUES ('pat-1','John Doe','1980-01-01','Male')`);
+    await run(`INSERT INTO patients VALUES ('pat-2','Jane Smith','1990-05-15','Female')`);
+    await run(`INSERT INTO patients VALUES ('pat-3','Ramesh Sivakumar','1975-03-22','Male')`);
 
     await run(`INSERT INTO users (id,role,name) VALUES ('nurse_qa','NURSE','Nurse QA')`);
     await run(`INSERT INTO users (id,role,name) VALUES ('doc1_qa','DOCTOR','Dr. S. Nair')`);

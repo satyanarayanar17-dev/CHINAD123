@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { get } = require('../database');
 
 // In production: JWT_SECRET MUST be set — no fallback permitted.
 // In local_dev: fallback to insecure default with a loud warning (already issued in server.js).
@@ -15,23 +16,87 @@ if (!JWT_SECRET) {
 }
 
 /**
- * Validates JWT existence and signature.
- * Throws 401 if missing, expired, or invalid.
+ * In-process cache for token revocation state.
+ * Stores the most recently looked-up revoked_at per userId.
+ * TTL: 60 seconds — worst-case lag between disable and enforcement.
+ *
+ * Cache entry: { revokedAt: string | null, cachedAt: number (ms) }
  */
-function requireAuth(req, res, next) {
+const revocationCache = new Map();
+const REVOCATION_CACHE_TTL_MS = 60 * 1000;
+
+/**
+ * Clear a user's revocation cache entry.
+ * Called by admin.js when a user is re-enabled so the cache does not
+ * incorrectly block a freshly-issued token.
+ */
+function clearRevocationCache(userId) {
+  revocationCache.delete(userId);
+}
+
+/**
+ * Validates JWT existence and signature, then checks the revoked_tokens
+ * table to enforce immediate token invalidation when a user is disabled.
+ *
+ * Throws 401 if:
+ *   - Token is missing
+ *   - Token is expired or invalid
+ *   - A revocation record exists with revoked_at > token.iat (issued-at)
+ */
+async function requireAuth(req, res, next) {
   const authHeader = req.headers['authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return next({ status: 401, code: 'MISSING_TOKEN', message: 'No authorization token provided.' });
   }
 
   const token = authHeader.split(' ')[1];
+
+  let decoded;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // { id, role }
-    next();
+    decoded = jwt.verify(token, JWT_SECRET);
   } catch (err) {
     return next({ status: 401, code: 'INVALID_TOKEN', message: 'Session expired or invalid token.' });
   }
+
+  req.user = decoded; // { id, role, iat, exp }
+
+  // ── Token revocation check ─────────────────────────────────────────────────
+  try {
+    const now = Date.now();
+    const cached = revocationCache.get(decoded.id);
+
+    let revokedAt = null;
+
+    if (cached && (now - cached.cachedAt) < REVOCATION_CACHE_TTL_MS) {
+      // Serve from cache — avoids a DB round-trip on every request
+      revokedAt = cached.revokedAt;
+    } else {
+      // Cache miss or expired — check the DB
+      const row = await get(`SELECT revoked_at FROM revoked_tokens WHERE user_id = ?`, [decoded.id]);
+      revokedAt = row ? row.revoked_at : null;
+      revocationCache.set(decoded.id, { revokedAt, cachedAt: now });
+    }
+
+    if (revokedAt) {
+      const revokedAtMs = new Date(revokedAt).getTime();
+      const tokenIssuedAtMs = decoded.iat * 1000; // JWT iat is in seconds
+
+      if (revokedAtMs > tokenIssuedAtMs) {
+        // Token was issued before the user was disabled — reject it
+        return next({
+          status: 401,
+          code: 'TOKEN_REVOKED',
+          message: 'Your session has been revoked by an administrator. Please contact support.'
+        });
+      }
+    }
+  } catch (err) {
+    // Fail open: if the revocation DB check errors, allow the request through
+    // rather than causing an outage. Log loudly.
+    console.error(`[AUTH] Revocation check failed for user ${decoded.id}:`, err.message);
+  }
+
+  next();
 }
 
 /**
@@ -61,5 +126,6 @@ function requireRole(allowedRoles) {
 module.exports = {
   requireAuth,
   requireRole,
-  JWT_SECRET
+  JWT_SECRET,
+  clearRevocationCache
 };

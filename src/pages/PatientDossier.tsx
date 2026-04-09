@@ -50,8 +50,8 @@ export const PatientDossier = () => {
   });
 
   const handleGrantAccess = () => {
-    if (justification.length < 10) {
-       push('error', 'Verification Failed', 'Justification must be significantly descriptive (min 10 chars).');
+    if (justification.length < 50) {
+       push('error', 'Verification Failed', 'Justification must be significantly descriptive (at least 50 characters).');
        return;
     }
     breakGlassMutation.mutate(justification);
@@ -314,7 +314,7 @@ export const PatientDossier = () => {
                 onChange={e => setJustification(e.target.value)}
                 className="w-full bg-surface-container border border-outline rounded-lg p-3 text-sm focus:ring-2 focus:ring-error focus:border-error outline-none"
                 rows={3}
-                placeholder="Describe the clinical emergency... (minimum 10 chars)"
+                placeholder="Describe the clinical emergency... (minimum 50 characters)"
               />
             </div>
 

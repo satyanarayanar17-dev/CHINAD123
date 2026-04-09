@@ -1,6 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, clearRevocationCache } = require('../middleware/auth');
 const { get, all, run } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
 
@@ -93,6 +93,11 @@ router.patch('/users/:userId/disable', requireAuth, requireRole(['ADMIN']), asyn
 
     await run(`UPDATE users SET is_active = 0 WHERE id = ?`, [userId]);
 
+    // Insert / overwrite a revocation record so any live JWTs for this user
+    // are rejected by requireAuth within the 60-second cache TTL window.
+    await run(`DELETE FROM revoked_tokens WHERE user_id = ?`, [userId]);
+    await run(`INSERT INTO revoked_tokens (user_id, revoked_at) VALUES (?, CURRENT_TIMESTAMP)`, [userId]);
+
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
@@ -123,6 +128,11 @@ router.patch('/users/:userId/enable', requireAuth, requireRole(['ADMIN']), async
     }
 
     await run(`UPDATE users SET is_active = 1 WHERE id = ?`, [userId]);
+
+    // Remove the revocation record and clear the in-process cache so that
+    // freshly-issued tokens for this user are accepted immediately.
+    await run(`DELETE FROM revoked_tokens WHERE user_id = ?`, [userId]);
+    clearRevocationCache(userId);
 
     await writeAuditDirect({
       correlation_id: req.correlationId,

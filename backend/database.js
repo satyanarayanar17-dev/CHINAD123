@@ -30,6 +30,9 @@ if (dbDialect === 'postgres') {
 } else {
   fs.mkdirSync(path.dirname(sqlitePath), { recursive: true });
   db = new sqlite3.Database(sqlitePath);
+  db.serialize(() => {
+    db.run(`PRAGMA foreign_keys = ON`);
+  });
 }
 
 function transpileQuery(sql) {

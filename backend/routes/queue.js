@@ -1,46 +1,48 @@
 const express = require('express');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { get, run } = require('../database');
+const { get, run, all } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
+const {
+  normalizeQueueTransitionPhase,
+  serializeQueueSlot,
+  describeQueueIntegrityIssue,
+  validateEncounterLifecycle
+} = require('../lib/clinicalIntegrity');
 
 const router = express.Router();
 
 // GET QUEUE
 router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
-    const rawQueue = await require('../database').all(`
-      SELECT e.id as encounter_id, e.patient_id, e.phase, e.__v,
-             p.name, p.dob
+    const rawQueue = await all(`
+      SELECT e.id as encounter_id, e.patient_id, e.phase, e.is_discharged, e.__v,
+             p.id AS patient_record_id, p.name, p.dob, p.gender
       FROM encounters e
-      JOIN patients p ON e.patient_id = p.id
+      LEFT JOIN patients p ON e.patient_id = p.id
       WHERE e.is_discharged = 0
     `);
 
-    // Map to frontend AppointmentSlot shape exactly
-    const slots = rawQueue.map(q => ({
-      id: q.encounter_id,
-      time: '09:00',
-      status: 'ON_TIME',
-      patient: {
-        id: q.patient_id,
-        name: q.name,
-        dob: q.dob,
-        gender: 'Not specified',
-        // Minimal Patient fields to prevent frontend crashes
-        mrn: q.patient_id,
-        initials: q.name.split(' ').map(w => w[0]).join(''),
-        age: 0,
-        bloodGroup: 'Unknown',
-        riskFlags: [],
-        allergies: [],
-        vitals: { bp: '—', hr: 0, temp: 0, spo2: 0 },
-        activeMeds: []
-      },
-      type: 'General Review',
-      specialty: 'General Medicine',
-      lifecycleStatus: q.phase,
-      __v: q.__v
-    }));
+    const slots = [];
+
+    for (const row of rawQueue) {
+      const serialized = serializeQueueSlot(row);
+      if (serialized.warnings.length > 0) {
+        console.warn('[DATA_INTEGRITY] Queue row normalized for read model', {
+          correlationId: req.correlationId,
+          ...describeQueueIntegrityIssue(row, serialized.warnings)
+        });
+      }
+
+      if (!serialized.slot) {
+        console.warn('[DATA_INTEGRITY] Skipping malformed queue row', {
+          correlationId: req.correlationId,
+          ...describeQueueIntegrityIssue(row, serialized.errors)
+        });
+        continue;
+      }
+
+      slots.push(serialized.slot);
+    }
 
     res.json(slots);
   } catch (err) {
@@ -52,14 +54,33 @@ router.patch('/:encounterId', requireAuth, requireRole(['NURSE', 'DOCTOR']), asy
   const { encounterId } = req.params;
   const { phase, version } = req.body; // Client must provide the expected DB version
 
-  if (version === undefined) {
+  if (!Number.isInteger(version)) {
     return next({ status: 400, code: 'MISSING_VERSION', message: 'Optimistic Concurrency Control requires version integer payload.' });
+  }
+
+  const normalizedPhase = normalizeQueueTransitionPhase(phase);
+  if (!normalizedPhase) {
+    return next({
+      status: 422,
+      code: 'INVALID_QUEUE_PHASE',
+      message: 'Queue transitions accept only active phases. Use the discharge endpoint to close an encounter.'
+    });
   }
 
   try {
     const encounter = await get(`SELECT * FROM encounters WHERE id = ?`, [encounterId]);
     if (!encounter) {
       return next({ status: 404, code: 'NOT_FOUND', message: 'Encounter missing.' });
+    }
+
+    const encounterState = validateEncounterLifecycle(encounter);
+    if (!encounterState.valid) {
+      return next({
+        status: 409,
+        code: 'DATA_INTEGRITY_VIOLATION',
+        message: 'Encounter is malformed and cannot transition until repaired.',
+        details: encounterState.errors
+      });
     }
 
     if (encounter.__v !== version) {
@@ -76,16 +97,16 @@ router.patch('/:encounterId', requireAuth, requireRole(['NURSE', 'DOCTOR']), asy
       UPDATE encounters 
       SET phase = ?, __v = __v + 1 
       WHERE id = ? AND __v = ?
-    `, [phase, encounterId, version]);
+    `, [normalizedPhase, encounterId, version]);
 
     // Deterministic audit log — written before response
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
       patient_id: encounter.patient_id,
-      action: `QUEUE_TRANSITION:${encounter.phase}->${phase}`,
+      action: `QUEUE_TRANSITION:${encounter.phase}->${normalizedPhase}`,
       prior_state: JSON.stringify({ phase: encounter.phase, version }),
-      new_state: JSON.stringify({ phase, version: version + 1 })
+      new_state: JSON.stringify({ phase: normalizedPhase, version: version + 1 })
     });
 
     res.json({ message: 'Queue updated successfully', newVersion: version + 1 });

@@ -14,7 +14,7 @@ export const DoctorCommandCenter = () => {
   const { toasts, push, dismiss } = useToast();
   const [showFilter, setShowFilter] = useState(false);
   const [filter, setFilter] = useState('All');
-  const { queue, updateSlotStatus, isLoading, isError } = useLiveQueue();
+  const { queue, updateSlotStatus, refetchQueue, isLoading, isError } = useLiveQueue();
 
   const openChart = (patientId: string) => {
     navigate(`/clinical/patient/${patientId}/dossier`);
@@ -23,7 +23,7 @@ export const DoctorCommandCenter = () => {
   const handleDischarge = async (slot: AppointmentSlot) => {
     try {
       await clinicalApi.dischargeEncounter(slot.id);
-      updateSlotStatus(slot.id, 'DISCHARGED', (slot as any).__v || 1);
+      await refetchQueue();
       push('success', 'Patient Discharged', 'Visit cycle completed successfully.');
     } catch (error: any) {
       push('error', 'Discharge Failed', error.response?.data?.message || 'Could not discharge patient.');

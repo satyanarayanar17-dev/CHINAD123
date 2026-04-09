@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { get } = require('../database');
+const { accountTypeForRole, normalizeAccountType } = require('../lib/authBoundary');
 
 // In production: JWT_SECRET MUST be set — no fallback permitted.
 // In local_dev: fallback to insecure default with a loud warning (already issued in server.js).
@@ -45,6 +46,20 @@ function extractBearerToken(req) {
   }
 
   return authHeader.split(' ')[1];
+}
+
+function enforceTokenScope(decoded) {
+  const expectedAccountType = accountTypeForRole(decoded.role);
+  if (!expectedAccountType) {
+    return decoded;
+  }
+
+  const tokenAccountType = normalizeAccountType(decoded.account_type);
+  if (tokenAccountType !== expectedAccountType) {
+    throw tokenError(401, 'INVALID_TOKEN_SCOPE', 'Session scope is invalid. Please log in again.');
+  }
+
+  return decoded;
 }
 
 async function enforceRevocation(decoded) {
@@ -103,6 +118,8 @@ async function authenticateToken(token, options = {}) {
   if (options.expectedPurpose && decoded.purpose !== options.expectedPurpose) {
     throw tokenError(401, 'INVALID_TOKEN_PURPOSE', 'Token is not valid for this operation.');
   }
+
+  enforceTokenScope(decoded);
 
   if (options.allowedRoles && !options.allowedRoles.includes(decoded.role)) {
     throw tokenError(403, 'FORBIDDEN_ROLE', `Action requires one of: ${options.allowedRoles.join(', ')}`);

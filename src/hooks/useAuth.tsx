@@ -1,13 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authApi } from '../api/auth';
-import type { Role, LoginPayload } from '../api/auth';
+import type { LoginPayload } from '../api/auth';
 import { clearAccessToken, setAccessToken } from '../api/client';
 import { ServerCrash } from 'lucide-react';
+import type { AccountType, Role } from '../auth/roleBoundary';
+import { isSessionBoundaryValid } from '../auth/roleBoundary';
 
 export type AuthStatus = 'bootstrapping' | 'authenticated' | 'unauthenticated' | 'backend_unavailable' | 'error';
 
 interface AuthContextType {
   role: Role;
+  accountType: AccountType;
   user: string | null;
   status: AuthStatus;
   login: (payload: LoginPayload) => Promise<Role>;
@@ -18,32 +21,65 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [role, setRole] = useState<Role>(null);
+  const [accountType, setAccountType] = useState<AccountType>(null);
   const [user, setUser] = useState<string | null>(null);
   const [status, setStatus] = useState<AuthStatus>('bootstrapping');
+
+  const clearSession = useCallback((nextStatus: AuthStatus = 'unauthenticated', revokeRemote = false) => {
+    if (revokeRemote) {
+      authApi.logout().catch(() => {});
+    }
+    clearAccessToken();
+    setRole(null);
+    setAccountType(null);
+    setUser(null);
+    setStatus(nextStatus);
+  }, []);
+
+  const establishSession = useCallback((nextRole: Role, nextAccountType: AccountType, nextUserId: string) => {
+    if (!isSessionBoundaryValid(nextRole, nextAccountType)) {
+      throw new Error('INVALID_SESSION_BOUNDARY');
+    }
+
+    setRole(nextRole);
+    setAccountType(nextAccountType);
+    setUser(nextUserId);
+    setStatus('authenticated');
+  }, []);
 
   const bootstrap = useCallback(async () => {
     try {
       const refresh = await authApi.refresh();
+      if (!isSessionBoundaryValid(refresh.role, refresh.account_type)) {
+        clearSession('unauthenticated', true);
+        return;
+      }
+
       setAccessToken(refresh.access_token);
       const session = await authApi.me();
-      setRole(session.role);
-      setUser(session.id);
-      setStatus('authenticated');
+      if (
+        !isSessionBoundaryValid(session.role, session.account_type) ||
+        session.role !== refresh.role ||
+        session.account_type !== refresh.account_type
+      ) {
+        clearSession('unauthenticated', true);
+        return;
+      }
+
+      establishSession(session.role, session.account_type, session.id);
     } catch (e: any) {
-      clearAccessToken();
-      setRole(null);
-      setUser(null);
+      clearSession();
       
       // Distinguish backend transport failures vs auth rejection
       if (!e.response || e.code === 'ERR_NETWORK' || e.code === 'ECONNABORTED') {
         setStatus('backend_unavailable');
-      } else if (e.response?.status === 401) {
+      } else if (e.response?.status === 401 || e.response?.status === 403) {
         setStatus('unauthenticated');
       } else {
         setStatus('error');
       }
     }
-  }, []);
+  }, [clearSession, establishSession]);
 
   useEffect(() => {
     bootstrap();
@@ -51,20 +87,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (payload: LoginPayload) => {
     const res = await authApi.login(payload);
+    if (!isSessionBoundaryValid(res.role, res.account_type) || res.account_type !== payload.accountType) {
+      clearSession('unauthenticated', true);
+      throw new Error('ACCOUNT_TYPE_MISMATCH');
+    }
+
     setAccessToken(res.access_token);
-    setRole(res.role);
-    setUser(res.userId);
-    setStatus('authenticated');
+    establishSession(res.role, res.account_type, res.userId);
     return res.role;
   };
 
-  const logout = () => {
-    authApi.logout().catch(() => {});
-    clearAccessToken();
-    setRole(null);
-    setUser(null);
-    setStatus('unauthenticated');
-  };
+  const logout = useCallback(() => {
+    clearSession('unauthenticated', true);
+  }, [clearSession]);
 
   // Explicit, confirmed backend transport failure guard
   if (status === 'backend_unavailable') {
@@ -88,7 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   return (
-    <AuthContext.Provider value={{ role, user, status, login, logout }}>
+    <AuthContext.Provider value={{ role, accountType, user, status, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

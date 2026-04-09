@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Stethoscope, User, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-
-type Role = 'doctor' | 'patient' | 'nurse' | 'admin' | null;
+import type { AccountType } from '../auth/roleBoundary';
+import { getHomeRouteForRole } from '../auth/roleBoundary';
 
 export const Login = () => {
   const navigate = useNavigate();
-  const [selectedRole, setSelectedRole] = useState<Role>(null);
+  const [selectedAccountType, setSelectedAccountType] = useState<AccountType>(null);
   const [id, setId] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -19,23 +19,31 @@ export const Login = () => {
       setError('Please enter your credentials to continue.');
       return;
     }
+
+    if (!selectedAccountType) {
+      setError('Select patient or staff login first.');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
-      const finalRole = await login({ username: id.trim(), password: pin.trim() });
-      if (finalRole === 'patient') {
-        navigate('/patient/dashboard');
-      } else if (finalRole === 'nurse') {
-        navigate('/operations/nurse-triage');
-      } else if (finalRole === 'admin') {
-        navigate('/admin/dashboard');
-      } else {
-        navigate('/clinical/command-center');
-      }
+      const finalRole = await login({
+        username: id.trim(),
+        password: pin.trim(),
+        accountType: selectedAccountType
+      });
+      navigate(getHomeRouteForRole(finalRole));
     } catch (e: any) {
       if (e.response?.status === 401) {
         setError('Invalid credentials.');
+      } else if (e.response?.status === 403 || e.message === 'ACCOUNT_TYPE_MISMATCH') {
+        setError(
+          selectedAccountType === 'patient'
+            ? 'This account is not allowed on the patient login path.'
+            : 'This account is not allowed on the staff login path.'
+        );
       } else {
         setError('Network Error. Backend unresponsive.');
       }
@@ -101,13 +109,13 @@ export const Login = () => {
           </p>
 
           {/* Role Selector */}
-          {!selectedRole ? (
+          {!selectedAccountType ? (
             <div className="space-y-4">
               <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">
                 Select your role
               </p>
               <button
-                onClick={() => setSelectedRole('doctor')}
+                onClick={() => setSelectedAccountType('staff')}
                 className="w-full flex items-center gap-4 p-4 bg-white border-2 border-outline rounded-xl hover:border-primary hover:bg-primary/5 transition-all group shadow-sm"
               >
                 <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center group-hover:bg-primary/20 transition-colors">
@@ -122,7 +130,7 @@ export const Login = () => {
 
               {/* Patient login enabled for Phase 2 Patient Foundation */}
               <button
-                onClick={() => setSelectedRole('patient')}
+                onClick={() => setSelectedAccountType('patient')}
                 className="w-full flex items-center gap-4 p-4 bg-white border-2 border-outline rounded-xl hover:border-tertiary hover:bg-tertiary/5 transition-all group shadow-sm"
               >
                 <div className="w-12 h-12 bg-tertiary/10 rounded-xl flex items-center justify-center group-hover:bg-tertiary/20 transition-colors">
@@ -139,7 +147,7 @@ export const Login = () => {
             <div className="space-y-5">
               {/* Back to role selection */}
               <button
-                onClick={() => { setSelectedRole(null); setError(''); setId(''); setPin(''); }}
+                onClick={() => { setSelectedAccountType(null); setError(''); setId(''); setPin(''); }}
                 className="text-xs font-bold text-on-surface-variant hover:text-on-surface flex items-center gap-1 mb-2 transition-colors"
               >
                 ← Change role
@@ -147,24 +155,24 @@ export const Login = () => {
 
               {/* Role badge */}
               <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold ${
-                selectedRole === 'doctor'
+                selectedAccountType === 'staff'
                   ? 'bg-primary/10 text-primary'
                   : 'bg-tertiary/10 text-tertiary'
               }`}>
-                {selectedRole === 'doctor' ? <Stethoscope size={16} /> : <User size={16} />}
-                {selectedRole === 'doctor' ? 'Doctor / Staff Login' : 'Patient Login'}
+                {selectedAccountType === 'staff' ? <Stethoscope size={16} /> : <User size={16} />}
+                {selectedAccountType === 'staff' ? 'Doctor / Staff Login' : 'Patient Login'}
               </div>
 
               {/* Credential fields */}
               <div>
                 <label className="block text-xs font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  {selectedRole === 'doctor' ? 'Staff ID' : 'Patient UHID'}
+                  {selectedAccountType === 'staff' ? 'Staff ID' : 'Patient UHID'}
                 </label>
                 <input
                   type="text"
                   value={id}
                   onChange={e => setId(e.target.value)}
-                  placeholder={selectedRole === 'doctor' ? 'e.g. CHRI-DOC-001' : 'e.g. CC-99821'}
+                  placeholder={selectedAccountType === 'staff' ? 'e.g. CHRI-DOC-001' : 'e.g. CC-99821'}
                   className="w-full bg-white border border-outline rounded-xl px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                 />
               </div>
@@ -183,7 +191,7 @@ export const Login = () => {
                 />
               </div>
 
-              {selectedRole === 'patient' && (
+              {selectedAccountType === 'patient' && (
                 <div className="text-center w-full pt-1 pb-1">
                   <button 
                     onClick={() => navigate('/patient/activate')}
@@ -202,7 +210,7 @@ export const Login = () => {
                 onClick={handleLogin}
                 disabled={loading}
                 className={`w-full py-3.5 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm ${
-                  selectedRole === 'doctor'
+                  selectedAccountType === 'staff'
                     ? 'bg-primary hover:brightness-110 shadow-primary/20'
                     : 'bg-tertiary hover:brightness-110 shadow-tertiary/20'
                 } ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}

@@ -2,6 +2,7 @@ import React from 'react'
 import { Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { getHomeRouteForRole, isSessionBoundaryValid } from './auth/roleBoundary'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -11,6 +12,16 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+const SessionResetRedirect = ({ to, state }: { to: string; state?: unknown }) => {
+  const { logout } = useAuth()
+
+  React.useEffect(() => {
+    logout()
+  }, [logout])
+
+  return <Navigate to={to} replace state={state} />
+}
 
 // Layouts
 import { BaseLayout } from './components/layout/BaseLayout'
@@ -44,12 +55,14 @@ import { PatientRecords } from './pages/patient/PatientRecords'
 // ── Role Guards ──────────────────────────────────────────────────────────────
 
 const RequireRole = ({ allowed }: { allowed: string[] }) => {
-  const { role, status } = useAuth()
+  const { role, accountType, status } = useAuth()
   const location = useLocation()
   
   if (status === 'bootstrapping') return <div className="min-h-screen bg-surface-container flex items-center justify-center text-primary font-bold">Loading session...</div>;
   if (!role || status === 'unauthenticated') return <Navigate to="/login" state={{ from: location }} replace />
-  if (!allowed.includes(role)) return <Navigate to="/login" replace />
+  if (!isSessionBoundaryValid(role, accountType) || !allowed.includes(role)) {
+    return <SessionResetRedirect to="/login" state={{ from: location }} />
+  }
   return <Outlet />
 }
 
@@ -59,13 +72,11 @@ const PatientGuard = () => <RequireRole allowed={['patient']} />
 // ── Root Redirect ────────────────────────────────────────────────────────────
 
 const RootRedirect = () => {
-  const { role, status } = useAuth()
+  const { role, accountType, status } = useAuth()
   if (status === 'bootstrapping') return <div className="min-h-screen bg-surface-container flex items-center justify-center text-primary font-bold">Loading session...</div>;
-  if (role === 'patient') return <Navigate to="/patient/dashboard" replace />
-  if (role === 'doctor') return <Navigate to="/clinical/command-center" replace />
-  if (role === 'admin') return <Navigate to="/admin/dashboard" replace />
-  if (role === 'nurse') return <Navigate to="/operations/nurse-triage" replace />
-  return <Navigate to="/login" replace />
+  if (!role) return <Navigate to="/login" replace />
+  if (!isSessionBoundaryValid(role, accountType)) return <SessionResetRedirect to="/login" />
+  return <Navigate to={getHomeRouteForRole(role)} replace />
 }
 
 function App() {

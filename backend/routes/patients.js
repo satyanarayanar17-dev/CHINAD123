@@ -3,50 +3,50 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { get, all, run } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
 const { writeNotification } = require('./notifications');
+const {
+  buildPatientReadModel,
+  validatePatientRegistrationPayload,
+  validateEncounterLifecycle
+} = require('../lib/clinicalIntegrity');
 
 const router = express.Router();
 
 const BREAK_GLASS_MIN_LENGTH = 50;
 
-function mapPatient(p) {
-  return {
-    id: p.id, name: p.name, mrn: p.id,
-    age: p.dob ? Math.floor((Date.now() - new Date(p.dob).getTime()) / 31557600000) : 0,
-    dob: p.dob, gender: p.gender || 'Not specified',
-    bloodGroup: 'Unknown',
-    initials: p.name.split(' ').map(w => w[0]).join('').toUpperCase(),
-    riskFlags: [], allergies: [],
-    vitals: { bp: '120/80', hr: 72, temp: 37.0, spo2: 99 },
-    activeMeds: []
-  };
-}
-
 router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
+  const validation = validatePatientRegistrationPayload(req.body);
+  if (!validation.valid) {
+    return next({
+      status: 400,
+      code: 'INVALID_PATIENT_PAYLOAD',
+      message: validation.errors.map((error) => error.message).join(' '),
+      details: validation.errors
+    });
+  }
+
   const {
     id,
     name,
     dob,
-    gender = 'Not specified',
-    createEncounter = true
-  } = req.body;
-
-  if (!id || !name || !dob) {
-    return next({
-      status: 400,
-      code: 'MISSING_FIELDS',
-      message: 'id, name, and dob are required to register a patient.'
-    });
-  }
+    gender,
+    createEncounter
+  } = validation.value;
 
   try {
     let patient = await get(`SELECT id, name, dob, gender FROM patients WHERE id = ?`, [id]);
     let patientCreated = false;
 
     if (patient) {
-      const incomingGender = gender || 'Not specified';
-      const existingGender = patient.gender || 'Not specified';
+      const existingPatientValidation = validatePatientRegistrationPayload(patient);
+      if (!existingPatientValidation.valid) {
+        return next({
+          status: 409,
+          code: 'DATA_INTEGRITY_VIOLATION',
+          message: 'Existing patient demographics are incomplete. Run the repair script before reusing this UHID.'
+        });
+      }
 
-      if (patient.name !== name || patient.dob !== dob || existingGender !== incomingGender) {
+      if (patient.name !== name || patient.dob !== dob || patient.gender !== gender) {
         return next({
           status: 409,
           code: 'PATIENT_CONFLICT',
@@ -56,10 +56,10 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
     } else {
       await run(
         `INSERT INTO patients (id, name, dob, gender) VALUES (?, ?, ?, ?)`,
-        [id, name, dob, gender || 'Not specified']
+        [id, name, dob, gender]
       );
       patientCreated = true;
-      patient = { id, name, dob, gender: gender || 'Not specified' };
+      patient = { id, name, dob, gender };
     }
 
     let activeEncounter = null;
@@ -67,7 +67,7 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
 
     if (createEncounter !== false) {
       activeEncounter = await get(
-        `SELECT id, phase, __v
+        `SELECT id, patient_id, phase, is_discharged, __v
          FROM encounters
          WHERE patient_id = ? AND is_discharged = 0
          ORDER BY created_at DESC, id DESC
@@ -78,7 +78,9 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
       if (!activeEncounter) {
         activeEncounter = {
           id: `enc-${Date.now()}`,
+          patient_id: id,
           phase: 'RECEPTION',
+          is_discharged: 0,
           __v: 1
         };
         await run(
@@ -87,6 +89,16 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
           [activeEncounter.id, id]
         );
         encounterCreated = true;
+      } else {
+        const encounterState = validateEncounterLifecycle(activeEncounter);
+        if (!encounterState.valid) {
+          return next({
+            status: 409,
+            code: 'DATA_INTEGRITY_VIOLATION',
+            message: 'Existing active encounter is malformed. Run the repair script before onboarding this patient again.',
+            details: encounterState.errors
+          });
+        }
       }
     }
 
@@ -104,7 +116,7 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
     });
 
     res.status(patientCreated ? 201 : 200).json({
-      patient: mapPatient(patient),
+      patient: buildPatientReadModel(patient),
       encounterId: activeEncounter?.id || null,
       patientCreated,
       encounterCreated
@@ -120,7 +132,7 @@ router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (r
     const patients = q.length >= 2
       ? await all(`SELECT id,name,dob,gender FROM patients WHERE name LIKE ? OR id LIKE ? LIMIT 20`, [`%${q}%`, `%${q}%`])
       : await all(`SELECT id,name,dob,gender FROM patients LIMIT 20`);
-    res.json(patients.map(mapPatient));
+    res.json(patients.map((patient) => buildPatientReadModel(patient)).filter(Boolean));
   } catch (err) { next(err); }
 });
 
@@ -128,7 +140,7 @@ router.get('/:patientId', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN'])
   try {
     const p = await get(`SELECT id,name,dob,gender FROM patients WHERE id = ?`, [req.params.patientId]);
     if (!p) return next({ status: 404, code: 'NOT_FOUND', message: 'Patient not found.' });
-    res.json(mapPatient(p));
+    res.json(buildPatientReadModel(p));
   } catch (err) { next(err); }
 });
 

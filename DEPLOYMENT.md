@@ -13,10 +13,12 @@ This repo now supports a restricted web pilot with this shape:
   refresh token stored in an `httpOnly` cookie
   refresh rotation enabled
   token revocation preserved
+  patient and staff sessions remain separated by a persisted `account_type` scope
 - Notifications/SSE:
   staff-only notifications routes
   short-lived purpose-limited SSE tokens
 - Integrity controls: OCC/version checks for queue, notes, prescriptions, and ETag draft protection
+- Write invariants: patient demographics, encounter lifecycle values, note status, and prescription status are validated in shared backend guards; SQLite foreign keys are enabled and pilot-safe DB guards are installed by migration
 - Audit trail: sensitive actions append to `audit_logs`
 
 For the live pilot, deploy:
@@ -108,6 +110,59 @@ Production / restricted pilot behavior:
 - demo seeding is intentionally blocked
 - destructive reset is intentionally blocked
 - first access should come from `BOOTSTRAP_ADMIN_*`
+
+## Auth Boundary Separation
+
+The live pilot now depends on two distinct login flows:
+
+- patient portal login: `POST /api/v1/auth/login/patient`
+- staff/admin login: `POST /api/v1/auth/login/staff`
+
+Backend guarantees now enforced:
+
+- tokens carry both `role` and `account_type`
+- refresh rotation preserves the original account type and refuses scope drift
+- `/api/v1/auth/me` rejects stale or mismatched scope claims
+- patient portal routes under `/api/v1/my/*` require `PATIENT`
+- frontend bootstrap clears sessions whose `role` and `account_type` do not match
+
+Deployment note:
+
+- existing refresh-token rows are backfilled during migration
+- browsers holding an already-issued old access token may need one refresh cycle or a fresh login immediately after deploy
+
+## Data Integrity Before A Pilot
+
+Run these checks before using any imported pilot data or old local seed data:
+
+```bash
+cd backend && npm run migrate
+cd backend && npm run diagnose:data
+```
+
+If diagnostics report repairable legacy rows, preview the plan first:
+
+```bash
+cd backend && npm run repair:data
+```
+
+Apply repairs only after reviewing the dry-run output:
+
+```bash
+cd backend && npm run repair:data -- --apply
+```
+
+What the repair flow does:
+
+- normalizes blank patient display names to a deterministic placeholder
+- normalizes legacy encounter closure rows to `DISCHARGED`
+- normalizes repairable note and prescription statuses to canonical uppercase values
+- quarantines orphaned encounters, orphaned notes, and unusable prescriptions into `data_integrity_quarantine`
+
+What still requires manual review:
+
+- patient rows with invalid or missing DOB
+- encounters with unknown active lifecycle values or duplicate active encounters for the same patient
 
 ## PostgreSQL Setup Requirements
 
@@ -237,6 +292,14 @@ Migration command:
 
 ```bash
 cd backend && npm run migrate
+```
+
+Data integrity diagnostics:
+
+```bash
+cd backend && npm run diagnose:data
+cd backend && npm run repair:data
+cd backend && npm run repair:data -- --apply
 ```
 
 Local seed/bootstrap commands:

@@ -15,6 +15,41 @@ export function clearAccessToken() {
   accessToken = null;
 }
 
+const SESSION_RESET_CODES = new Set([
+  'ACCOUNT_TYPE_MISMATCH',
+  'FORBIDDEN_ROLE',
+  'INVALID_SESSION_SCOPE',
+  'INVALID_TOKEN_SCOPE',
+  'REFRESH_SCOPE_INVALID'
+]);
+
+function extractErrorCode(error: any): string | null {
+  const payload = error?.response?.data?.error;
+  if (typeof payload === 'string') {
+    return payload;
+  }
+
+  if (payload && typeof payload.code === 'string') {
+    return payload.code;
+  }
+
+  return null;
+}
+
+async function resetBrowserSession() {
+  clearAccessToken();
+
+  try {
+    await axios.post(buildApiUrl('/auth/logout'), {}, { withCredentials: true });
+  } catch {
+    // Best-effort cleanup only.
+  }
+
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login';
+  }
+}
+
 /**
  * Base Axios instance with normalized configuration.
  */
@@ -76,10 +111,9 @@ api.interceptors.response.use(
     }
 
     // 3. 403 FORBIDDEN: Role Violation Guard.
-    if (error.response?.status === 403) {
+    if (error.response?.status === 403 && SESSION_RESET_CODES.has(extractErrorCode(error) || '')) {
       console.error(`[SECURITY] 403 Forbidden Role Violation. Correlation ID: ${error.response.headers?.['x-correlation-id'] || 'unknown'}`);
-      // Send user back to base routing
-      window.location.href = '/';
+      await resetBrowserSession();
       return Promise.reject(new Error('Unauthorized role action detected.'));
     }
 
@@ -123,10 +157,7 @@ api.interceptors.response.use(
 
       } catch (refreshError) {
         // Hard boot on refresh failure
-        clearAccessToken();
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
+        await resetBrowserSession();
         return Promise.reject(refreshError);
       }
     }

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authApi } from '../api/auth';
 import type { Role, LoginPayload } from '../api/auth';
+import { clearAccessToken, setAccessToken } from '../api/client';
 import { ServerCrash } from 'lucide-react';
 
 export type AuthStatus = 'bootstrapping' | 'authenticated' | 'unauthenticated' | 'backend_unavailable' | 'error';
@@ -22,20 +23,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const bootstrap = useCallback(async () => {
     try {
-      const token = localStorage.getItem('cc_token');
-      if (token) {
-        const session = await authApi.me();
-        setRole(session.role);
-        setUser(session.id);
-        setStatus('authenticated');
-      } else {
-        setRole(null);
-        setUser(null);
-        setStatus('unauthenticated');
-      }
+      const refresh = await authApi.refresh();
+      setAccessToken(refresh.access_token);
+      const session = await authApi.me();
+      setRole(session.role);
+      setUser(session.id);
+      setStatus('authenticated');
     } catch (e: any) {
-      localStorage.removeItem('cc_token');
-      localStorage.removeItem('cc_refresh_token');
+      clearAccessToken();
       setRole(null);
       setUser(null);
       
@@ -56,11 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (payload: LoginPayload) => {
     const res = await authApi.login(payload);
-    localStorage.setItem('cc_token', res.access_token);
-    localStorage.setItem('cc_role', res.role || 'doctor');
-    if (res.refresh_token) {
-      localStorage.setItem('cc_refresh_token', res.refresh_token);
-    }
+    setAccessToken(res.access_token);
     setRole(res.role);
     setUser(res.userId);
     setStatus('authenticated');
@@ -68,13 +59,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    const refreshToken = localStorage.getItem('cc_refresh_token');
-    if (refreshToken) {
-      // Fire-and-forget: revoke server-side. Client state clears regardless.
-      authApi.logout(refreshToken).catch(() => {});
-    }
-    localStorage.removeItem('cc_token');
-    localStorage.removeItem('cc_refresh_token');
+    authApi.logout().catch(() => {});
+    clearAccessToken();
     setRole(null);
     setUser(null);
     setStatus('unauthenticated');

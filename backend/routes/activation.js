@@ -7,6 +7,9 @@ const { writeAuditDirect } = require('../middleware/audit');
 const { createRateLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
+const activationOtpDelivery =
+  process.env.ACTIVATION_OTP_DELIVERY ||
+  (process.env.NODE_ENV === 'production' ? 'console' : 'api_response');
 
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -23,34 +26,12 @@ const generateLimiter = createRateLimiter({
   message: 'Too many OTP generation requests. Please wait 10 minutes before trying again.'
 });
 
-// P2: Inline claim rate limiter — tracks failed attempts per patient UHID
-// Matches the 20-minute OTP window. Clears on success.
-const claimAttempts = new Map(); // patient_id -> { count, resetAt }
-const CLAIM_MAX_ATTEMPTS = 5;
-const CLAIM_WINDOW_MS = 20 * 60 * 1000;
-
-function claimRateLimit(req, res, next) {
-  const { patient_id } = req.body;
-  if (!patient_id) return next();
-
-  const now = Date.now();
-  const record = claimAttempts.get(patient_id);
-
-  if (record && now < record.resetAt) {
-    if (record.count >= CLAIM_MAX_ATTEMPTS) {
-      return res.status(429).json({
-        error: {
-          code: 'RATE_LIMITED',
-          message: `Too many activation attempts for this UHID. Try again in ${Math.ceil((record.resetAt - now) / 60000)} minutes.`
-        }
-      });
-    }
-    record.count++;
-  } else {
-    claimAttempts.set(patient_id, { count: 1, resetAt: now + CLAIM_WINDOW_MS });
-  }
-  next();
-}
+const claimRateLimit = createRateLimiter({
+  max: 5,
+  windowMs: 20 * 60 * 1000,
+  keyFn: (req) => req.body?.patient_id || req.ip,
+  message: 'Too many activation attempts for this UHID. Please wait 20 minutes before trying again.'
+});
 
 /**
  * POST /api/activation/generate
@@ -86,7 +67,8 @@ router.post('/generate', requireAuth, requireRole(['ADMIN', 'NURSE', 'DOCTOR']),
       correlation_id: req.correlationId,
       actor_id: req.user.id,
       patient_id,
-      action: 'PATIENT_ACTIVATION_OTP_GENERATED'
+      action: 'PATIENT_ACTIVATION_OTP_GENERATED',
+      new_state: JSON.stringify({ expires_at: expiresAt, generated_by_role: req.user.role })
     });
 
     console.log(`\n---------------------------------------------------------`);
@@ -94,8 +76,15 @@ router.post('/generate', requireAuth, requireRole(['ADMIN', 'NURSE', 'DOCTOR']),
     console.log(`[SYS: MOCK SMS] Your Chettinad Care activation code is: ${otp}. Valid for 20 mins.`);
     console.log(`---------------------------------------------------------\n`);
 
-    const response = { message: 'Activation token generated and delivered.' };
-    if (process.env.NODE_ENV !== 'production') {
+    const response = {
+      message: 'Activation token generated and delivered.',
+      expires_at: expiresAt
+    };
+
+    if (activationOtpDelivery === 'api_response') {
+      response.activation_code = otp;
+      response.delivery_mode = 'api_response';
+    } else if (process.env.NODE_ENV !== 'production') {
       response._meta = { debug_otp: otp };
     }
 
@@ -127,9 +116,6 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
     );
 
     if (!tokenRecord) {
-      // Increment attempt counter on failure
-      const record = claimAttempts.get(patient_id);
-      if (record) record.count++;
       return res.status(401).json({ error: 'INVALID_TOKEN', message: 'Activation code is invalid or does not match this UHID.' });
     }
 
@@ -158,14 +144,12 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
 
     await run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patient_id]);
 
-    // Clear rate limit on success
-    claimAttempts.delete(patient_id);
-
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: newUserId,
       patient_id,
-      action: 'PATIENT_ACTIVATION_CLAIM_SUCCESS'
+      action: 'PATIENT_ACTIVATION_CLAIM_SUCCESS',
+      new_state: JSON.stringify({ activated_user_id: newUserId })
     });
 
     res.json({ message: 'Account successfully activated. You may now log in.' });

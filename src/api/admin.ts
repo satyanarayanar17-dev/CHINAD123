@@ -7,6 +7,26 @@ export interface User {
   is_active: number;
 }
 
+export interface PatientRegistrationPayload {
+  id: string;
+  name: string;
+  dob: string;
+  gender: string;
+}
+
+export interface PatientRegistrationResponse {
+  encounterId: string | null;
+  patientCreated: boolean;
+  encounterCreated: boolean;
+}
+
+export interface ActivationResponse {
+  message: string;
+  activation_code?: string;
+  expires_at?: string;
+  delivery_mode?: string;
+}
+
 export const adminApi = {
   getUsers: async (): Promise<User[]> => {
     const res = await api.get('/admin/users');
@@ -30,6 +50,16 @@ export const adminApi = {
 
   resetPassword: async (userId: string, newPassword: string) => {
     const res = await api.post(`/admin/users/${userId}/reset-password`, { newPassword });
+    return res.data;
+  },
+
+  createPatient: async (payload: PatientRegistrationPayload): Promise<PatientRegistrationResponse> => {
+    const res = await api.post('/patients', payload);
+    return res.data;
+  },
+
+  generatePatientActivation: async (patientId: string): Promise<ActivationResponse> => {
+    const res = await api.post('/activation/generate', { patient_id: patientId });
     return res.data;
   }
 };

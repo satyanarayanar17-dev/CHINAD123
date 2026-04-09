@@ -7,13 +7,8 @@ const router = express.Router();
 /**
  * Patient Portal Self-Service Routes
  * 
- * STATUS: Patient web access is DEFERRED for Phase 1 Restricted Staff Pilot.
- * 
- * These routes require PATIENT role but patient account provisioning and
- * identity scoping is not fully implemented for the restricted web pilot.
- * 
- * The PATIENT role is not seeded with login credentials in deploy-seed.js.
- * Any user who somehow holds a PATIENT-role JWT will receive scoped-only data.
+ * These routes require PATIENT role and scope all reads through the
+ * patient_id linkage stored on the authenticated user record.
  * 
  * Patient scope: data is strictly scoped to the patient_id stored in the
  * users table under the column `patient_id`. If that column is absent for
@@ -24,9 +19,6 @@ const router = express.Router();
  */
 
 // Helper: resolve the single patient_id for the logged-in PATIENT user.
-// In Phase 1 pilot, PATIENT accounts are not provisioned, so this returns null.
-// When patient provisioning is added, add a `patient_id` column to `users` table
-// and look it up here.
 async function resolveOwnPatientId(userId) {
   const userRow = await get(`SELECT patient_id FROM users WHERE id = ?`, [userId]);
   if (!userRow) return null;

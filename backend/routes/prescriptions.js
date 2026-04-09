@@ -31,7 +31,13 @@ router.post('/', requireAuth, requireRole(['DOCTOR']), async (req, res, next) =>
       `INSERT INTO prescriptions (id, encounter_id, rx_content, status, __v) VALUES (?, ?, ?, 'DRAFT', 1)`,
       [rxId, encounter.id, rx_content || '']
     );
-    await writeAuditDirect({ correlation_id: req.correlationId, actor_id: req.user.id, action: `RX_CREATE:${rxId}` });
+    await writeAuditDirect({
+      correlation_id: req.correlationId,
+      actor_id: req.user.id,
+      patient_id: patientId,
+      action: `RX_CREATE:${rxId}`,
+      new_state: JSON.stringify({ rx_id: rxId, encounter_id: encounter.id, version: 1 })
+    });
     res.json({ rxId, newVersion: 1 });
   } catch (err) { next(err); }
 });
@@ -49,7 +55,13 @@ router.put('/:rxId', requireAuth, requireRole(['DOCTOR']), async (req, res, next
       `UPDATE prescriptions SET rx_content = ?, __v = __v + 1 WHERE id = ? AND __v = ?`,
       [rx_content, rxId, version]
     );
-    await writeAuditDirect({ correlation_id: req.correlationId, actor_id: req.user.id, action: `RX_SAVE:${rxId}` });
+    await writeAuditDirect({
+      correlation_id: req.correlationId,
+      actor_id: req.user.id,
+      patient_id: rx.patient_id || null,
+      action: `RX_SAVE:${rxId}`,
+      new_state: JSON.stringify({ rx_id: rxId, version: version + 1 })
+    });
     res.json({ message: 'Prescription saved', newVersion: version + 1 });
   } catch (err) { next(err); }
 });
@@ -76,7 +88,9 @@ router.post('/:rxId/authorize', requireAuth, requireRole(['DOCTOR']), async (req
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
-      action: `RX_AUTHORIZE:${rxId}:by:${doctorId}`
+      patient_id: rx.patient_id,
+      action: `RX_AUTHORIZE:${rxId}:by:${doctorId}`,
+      new_state: JSON.stringify({ rx_id: rxId, version: version + 1, status: 'AUTHORIZED' })
     });
 
     // Phase 2: Notify nursing staff that a prescription is ready

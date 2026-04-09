@@ -43,7 +43,8 @@ router.post('/:encounterId/break-glass', requireAuth, requireRole(['DOCTOR', 'NU
       correlation_id: req.correlationId,
       actor_id: req.user.id,
       patient_id: encounter.patient_id,
-      action: `BREAK_GLASS:${encounterId}:reason:${justification.substring(0, 200)}`
+      action: `BREAK_GLASS:${encounterId}:reason:${justification.substring(0, 200)}`,
+      new_state: JSON.stringify({ justification: justification.substring(0, 200) })
     });
 
     // Notify admin of break-glass event
@@ -99,7 +100,9 @@ router.patch('/:encounterId/discharge', requireAuth, requireRole(['DOCTOR']), as
       correlation_id: req.correlationId,
       actor_id: req.user.id,
       patient_id: encounter.patient_id,
-      action: `DISCHARGE:${encounter.phase}->CLOSED`
+      action: `DISCHARGE:${encounter.phase}->CLOSED`,
+      prior_state: JSON.stringify({ phase: encounter.phase, is_discharged: encounter.is_discharged }),
+      new_state: JSON.stringify({ phase: 'CLOSED', is_discharged: 1 })
     });
 
     // Phase 2: Notify admin of discharge

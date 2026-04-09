@@ -32,12 +32,19 @@ async function auditLogWriter(req, res, next) {
 /**
  * Direct writer utility for Auth login failures/successes outside of normal flow.
  */
-async function writeAuditDirect({ correlation_id, actor_id, action, patient_id = null }) {
+async function writeAuditDirect({
+  correlation_id,
+  actor_id,
+  action,
+  patient_id = null,
+  prior_state = null,
+  new_state = null
+}) {
   try {
     await run(`
-      INSERT INTO audit_logs (correlation_id, actor_id, patient_id, action)
-      VALUES (?, ?, ?, ?)
-    `, [correlation_id, actor_id || 'UNKNOWN', patient_id, action]);
+      INSERT INTO audit_logs (correlation_id, actor_id, patient_id, action, prior_state, new_state)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [correlation_id, actor_id || 'UNKNOWN', patient_id, action, prior_state, new_state]);
   } catch (err) {
     console.error(`[CRITICAL] FAILED TO WRITE AUDIT LOG:`, err);
   }

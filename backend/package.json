@@ -8,6 +8,7 @@
     "dev": "node server.js",
     "verify": "node verify.js",
     "seed": "node scripts/deploy-seed.js --confirm-destroy",
+    "seed:append": "node scripts/append-seed.js",
     "test": "node verify.js"
   },
   "keywords": [],

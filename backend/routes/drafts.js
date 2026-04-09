@@ -1,51 +1,68 @@
 const express = require('express');
+const { run, get } = require('../database');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
-
-// In-memory draft store with ETag-based OCC
-// Drafts are ephemeral by design — they don't survive server restart
-// Production would use Redis or a separate draft table
-const drafts = new Map(); // key -> { data, etag }
 
 function generateEtag() {
   return `W/"${Date.now()}-${Math.random().toString(36).slice(2, 8)}"`;
 }
 
-// GET /api/drafts/:key
-router.get('/:key', requireAuth, (req, res) => {
-  const entry = drafts.get(req.params.key);
-  if (!entry) {
-    return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'No draft found.' } });
+// GET /api/v1/drafts/:key
+router.get('/:key', requireAuth, async (req, res, next) => {
+  try {
+    const row = await get(`SELECT data, etag FROM drafts WHERE key = ?`, [req.params.key]);
+    if (!row) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'No draft found.' } });
+    }
+    res.setHeader('ETag', row.etag);
+    res.json(JSON.parse(row.data));
+  } catch (err) {
+    next(err);
   }
-  res.setHeader('ETag', entry.etag);
-  res.json(entry.data);
 });
 
-// PUT /api/drafts/:key — upsert with optional If-Match for OCC
-router.put('/:key', requireAuth, (req, res) => {
-  const key = req.params.key;
-  const ifMatch = req.headers['if-match'];
-  const existing = drafts.get(key);
+// PUT /api/v1/drafts/:key — upsert with optional If-Match for OCC
+router.put('/:key', requireAuth, async (req, res, next) => {
+  try {
+    const key = req.params.key;
+    const ifMatch = req.headers['if-match'];
 
-  // If client sends If-Match and it doesn't match current ETag → 412
-  if (ifMatch && existing && existing.etag !== ifMatch) {
-    return res.status(412).json({ 
-      error: { code: 'PRECONDITION_FAILED', message: 'Draft was modified by another session.' }
-    });
+    if (ifMatch) {
+      const existing = await get(`SELECT etag FROM drafts WHERE key = ?`, [key]);
+      if (existing && existing.etag !== ifMatch) {
+        return res.status(412).json({
+          error: { code: 'PRECONDITION_FAILED', message: 'Draft was modified by another session.' }
+        });
+      }
+    }
+
+    const newEtag = generateEtag();
+    const data = JSON.stringify(req.body);
+    const userId = req.user?.id || null;
+    const now = new Date().toISOString();
+
+    await run(
+      `INSERT INTO drafts (key, user_id, data, etag, updated_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET user_id=excluded.user_id, data=excluded.data, etag=excluded.etag, updated_at=excluded.updated_at`,
+      [key, userId, data, newEtag, now]
+    );
+
+    res.setHeader('ETag', newEtag);
+    res.json({ message: 'Draft saved', etag: newEtag });
+  } catch (err) {
+    next(err);
   }
-
-  const newEtag = generateEtag();
-  drafts.set(key, { data: req.body, etag: newEtag });
-  
-  res.setHeader('ETag', newEtag);
-  res.json({ message: 'Draft saved', etag: newEtag });
 });
 
-// DELETE /api/drafts/:key
-router.delete('/:key', requireAuth, (req, res) => {
-  drafts.delete(req.params.key);
-  res.json({ message: 'Draft cleared' });
+// DELETE /api/v1/drafts/:key
+router.delete('/:key', requireAuth, async (req, res, next) => {
+  try {
+    await run(`DELETE FROM drafts WHERE key = ?`, [req.params.key]);
+    res.json({ message: 'Draft cleared' });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

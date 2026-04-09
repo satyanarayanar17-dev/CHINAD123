@@ -9,9 +9,11 @@ export interface LoginPayload {
 
 export interface AuthResponse {
   access_token: string;
+  refresh_token?: string;
   token_type: string;
   role: Role;
   userId: string;
+  name?: string;
 }
 
 export interface SessionResponse {
@@ -32,5 +34,9 @@ export const authApi = {
   me: async (): Promise<SessionResponse> => {
     const response = await api.get<SessionResponse>('/auth/me');
     return response.data;
+  },
+
+  logout: async (refreshToken: string): Promise<void> => {
+    await api.post('/auth/logout', { refresh_token: refreshToken });
   }
 };

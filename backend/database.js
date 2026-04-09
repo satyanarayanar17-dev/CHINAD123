@@ -66,8 +66,11 @@ async function resetAndSeedDatabase() {
   console.log(`[DB] Initiating schema reset (${dbDialect})...`);
 
   if (dbDialect === 'postgres') {
-    // Drop in dependency-safe order. revoked_tokens is P3; rest are P2.
+    // Drop in dependency-safe order.
+    // revoked_tokens = Phase 3. drafts/refresh_tokens = old names (safe to drop if they exist).
     await run(`DROP TABLE IF EXISTS revoked_tokens CASCADE`);
+    await run(`DROP TABLE IF EXISTS drafts CASCADE`);
+    await run(`DROP TABLE IF EXISTS refresh_tokens CASCADE`);
     await run(`DROP TABLE IF EXISTS audit_logs CASCADE`);
     await run(`DROP TABLE IF EXISTS clinical_drafts CASCADE`);
     await run(`DROP TABLE IF EXISTS notifications CASCADE`);
@@ -85,7 +88,9 @@ async function resetAndSeedDatabase() {
     await run(`CREATE TABLE users (
       id TEXT PRIMARY KEY, role TEXT NOT NULL, name TEXT NOT NULL,
       password_hash TEXT, is_active INTEGER DEFAULT 1,
-      patient_id TEXT REFERENCES patients(id))`);
+      patient_id TEXT REFERENCES patients(id),
+      failed_attempts INTEGER DEFAULT 0,
+      locked_until TIMESTAMP)`);
 
     await run(`CREATE TABLE patient_activation_tokens (
       patient_id TEXT PRIMARY KEY REFERENCES patients(id),
@@ -149,6 +154,8 @@ async function resetAndSeedDatabase() {
   } else {
     // SQLite schema
     await run(`DROP TABLE IF EXISTS revoked_tokens`);
+    await run(`DROP TABLE IF EXISTS drafts`);
+    await run(`DROP TABLE IF EXISTS refresh_tokens`);
     await run(`DROP TABLE IF EXISTS audit_logs`);
     await run(`DROP TABLE IF EXISTS clinical_drafts`);
     await run(`DROP TABLE IF EXISTS notifications`);
@@ -166,6 +173,7 @@ async function resetAndSeedDatabase() {
     await run(`CREATE TABLE users (
       id TEXT PRIMARY KEY, role TEXT NOT NULL, name TEXT NOT NULL,
       password_hash TEXT, is_active INTEGER DEFAULT 1,
+      failed_attempts INTEGER DEFAULT 0, locked_until DATETIME,
       patient_id TEXT, FOREIGN KEY(patient_id) REFERENCES patients(id))`);
 
     await run(`CREATE TABLE patient_activation_tokens (
@@ -220,7 +228,7 @@ async function resetAndSeedDatabase() {
       user_id TEXT PRIMARY KEY,
       revoked_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
 
-    // SQLite dev seed data
+    // SQLite dev seed data (matches deploy-seed.js patient IDs)
     await run(`INSERT INTO patients VALUES ('pat-1','John Doe','1980-01-01','Male')`);
     await run(`INSERT INTO patients VALUES ('pat-2','Jane Smith','1990-05-15','Female')`);
     await run(`INSERT INTO patients VALUES ('pat-3','Ramesh Sivakumar','1975-03-22','Male')`);

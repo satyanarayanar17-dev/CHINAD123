@@ -7,6 +7,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { useLiveQueue } from '../hooks/queries/useLiveQueue';
 import type { AppointmentSlot } from '../store/mockData';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
+import { PatientOnboarding } from './admin/PatientOnboarding';
 import { UserManagement } from './admin/UserManagement';
 
 export const AdminDashboard = () => {
@@ -200,6 +201,10 @@ export const AdminDashboard = () => {
 
           <ErrorBoundary moduleName="Staff Identity Management">
             <UserManagement />
+          </ErrorBoundary>
+
+          <ErrorBoundary moduleName="Patient Onboarding">
+            <PatientOnboarding />
           </ErrorBoundary>
         </div>
 

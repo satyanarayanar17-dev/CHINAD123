@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../../api/notifications';
+import { buildSseUrl } from '../../api/config';
+import { authApi } from '../../api/auth';
+import { useAuth } from '../useAuth';
 import type { Notification } from '../../store/mockData';
 
 const NOTIFICATIONS_KEY = ['notifications'];
@@ -20,42 +23,51 @@ export const useNotifications = () => {
   const queryClient = useQueryClient();
   const [isLive, setIsLive] = useState(false);
   const esRef = useRef<EventSource | null>(null);
+  const { status, role } = useAuth();
 
   useEffect(() => {
-    const token = localStorage.getItem('cc_token');
-    if (!token) return;
+    if (status !== 'authenticated' || role === 'patient') return;
 
-    const es = new EventSource(`/api/v1/sse?token=${encodeURIComponent(token)}`);
-    esRef.current = es;
+    let isCancelled = false;
+    let localEs: EventSource | null = null;
 
-    es.addEventListener('connected', () => {
-      setIsLive(true);
-    });
+    authApi.getSseToken()
+      .then((token) => {
+        if (isCancelled) return;
 
-    es.addEventListener('notification', (event: MessageEvent) => {
-      const incoming = JSON.parse(event.data) as Notification;
-      queryClient.setQueryData<Notification[]>(NOTIFICATIONS_KEY, (old = []) => {
-        // Deduplicate by id in case the polling also picked it up
-        if (old.some(n => n.id === incoming.id)) return old;
-        return [incoming, ...old];
+        const es = new EventSource(buildSseUrl(token));
+        esRef.current = es;
+        localEs = es;
+
+        es.addEventListener('connected', () => {
+          setIsLive(true);
+        });
+
+        es.addEventListener('notification', (event: MessageEvent) => {
+          const incoming = JSON.parse(event.data) as Notification;
+          queryClient.setQueryData<Notification[]>(NOTIFICATIONS_KEY, (old = []) => {
+            if (old.some(n => n.id === incoming.id)) return old;
+            return [incoming, ...old];
+          });
+        });
+
+        es.addEventListener('error', () => {
+          setIsLive(false);
+          es.close();
+          esRef.current = null;
+        });
+      })
+      .catch(() => {
+        setIsLive(false);
       });
-    });
-
-    es.addEventListener('error', () => {
-      setIsLive(false);
-      // Close and do not retry — polling takes over.
-      // EventSource would retry indefinitely by default; we opt out on error
-      // to avoid repeated 401 requests if the token is stale.
-      es.close();
-      esRef.current = null;
-    });
 
     return () => {
-      es.close();
+      isCancelled = true;
+      localEs?.close();
       esRef.current = null;
       setIsLive(false);
     };
-  }, [queryClient]);
+  }, [queryClient, role, status]);
 
   const query = useQuery({
     queryKey: NOTIFICATIONS_KEY,

@@ -9,21 +9,22 @@ const router = express.Router();
  * POST /api/internal/seed-reset
  * 
  * SAFETY: Requires ADMIN authentication. Blocked in production.
- * In local_dev / local_pilot with ADMIN token, allows a full DB reset.
+ * In local_dev with ADMIN token, allows a full DB reset.
  * 
  * NEVER expose this endpoint production-friendly.
  */
 router.post('/seed-reset', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
   try {
     const isSeedResetAllowed = process.env.ALLOW_SEED_RESET === 'true';
+    const isLocalDev = (process.env.APP_ENV || 'local_dev') === 'local_dev';
 
-    // HARD BLOCK: Cannot run without the explicit kill switch, and absolutely never in production
-    if (!isSeedResetAllowed || process.env.NODE_ENV === 'production') {
+    // HARD BLOCK: Cannot run without the explicit kill switch, and only in local_dev
+    if (!isSeedResetAllowed || process.env.NODE_ENV === 'production' || !isLocalDev) {
       console.warn(`[SECURITY] Blocked seed-reset attempt by user ${req.user.id}.`);
       return next({
         status: 403,
         code: 'FORBIDDEN_ENV',
-        message: 'Seed-reset is disabled by environment configuration or blocked in production. Ops access required.'
+        message: 'Seed-reset is restricted to local_dev with ALLOW_SEED_RESET=true.'
       });
     }
 

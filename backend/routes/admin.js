@@ -15,7 +15,12 @@ const BCRYPT_COST = 10;
  */
 router.get('/users', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
   try {
-    const users = await all(`SELECT id, role, name, is_active FROM users ORDER BY role, name`);
+    const users = await all(
+      `SELECT id, role, name, is_active
+       FROM users
+       WHERE role IN ('ADMIN', 'DOCTOR', 'NURSE')
+       ORDER BY role, name`
+    );
     res.json(users);
   } catch (err) {
     next(err);
@@ -60,7 +65,8 @@ router.post('/users', requireAuth, requireRole(['ADMIN']), async (req, res, next
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
-      action: `ADMIN_USER_CREATE:${id}:role:${role}:by:${req.user.id}`
+      action: `ADMIN_USER_CREATE:${id}:role:${role}:by:${req.user.id}`,
+      new_state: JSON.stringify({ user_id: id, role, name })
     });
 
     res.status(201).json({ userId: id, role, name, created: true });

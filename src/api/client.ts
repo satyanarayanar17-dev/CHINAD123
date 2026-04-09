@@ -1,11 +1,27 @@
 import axios from 'axios';
+import { API_BASE_URL, buildApiUrl } from './config';
+
+let accessToken: string | null = null;
+
+export function getAccessToken() {
+  return accessToken;
+}
+
+export function setAccessToken(token: string | null) {
+  accessToken = token;
+}
+
+export function clearAccessToken() {
+  accessToken = null;
+}
 
 /**
  * Base Axios instance with normalized configuration.
  */
 export const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: API_BASE_URL,
   timeout: 30000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -15,11 +31,9 @@ export const api = axios.create({
  * Request Interceptor: Securely attaches Bearer token if available.
  */
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('cc_token');
-  
   if (config.headers) {
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`;
     }
     // Safety: Ensure every single request acts as a traceable audit thread
     config.headers['X-Correlation-ID'] = typeof crypto !== 'undefined' && crypto.randomUUID 
@@ -54,8 +68,7 @@ api.interceptors.response.use(
     // 2. RECURSION GUARD: Never try to refresh if the request was the refresh endpoint itself.
     if (originalRequest.url?.includes('/auth/refresh')) {
       // If refresh fails, we MUST logout and stop everything.
-      localStorage.removeItem('cc_token');
-      localStorage.removeItem('cc_refresh_token');
+      clearAccessToken();
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
@@ -84,13 +97,16 @@ api.interceptors.response.use(
          * Use a clean axios instance to avoid internal interceptor conflicts.
          * withCredentials ensured for HttpOnly cookie refreshes if backend supports it.
          */
-        const storedRefreshToken = localStorage.getItem('cc_refresh_token');
-        const refreshResponse = await axios.post('/api/v1/auth/refresh', { refresh_token: storedRefreshToken }, { withCredentials: true });
+        const refreshResponse = await axios.post(
+          buildApiUrl('/auth/refresh'),
+          {},
+          { withCredentials: true }
+        );
 
         const newToken = refreshResponse.data?.access_token;
 
         if (newToken) {
-          localStorage.setItem('cc_token', newToken);
+          setAccessToken(newToken);
 
           if (!originalRequest.headers) {
             originalRequest.headers = {};
@@ -107,8 +123,7 @@ api.interceptors.response.use(
 
       } catch (refreshError) {
         // Hard boot on refresh failure
-        localStorage.removeItem('cc_token');
-        localStorage.removeItem('cc_refresh_token');
+        clearAccessToken();
         if (window.location.pathname !== '/login') {
           window.location.href = '/login';
         }

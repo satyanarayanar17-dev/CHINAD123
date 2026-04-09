@@ -1,6 +1,6 @@
 const express = require('express');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { get, all } = require('../database');
+const { get, all, run } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
 const { writeNotification } = require('./notifications');
 
@@ -20,6 +20,99 @@ function mapPatient(p) {
     activeMeds: []
   };
 }
+
+router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
+  const {
+    id,
+    name,
+    dob,
+    gender = 'Not specified',
+    createEncounter = true
+  } = req.body;
+
+  if (!id || !name || !dob) {
+    return next({
+      status: 400,
+      code: 'MISSING_FIELDS',
+      message: 'id, name, and dob are required to register a patient.'
+    });
+  }
+
+  try {
+    let patient = await get(`SELECT id, name, dob, gender FROM patients WHERE id = ?`, [id]);
+    let patientCreated = false;
+
+    if (patient) {
+      const incomingGender = gender || 'Not specified';
+      const existingGender = patient.gender || 'Not specified';
+
+      if (patient.name !== name || patient.dob !== dob || existingGender !== incomingGender) {
+        return next({
+          status: 409,
+          code: 'PATIENT_CONFLICT',
+          message: 'A patient with this UHID already exists with different demographic data.'
+        });
+      }
+    } else {
+      await run(
+        `INSERT INTO patients (id, name, dob, gender) VALUES (?, ?, ?, ?)`,
+        [id, name, dob, gender || 'Not specified']
+      );
+      patientCreated = true;
+      patient = { id, name, dob, gender: gender || 'Not specified' };
+    }
+
+    let activeEncounter = null;
+    let encounterCreated = false;
+
+    if (createEncounter !== false) {
+      activeEncounter = await get(
+        `SELECT id, phase, __v
+         FROM encounters
+         WHERE patient_id = ? AND is_discharged = 0
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1`,
+        [id]
+      );
+
+      if (!activeEncounter) {
+        activeEncounter = {
+          id: `enc-${Date.now()}`,
+          phase: 'RECEPTION',
+          __v: 1
+        };
+        await run(
+          `INSERT INTO encounters (id, patient_id, phase, is_discharged, __v)
+           VALUES (?, ?, 'RECEPTION', 0, 1)`,
+          [activeEncounter.id, id]
+        );
+        encounterCreated = true;
+      }
+    }
+
+    await writeAuditDirect({
+      correlation_id: req.correlationId,
+      actor_id: req.user.id,
+      patient_id: id,
+      action: `PATIENT_REGISTER:${patientCreated ? 'CREATED' : 'REUSED'}:${encounterCreated ? 'ENCOUNTER_CREATED' : 'ENCOUNTER_REUSED'}`,
+      new_state: JSON.stringify({
+        patient_name: name,
+        patientCreated,
+        encounterCreated,
+        encounterId: activeEncounter?.id || null
+      })
+    });
+
+    res.status(patientCreated ? 201 : 200).json({
+      patient: mapPatient(patient),
+      encounterId: activeEncounter?.id || null,
+      patientCreated,
+      encounterCreated
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
@@ -145,7 +238,8 @@ router.post('/:patientId/break-glass', requireAuth, requireRole(['DOCTOR', 'NURS
       correlation_id: req.correlationId,
       actor_id: req.user.id,
       patient_id: patientId,
-      action: `BREAK_GLASS:patient:${patientId}:reason:${justification.substring(0, 200)}`
+      action: `BREAK_GLASS:patient:${patientId}:reason:${justification.substring(0, 200)}`,
+      new_state: JSON.stringify({ justification: justification.substring(0, 200) })
     });
 
     // Notify admin of break-glass

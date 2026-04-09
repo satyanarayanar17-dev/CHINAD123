@@ -1,5 +1,5 @@
 const express = require('express');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const { all, run } = require('../database');
 
 const router = express.Router();
@@ -34,7 +34,8 @@ async function writeNotification({ type = 'info', title, body, patient_id = null
       body,
       time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
       read: false,
-      targetPatientId: patient_id
+      targetPatientId: patient_id,
+      targetRole: target_role
     };
 
     try {
@@ -53,7 +54,7 @@ async function writeNotification({ type = 'info', title, body, patient_id = null
  * Returns up to 50 most recent notifications, newest first.
  * Staff see notifications relevant to their role or all-staff notifications.
  */
-router.get('/', requireAuth, async (req, res, next) => {
+router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const role = req.user?.role || null;
 
@@ -87,9 +88,14 @@ router.get('/', requireAuth, async (req, res, next) => {
  * PATCH /api/notifications/:id/read
  * Mark a single notification as read.
  */
-router.patch('/:id/read', requireAuth, async (req, res, next) => {
+router.patch('/:id/read', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
-    await run(`UPDATE notifications SET read = 1 WHERE id = ?`, [req.params.id]);
+    const role = req.user?.role || null;
+    await run(
+      `UPDATE notifications SET read = 1
+       WHERE id = ? AND (target_role IS NULL OR target_role = ?)`,
+      [req.params.id, role]
+    );
     res.json({ id: req.params.id, read: true });
   } catch (err) {
     next(err);
@@ -100,7 +106,7 @@ router.patch('/:id/read', requireAuth, async (req, res, next) => {
  * POST /api/notifications/read-all
  * Mark all notifications as read for the requesting user's role.
  */
-router.post('/read-all', requireAuth, async (req, res, next) => {
+router.post('/read-all', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const role = req.user?.role || null;
     await run(
@@ -118,14 +124,19 @@ router.post('/read-all', requireAuth, async (req, res, next) => {
  * PUT /api/notifications
  * Legacy batch sync — kept for frontend compatibility during transition.
  */
-router.put('/', requireAuth, async (req, res, next) => {
+router.put('/', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     if (!Array.isArray(req.body)) {
       return res.status(400).json({ error: { code: 'INVALID_BODY', message: 'Expected array of notifications.' } });
     }
+    const role = req.user?.role || null;
     for (const notif of req.body) {
       if (notif.id && notif.read === true) {
-        await run(`UPDATE notifications SET read = 1 WHERE id = ?`, [notif.id]);
+        await run(
+          `UPDATE notifications SET read = 1
+           WHERE id = ? AND (target_role IS NULL OR target_role = ?)`,
+          [notif.id, role]
+        );
       }
     }
     res.json({ message: 'Notifications synced' });

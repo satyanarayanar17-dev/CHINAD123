@@ -31,7 +31,13 @@ router.post('/', requireAuth, requireRole(['DOCTOR']), async (req, res, next) =>
       `INSERT INTO clinical_notes (id,encounter_id,draft_content,status,author_id,__v) VALUES (?,?,?,'DRAFT',?,1)`,
       [noteId, encounter.id, draft_content || '', req.user.id]
     );
-    await writeAuditDirect({ correlation_id: req.correlationId, actor_id: req.user.id, action: `NOTE_CREATE:${noteId}` });
+    await writeAuditDirect({
+      correlation_id: req.correlationId,
+      actor_id: req.user.id,
+      patient_id: patientId,
+      action: `NOTE_CREATE:${noteId}`,
+      new_state: JSON.stringify({ note_id: noteId, encounter_id: encounter.id, version: 1 })
+    });
     res.json({ noteId, newVersion: 1 });
   } catch (err) { next(err); }
 });
@@ -49,7 +55,13 @@ router.put('/:noteId', requireAuth, requireRole(['DOCTOR']), async (req, res, ne
       `UPDATE clinical_notes SET draft_content=?, updated_at=CURRENT_TIMESTAMP, __v=__v+1 WHERE id=? AND __v=?`,
       [draft_content, noteId, version]
     );
-    await writeAuditDirect({ correlation_id: req.correlationId, actor_id: req.user.id, action: `NOTE_SAVE:${noteId}` });
+    await writeAuditDirect({
+      correlation_id: req.correlationId,
+      actor_id: req.user.id,
+      patient_id: note.patient_id || null,
+      action: `NOTE_SAVE:${noteId}`,
+      new_state: JSON.stringify({ note_id: noteId, version: version + 1 })
+    });
     res.json({ message: 'Note saved successfully', newVersion: version + 1 });
   } catch (err) { next(err); }
 });
@@ -72,7 +84,13 @@ router.post('/:noteId/finalize', requireAuth, requireRole(['DOCTOR']), async (re
       [noteId, version]
     );
 
-    await writeAuditDirect({ correlation_id: req.correlationId, actor_id: req.user.id, action: `NOTE_FINALIZE:${noteId}` });
+    await writeAuditDirect({
+      correlation_id: req.correlationId,
+      actor_id: req.user.id,
+      patient_id: note.patient_id,
+      action: `NOTE_FINALIZE:${noteId}`,
+      new_state: JSON.stringify({ note_id: noteId, version: version + 1, status: 'FINALIZED' })
+    });
 
     // Phase 2: Emit notification to nursing staff
     const patient = await get(`SELECT name FROM patients WHERE id = ?`, [note.patient_id]);

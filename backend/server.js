@@ -1,5 +1,19 @@
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
+const {
+  dbDialect,
+  migrateDatabase,
+  pingDatabase,
+  run,
+  get
+} = require('./database');
+const {
+  ensureBootstrapAdmin,
+  ensureAdminAccessProvisioned
+} = require('./bootstrapAdmin');
+const { getRefreshCookieOptions } = require('./cookies');
 
 const app = express();
 
@@ -7,14 +21,22 @@ const app = express();
 // 1. STARTUP ENVIRONMENT VALIDATOR — fail-fast on misconfiguration
 // ===========================================================================
 const isProduction = process.env.NODE_ENV === 'production';
+const isRestrictedPilot = process.env.APP_ENV === 'restricted_web_pilot';
+const isLockedDeployment = isProduction || isRestrictedPilot;
+const allowedOtpDeliveryModes = new Set(['console', 'api_response']);
 
-if (isProduction) {
+if (isLockedDeployment) {
   console.log('[BOOT] Initializing in RESTRICTED_WEB_PILOT deployment mode.');
 
   const fatalErrors = [];
+  const configuredDialect = (process.env.DB_DIALECT || 'sqlite').trim().toLowerCase();
 
   if (process.env.PILOT_AUTH_BYPASS === 'true') {
     fatalErrors.push('PILOT_AUTH_BYPASS cannot be true in production deployment.');
+  }
+
+  if (configuredDialect !== 'postgres') {
+    fatalErrors.push('Restricted web pilot deployments must use DB_DIALECT=postgres. SQLite is local-dev only.');
   }
 
   if (!process.env.JWT_SECRET) {
@@ -31,6 +53,16 @@ if (isProduction) {
 
   if (!process.env.CORS_ORIGIN) {
     fatalErrors.push('CORS_ORIGIN must be explicitly set in production (no wildcard).');
+  }
+
+  if (process.env.ACTIVATION_OTP_DELIVERY && !allowedOtpDeliveryModes.has(process.env.ACTIVATION_OTP_DELIVERY)) {
+    fatalErrors.push('ACTIVATION_OTP_DELIVERY must be one of: console, api_response.');
+  }
+
+  try {
+    getRefreshCookieOptions();
+  } catch (err) {
+    fatalErrors.push(err.message);
   }
 
   if (fatalErrors.length > 0) {
@@ -50,14 +82,42 @@ if (isProduction) {
 // ===========================================================================
 // 2. CORS — restricted in production, open in dev
 // ===========================================================================
+app.set('trust proxy', 1);
+
+const allowedOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 const corsOptions = {
-  origin: isProduction
-    ? (process.env.CORS_ORIGIN || false)
-    : '*'
+  origin(origin, callback) {
+    if (!origin || !isLockedDeployment) {
+      callback(null, true);
+      return;
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error('Origin not allowed by CORS.'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID'],
+  optionsSuccessStatus: 204
 };
+app.disable('x-powered-by');
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: false
+}));
 app.use(cors(corsOptions));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '50kb' }));
 
 // ===========================================================================
 // 3. CORRELATION LOGGING MIDDLEWARE
@@ -107,14 +167,28 @@ app.use('/api/v1/sse', sseRouter);
 // ===========================================================================
 // 5. HEALTH CHECK
 // ===========================================================================
-app.get('/api/v1/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    env: process.env.NODE_ENV || 'development',
-    app_env: process.env.APP_ENV || 'local_dev',
-    db: process.env.DB_DIALECT || 'sqlite',
-    correlation_id: req.correlationId
-  });
+app.get('/api/v1/health', async (req, res) => {
+  try {
+    await pingDatabase();
+    res.json({
+      status: 'ok',
+      env: process.env.NODE_ENV || 'development',
+      app_env: process.env.APP_ENV || 'local_dev',
+      db: dbDialect,
+      db_status: 'ok',
+      correlation_id: req.correlationId
+    });
+  } catch (err) {
+    res.status(503).json({
+      status: 'degraded',
+      env: process.env.NODE_ENV || 'development',
+      app_env: process.env.APP_ENV || 'local_dev',
+      db: dbDialect,
+      db_status: 'unavailable',
+      correlation_id: req.correlationId,
+      error: err.message
+    });
+  }
 });
 
 // ===========================================================================
@@ -146,7 +220,6 @@ app.use((err, req, res, next) => {
 setInterval(async () => {
   try {
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    const { run } = require('./database');
     await run(`DELETE FROM clinical_drafts WHERE updated_at < ?`, [cutoff]);
     console.log('[CLEANUP] Pruned stale clinical drafts older than 48h');
   } catch (err) {
@@ -157,10 +230,25 @@ setInterval(async () => {
 module.exports = app;
 
 if (require.main === module) {
-  const PORT = process.env.PORT || 3001;
-  app.listen(PORT, () => {
-    console.log(`[BOOT] Chettinad Care Backend listening on port ${PORT}`);
-    console.log(`[BOOT] Environment: ${process.env.NODE_ENV || 'development'} / ${process.env.APP_ENV || 'local_dev'}`);
-    console.log(`[BOOT] DB Dialect: ${process.env.DB_DIALECT || 'sqlite'}`);
+  async function startServer() {
+    await migrateDatabase();
+    await pingDatabase();
+    await ensureBootstrapAdmin({ get, run });
+
+    if (isLockedDeployment) {
+      await ensureAdminAccessProvisioned({ get });
+    }
+
+    const PORT = process.env.PORT || 3001;
+    app.listen(PORT, () => {
+      console.log(`[BOOT] Chettinad Care Backend listening on port ${PORT}`);
+      console.log(`[BOOT] Environment: ${process.env.NODE_ENV || 'development'} / ${process.env.APP_ENV || 'local_dev'}`);
+      console.log(`[BOOT] DB Dialect: ${dbDialect}`);
+    });
+  }
+
+  startServer().catch((err) => {
+    console.error('[FATAL] Startup failed:', err);
+    process.exit(1);
   });
 }

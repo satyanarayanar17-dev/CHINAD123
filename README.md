@@ -1,74 +1,124 @@
-# Chettinad Care Platform
-*A Hardened Enterprise Clinical Environment*
+# Chettinad Care Pilot App
 
-## 1. Project Overview
-The Chettinad Care platform is a hospital-grade frontend user interface crafted specifically for Chettinad Hospital & Research Institute operations. The platform transitions clinical and administrative staff away from legacy monolithic systems into a highly resilient, offline-aware, modern clinical workspace.
+Chettinad Care is a split frontend/backend clinical pilot app designed for a small remote pilot:
 
-## 2. Product Purpose
-This system serves as the operational conduit between Patient Intake (Nurse Triage), Medical Diagnosis (Doctor Command Center), Healthcare Logistics (clinical signing, prescriptions), and Post-care Support (Patient Portal). It is explicitly **not** a generic consumer health-tech product, but a secure interface for staff-centric institutional logistics.
+- up to 10 patients
+- up to 10 nurses
+- up to 10 doctors
 
-## 3. Canonical Modules
-*   **Authentication Engine:** JWT-based robust RBAC system enforcing isolated paths via an immutable `AuthStatus` state engine.
-*   **Live Clinical Queue:** Atomic, conflict-free state resolution using `PATCH /queue/{id}` endpoints.
-*   **Patient Dossier:** Unified temporal viewing space for historical medical records, allergies, and interactions.
-*   **Clinical Note & Prescription Builders:** Highly resilient draft-enabled authoring workflows integrating standard medical codes across the EMR ledger. 
-*   **Nurse Triage Gateway:** Optimized biometric ingestion tool to triage and categorize patient urgency via automated EWS scoring systems.
-*   **Patient Portal:** Forward-facing dashboard designed for secure patient-record access.
+The live deployment path is now PostgreSQL-backed. SQLite remains available only as a local development fallback.
 
-## 4. Tech Stack
-*   **Framework:** React 18 / TypeScript
-*   **Networking:** Axios (with integrated HTTP interception routines)
-*   **State & Concurrency Layer:** TanStack React Query (Optimistic UIs & rollback protection)
-*   **Styling:** TailwindCSS
-*   **Tooling:** Vite, Lucide React
+## Repo Layout
 
-## 5. Route Map
-*   `/login`: Primary entryway handling authentication tokens.
-*   `/clinical/command-center`: Main dispatch terminal for attending physicians.
-*   `/operations/nurse-triage`: Intake terminal for general triage mapping.
-*   `/admin/dashboard`: Supervisory interface tracing hospital load states.
-*   `/clinical/patient/:patientId/dossier`: Protected patient record viewer.
-*   `/clinical/patient/:patientId/note/:consultationId`: SOAP note drafting core.
-*   `/clinical/patient/:patientId/prescription/:prescriptionId`: Rx engine.
-*   `/patient/dashboard`: Authenticated patient entryway.
+- `src/`: Vite + React frontend
+- `backend/`: Express API, auth, RBAC, audit logging, OCC, seeding, migrations
+- `docker-compose.yml`: local all-in-one stack with Nginx + backend + PostgreSQL
 
-## 6. Role Model
-The system explicitly restricts navigation depending on backend-authenticated roles:
-- `doctor`: Access to the command center, write-privileges for notes/prescriptions.
-- `nurse`: Confined to Queue ingestion and Triage capabilities.
-- `admin`: Given read/reporting capacities over system load variables without medical write properties.
-- `patient`: Compartmentalized completely inside the `/patient/*` hierarchy.
+## Current Architecture
 
-## 7. Implemented Backend-Backed Features
-*   Strict JWT Authorization.
-*   Atomic Queue Adjustments (Optimistic Rollback capable).
-*   Live Patient Ledger fetching and mapping.
-*   ETag-controlled Draft Concurrency system (Blocking simultaneous doctor edits using `HTTP 412 Precondition Failed` interception).
-*   Note transmission & Prescription finalization workflows.
+- Frontend: Vite/React SPA with configurable `VITE_API_BASE_URL`
+- Backend: Express API mounted under `/api/v1`
+- Database access: raw SQL through `backend/database.js`, with one dialect switch for SQLite vs PostgreSQL
+- Persistence for live pilot: PostgreSQL only
+- Local development fallback: SQLite file at `backend/verification.db` unless `SQLITE_PATH` overrides it
+- Auth/session: in-memory access token + `httpOnly` refresh cookie, bcrypt password hashes, refresh rotation, RBAC middleware, token revocation table
+- Data integrity: OCC/version checks on queue, notes, prescriptions, and draft ETag protection
+- Audit logging: sensitive actions continue to write to `audit_logs`
+- Upload/storage: no file upload or object storage pipeline is implemented in this repo today
 
-## 8. Explicitly Locked & Unprovisioned Features
-*In order to preserve operational truthfulness, the following buttons display explicit Offline warnings instead of deceiving staff into thinking modules are finalized:*
-*   **PDF Export Module:** Offline in Doctor Command Center.
-*   **Legacy Billing/Invoicing Gateways:** Offline in Admin Dashboard.
-*   **Optical Character Recognition (OCR):** Document parsing blocked in Admin Dashboard.
-*   **Automated Bookings:** Scheduling logic blocked within the Patient Portal.
-*   **Break-Glass Compliance Bypass:** Explicitly blocked in Dossiers due to audit risks.
-*   **LIS Data Imports:** Automated laboratory data streaming into the Soap notes is disabled.
+## Local Development
 
-## 9. Local Setup Instructions
-1. Clone the repository natively.
-2. Ensure you run `npm install` exclusively without altering legacy `package-lock.json` unless necessary.
-3. Start the dev server using `npm run dev`.
-4. Ensure the corresponding FastAPI application exists and runs concurrently on port mapping standard `http://localhost:8000` via `.env.local` configs. 
+1. Install frontend dependencies:
+   `npm install`
+2. Install backend dependencies:
+   `cd backend && npm install`
+3. Seed the local SQLite demo dataset:
+   `cd backend && npm run seed:reset`
+4. Start the backend:
+   `cd backend && npm run dev`
+5. Start the frontend:
+   `npm run dev`
 
-## 10. Environment / Config Assumptions
-The application assumes direct connection to an operational REST backend. If backend resolution fails, the application correctly defaults into an un-bypassable `System Offline` hardware screen protecting against false state rendering. It relies completely on the backend for single-source-of-truth authorization.
+Default local URLs:
 
-## 11. Known Limitations
-1.  **Partial Caching:** Currently caching relies inherently on React Query defaults. Aggressive browser offline modes are not definitively supported out-of-the-box (Service Workers aren't fully deployed for index caching).
-2.  **Notification Relay:** Staff notifications remain locally tracked context providers rather than integrating with an operational WebSocket stream.
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:3001/api/v1`
 
-## 12. Next Engineering Priorities
-*   Implementation of real WebSocket channels for instantaneous push-notifications replacing interval polling arrays.
-*   Integrate actual OCR parsers inside the Admin ecosystem.
-*   Wire the remaining Institutional configuration profiles to backend API states.
+Local demo accounts after `npm run seed:reset`:
+
+- `admin_qa` / `Password123!`
+- `nurse_qa` / `Password123!`
+- `doc1_qa` / `Password123!`
+- `doc2_qa` / `Password123!`
+- patient login via UHID `pat-1` / `Password123!`
+
+## Pilot Deployment
+
+The recommended deployment split is:
+
+- Backend on Railway or Render
+- Managed PostgreSQL on Railway or Render
+- Frontend on Vercel
+
+High-level backend deployment settings:
+
+- Root directory: `backend`
+- Build command: `npm install`
+- Start command: `npm start`
+- Health check path: `/api/v1/health`
+
+High-level frontend deployment settings:
+
+- Root directory: repo root
+- Build command: `npm run build`
+- Output directory: `dist`
+- Environment variable: `VITE_API_BASE_URL=https://YOUR-BACKEND-DOMAIN/api/v1`
+
+Important:
+
+- Do not deploy the restricted web pilot with `DB_DIALECT=sqlite`
+- Do not enable `PILOT_AUTH_BYPASS`
+- Do set `BOOTSTRAP_ADMIN_*` for the first live deploy
+- Do set cookie envs correctly for your deployment shape:
+  `COOKIE_SAME_SITE=none` for different frontend/backend sites
+  `COOKIE_SAME_SITE=lax` for same-site custom domains
+
+Detailed instructions are in [DEPLOYMENT.md](/Users/siddwork/Desktop/chettinad-care-frontend/DEPLOYMENT.md).
+
+## Onboarding Flows
+
+Staff onboarding:
+
+- Admin signs in
+- Admin dashboard → `Staff Directory & Access`
+- Create nurses/doctors/admins with strong passwords
+
+Patient onboarding:
+
+- Admin dashboard → `Patient Onboarding`
+- Register the patient demographic record
+- The backend ensures an active encounter exists
+- The backend issues an activation code
+- Patient opens `/patient/activate`, enters UHID + activation code, sets password
+- Patient then logs in with their UHID and password
+
+## Verification
+
+Checks run successfully during this update:
+
+- `cd backend && npm run migrate`
+- `cd backend && npm run seed:reset`
+- `cd backend && npm test`
+- `npm run build`
+
+An additional restricted-pilot boot check was also run locally against a temporary PostgreSQL container:
+
+- PostgreSQL migration succeeded with `DB_DIALECT=postgres`
+- backend booted in `restricted_web_pilot` mode
+- `/api/v1/health` returned `{"status":"ok","db":"postgres","db_status":"ok"}`
+
+## Pilot Limitations
+
+- Access tokens are no longer stored in `localStorage`, but this is still not a full cookie-only CSRF-protected session architecture.
+- SSE uses a short-lived purpose-limited query token rather than a bearer header because `EventSource` cannot send custom auth headers.
+- Rate limiting is in-process only, which is acceptable for a very small pilot but not for a larger horizontally scaled system.

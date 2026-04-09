@@ -2,10 +2,10 @@
  * CHETTINAD CARE — BACKEND VERIFICATION SUITE
  *
  * Tests the hardened backend against all critical security and clinical flows.
- * Requires a running backend with seeded data (deploy-seed.js --confirm-destroy)
+ * Requires a running backend with the local demo dataset (`npm run seed:reset`).
  *
  * Run: node verify.js
- * Env: Backend must be running on localhost:3001 with seeded accounts
+ * Env: Backend must be running on http://localhost:3001 with seeded accounts
  */
 
 const axios = require('axios');
@@ -13,7 +13,7 @@ const http = require('http');
 
 const API_BASE = process.env.API_BASE || 'http://localhost:3001/api/v1';
 
-// These must match what deploy-seed.js provisions
+// These must match what npm run seed:reset provisions
 const SEEDED_STAFF_PASSWORD = 'Password123!';
 
 let pass = 0;

@@ -25,6 +25,10 @@ if (!JWT_SECRET) {
 const revocationCache = new Map();
 const REVOCATION_CACHE_TTL_MS = 60 * 1000;
 
+function tokenError(status, code, message) {
+  return { status, code, message };
+}
+
 /**
  * Clear a user's revocation cache entry.
  * Called by admin.js when a user is re-enabled so the cache does not
@@ -32,6 +36,79 @@ const REVOCATION_CACHE_TTL_MS = 60 * 1000;
  */
 function clearRevocationCache(userId) {
   revocationCache.delete(userId);
+}
+
+function extractBearerToken(req) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+
+  return authHeader.split(' ')[1];
+}
+
+async function enforceRevocation(decoded) {
+  const now = Date.now();
+  const cached = revocationCache.get(decoded.id);
+
+  let revokedAt = null;
+
+  if (cached && (now - cached.cachedAt) < REVOCATION_CACHE_TTL_MS) {
+    revokedAt = cached.revokedAt;
+  } else {
+    const row = await get(`SELECT revoked_at FROM revoked_tokens WHERE user_id = ?`, [decoded.id]);
+    revokedAt = row ? row.revoked_at : null;
+    revocationCache.set(decoded.id, { revokedAt, cachedAt: now });
+  }
+
+  if (!revokedAt) {
+    return decoded;
+  }
+
+  const revokedAtMs = new Date(revokedAt).getTime();
+  const tokenIssuedAtMs = decoded.iat * 1000;
+
+  if (revokedAtMs > tokenIssuedAtMs) {
+    throw tokenError(
+      401,
+      'TOKEN_REVOKED',
+      'Your session has been revoked by an administrator. Please contact support.'
+    );
+  }
+
+  return decoded;
+}
+
+async function authenticateToken(token, options = {}) {
+  if (!token) {
+    throw tokenError(401, 'MISSING_TOKEN', 'No authorization token provided.');
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    throw tokenError(401, 'INVALID_TOKEN', 'Session expired or invalid token.');
+  }
+
+  try {
+    await enforceRevocation(decoded);
+  } catch (err) {
+    if (err.status) {
+      throw err;
+    }
+    console.error(`[AUTH] Revocation check failed for user ${decoded.id}:`, err.message);
+  }
+
+  if (options.expectedPurpose && decoded.purpose !== options.expectedPurpose) {
+    throw tokenError(401, 'INVALID_TOKEN_PURPOSE', 'Token is not valid for this operation.');
+  }
+
+  if (options.allowedRoles && !options.allowedRoles.includes(decoded.role)) {
+    throw tokenError(403, 'FORBIDDEN_ROLE', `Action requires one of: ${options.allowedRoles.join(', ')}`);
+  }
+
+  return decoded;
 }
 
 /**
@@ -44,59 +121,14 @@ function clearRevocationCache(userId) {
  *   - A revocation record exists with revoked_at > token.iat (issued-at)
  */
 async function requireAuth(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return next({ status: 401, code: 'MISSING_TOKEN', message: 'No authorization token provided.' });
-  }
-
-  const token = authHeader.split(' ')[1];
-
-  let decoded;
   try {
-    decoded = jwt.verify(token, JWT_SECRET);
+    const token = extractBearerToken(req);
+    const decoded = await authenticateToken(token);
+    req.user = decoded;
+    next();
   } catch (err) {
-    return next({ status: 401, code: 'INVALID_TOKEN', message: 'Session expired or invalid token.' });
+    next(err.status ? err : tokenError(500, 'AUTH_FAILURE', err.message));
   }
-
-  req.user = decoded; // { id, role, iat, exp }
-
-  // ── Token revocation check ─────────────────────────────────────────────────
-  try {
-    const now = Date.now();
-    const cached = revocationCache.get(decoded.id);
-
-    let revokedAt = null;
-
-    if (cached && (now - cached.cachedAt) < REVOCATION_CACHE_TTL_MS) {
-      // Serve from cache — avoids a DB round-trip on every request
-      revokedAt = cached.revokedAt;
-    } else {
-      // Cache miss or expired — check the DB
-      const row = await get(`SELECT revoked_at FROM revoked_tokens WHERE user_id = ?`, [decoded.id]);
-      revokedAt = row ? row.revoked_at : null;
-      revocationCache.set(decoded.id, { revokedAt, cachedAt: now });
-    }
-
-    if (revokedAt) {
-      const revokedAtMs = new Date(revokedAt).getTime();
-      const tokenIssuedAtMs = decoded.iat * 1000; // JWT iat is in seconds
-
-      if (revokedAtMs > tokenIssuedAtMs) {
-        // Token was issued before the user was disabled — reject it
-        return next({
-          status: 401,
-          code: 'TOKEN_REVOKED',
-          message: 'Your session has been revoked by an administrator. Please contact support.'
-        });
-      }
-    }
-  } catch (err) {
-    // Fail open: if the revocation DB check errors, allow the request through
-    // rather than causing an outage. Log loudly.
-    console.error(`[AUTH] Revocation check failed for user ${decoded.id}:`, err.message);
-  }
-
-  next();
 }
 
 /**
@@ -127,5 +159,7 @@ module.exports = {
   requireAuth,
   requireRole,
   JWT_SECRET,
-  clearRevocationCache
+  clearRevocationCache,
+  authenticateToken,
+  extractBearerToken
 };

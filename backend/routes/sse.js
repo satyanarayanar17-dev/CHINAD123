@@ -1,6 +1,5 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
-const { JWT_SECRET } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -17,9 +16,12 @@ const clients = new Map();
  */
 function broadcastNotification(notification) {
   const payload = `event: notification\ndata: ${JSON.stringify(notification)}\n\n`;
-  for (const [userId, res] of clients) {
+  for (const [userId, client] of clients) {
     try {
-      res.write(payload);
+      if (notification.targetRole && client.role !== notification.targetRole) {
+        continue;
+      }
+      client.res.write(payload);
     } catch (err) {
       // Client socket already closed — clean up silently
       clients.delete(userId);
@@ -41,52 +43,56 @@ function broadcastNotification(notification) {
  *   5. Start 25-second heartbeat pings to prevent proxy timeouts
  *   6. On client disconnect, clear heartbeat and remove from Map
  */
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const token = req.query.token;
 
   if (!token) {
     return res.status(401).json({ error: 'MISSING_TOKEN', message: 'token query parameter is required.' });
   }
 
-  let decoded;
   try {
-    decoded = jwt.verify(token, JWT_SECRET);
-  } catch (err) {
-    return res.status(401).json({ error: 'INVALID_TOKEN', message: 'Session expired or invalid token.' });
-  }
+    const decoded = await authenticateToken(token, {
+      expectedPurpose: 'sse',
+      allowedRoles: ['DOCTOR', 'NURSE', 'ADMIN']
+    });
 
-  // SSE response headers
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // Prevent Nginx buffering SSE
-  res.flushHeaders();
+    // SSE response headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-store');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Prevent Nginx buffering SSE
+    res.flushHeaders();
 
-  // Register — newer connection for the same userId replaces the old one
-  const previous = clients.get(decoded.id);
-  if (previous) {
-    try { previous.end(); } catch (_) { /* ignore */ }
-  }
-  clients.set(decoded.id, res);
+    // Register — newer connection for the same userId replaces the old one
+    const previous = clients.get(decoded.id);
+    if (previous) {
+      try { previous.res.end(); } catch (_) { /* ignore */ }
+    }
+    clients.set(decoded.id, { res, role: decoded.role });
 
-  // Send initial connected event
-  res.write(`event: connected\ndata: ${JSON.stringify({ userId: decoded.id, role: decoded.role })}\n\n`);
+    // Send initial connected event
+    res.write(`event: connected\ndata: ${JSON.stringify({ userId: decoded.id, role: decoded.role })}\n\n`);
 
-  // Heartbeat every 25 seconds to prevent proxy / load-balancer timeouts
-  const heartbeat = setInterval(() => {
-    try {
-      res.write(`event: ping\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`);
-    } catch (err) {
+    // Heartbeat every 25 seconds to prevent proxy / load-balancer timeouts
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(`event: ping\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`);
+      } catch (err) {
+        clearInterval(heartbeat);
+        clients.delete(decoded.id);
+      }
+    }, 25000);
+
+    // Cleanup on client disconnect
+    req.on('close', () => {
       clearInterval(heartbeat);
       clients.delete(decoded.id);
-    }
-  }, 25000);
-
-  // Cleanup on client disconnect
-  req.on('close', () => {
-    clearInterval(heartbeat);
-    clients.delete(decoded.id);
-  });
+    });
+  } catch (err) {
+    return res
+      .status(err.status || 401)
+      .json({ error: err.code || 'INVALID_TOKEN', message: err.message || 'Session expired or invalid token.' });
+  }
 });
 
 module.exports = { router, broadcastNotification };

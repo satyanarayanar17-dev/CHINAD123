@@ -83,7 +83,9 @@ router.patch('/:encounterId', requireAuth, requireRole(['NURSE', 'DOCTOR']), asy
       correlation_id: req.correlationId,
       actor_id: req.user.id,
       patient_id: encounter.patient_id,
-      action: `QUEUE_TRANSITION:${encounter.phase}->${phase}`
+      action: `QUEUE_TRANSITION:${encounter.phase}->${phase}`,
+      prior_state: JSON.stringify({ phase: encounter.phase, version }),
+      new_state: JSON.stringify({ phase, version: version + 1 })
     });
 
     res.json({ message: 'Queue updated successfully', newVersion: version + 1 });

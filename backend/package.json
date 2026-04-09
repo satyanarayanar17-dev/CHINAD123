@@ -4,12 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
+    "start": "npm run migrate && node server.js",
+    "dev": "npm run migrate && node server.js",
+    "migrate": "node scripts/migrate.js",
     "verify": "node verify.js",
-    "seed": "node scripts/deploy-seed.js --confirm-destroy",
-    "seed:append": "node scripts/append-seed.js",
-    "test": "node verify.js"
+    "seed": "node scripts/seed.js --mode=append",
+    "seed:reset": "node scripts/seed.js --mode=reset --confirm-reset",
+    "seed:append": "node scripts/seed.js --mode=append",
+    "test": "node test.js"
   },
   "keywords": [],
   "author": "",
@@ -18,8 +20,10 @@
   "dependencies": {
     "axios": "^1.7.9",
     "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.20.0",
     "sqlite3": "^6.0.1",

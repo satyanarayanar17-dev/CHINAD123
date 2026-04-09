@@ -9,7 +9,6 @@ export interface LoginPayload {
 
 export interface AuthResponse {
   access_token: string;
-  refresh_token?: string;
   token_type: string;
   role: Role;
   userId: string;
@@ -36,7 +35,17 @@ export const authApi = {
     return response.data;
   },
 
-  logout: async (refreshToken: string): Promise<void> => {
-    await api.post('/auth/logout', { refresh_token: refreshToken });
+  refresh: async (): Promise<Pick<AuthResponse, 'access_token' | 'token_type'>> => {
+    const response = await api.post<Pick<AuthResponse, 'access_token' | 'token_type'>>('/auth/refresh', {});
+    return response.data;
+  },
+
+  getSseToken: async (): Promise<string> => {
+    const response = await api.get<{ token: string }>('/auth/sse-token');
+    return response.data.token;
+  },
+
+  logout: async (): Promise<void> => {
+    await api.post('/auth/logout', {});
   }
 };

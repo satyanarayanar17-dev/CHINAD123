@@ -7,6 +7,31 @@ import { useNavigate } from 'react-router-dom';
 import { useToast, ToastContainer } from '../components/ui/Toast';
 
 const SPECIALTIES = ['All', 'Cardiology', 'General Medicine', 'Orthopedics'];
+const FALLBACK_SLOT_STATUS = { cls: 'text-gray-500', border: 'border-l-gray-300' };
+const FALLBACK_LIFECYCLE = { label: 'Unknown', variant: 'surface' as const };
+
+function getPatientName(slot: any) {
+  return slot?.patient?.name || 'Unknown Patient';
+}
+
+function getPatientId(slot: any) {
+  return slot?.patient?.id || 'Unknown ID';
+}
+
+function getPatientInitials(slot: any) {
+  if (slot?.patient?.initials) {
+    return slot.patient.initials;
+  }
+
+  const patientName = getPatientName(slot);
+  return patientName
+    .split(' ')
+    .filter((word: string) => Boolean(word))
+    .map((word: string) => word[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || 'NA';
+}
 
 export const DoctorAppointments = () => {
   const navigate = useNavigate();
@@ -19,8 +44,12 @@ export const DoctorAppointments = () => {
   const [search, setSearch] = useState('');
 
   const filtered = queue.filter((s: Record<string, any>) => {
-    const matchSpec = filterSpec === 'All' || s.specialty === filterSpec;
-    const matchSearch = s.patient.name.toLowerCase().includes(search.toLowerCase()) || s.patient.id.includes(search);
+    const patientName = getPatientName(s);
+    const patientId = getPatientId(s);
+    const matchSpec = filterSpec === 'All' || (s.specialty || 'General Medicine') === filterSpec;
+    const matchSearch =
+      patientName.toLowerCase().includes(search.toLowerCase()) ||
+      patientId.toLowerCase().includes(search.toLowerCase());
     return matchSpec && matchSearch;
   });
 
@@ -129,28 +158,34 @@ export const DoctorAppointments = () => {
                 </tr>
               )}
               {filtered.map(slot => {
-                const st = slotStatus[slot.status];
-                const chip = statusConfig[slot.lifecycleStatus];
+                const st = slotStatus[slot.status] || FALLBACK_SLOT_STATUS;
+                const chip = statusConfig[slot.lifecycleStatus] || {
+                  ...FALLBACK_LIFECYCLE,
+                  label: slot.lifecycleStatus || FALLBACK_LIFECYCLE.label,
+                };
+                const patientName = getPatientName(slot);
+                const patientId = getPatientId(slot);
+                const patientInitials = getPatientInitials(slot);
                 return (
-                  <tr key={slot.patient.id} className={`hover:bg-surface-container-low/60 border-l-4 ${st.border} transition-colors`}>
+                  <tr key={slot.id} className={`hover:bg-surface-container-low/60 border-l-4 ${st.border} transition-colors`}>
                     <td className="px-5 py-4 whitespace-nowrap">
-                      <div className="font-bold text-on-surface">{slot.time}</div>
-                      <div className={`text-[10px] font-bold uppercase ${st.cls}`}>{slot.status}</div>
+                      <div className="font-bold text-on-surface">{slot.time || 'TBD'}</div>
+                      <div className={`text-[10px] font-bold uppercase ${st.cls}`}>{slot.status || 'UNKNOWN'}</div>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-primary/10 text-primary rounded-full flex items-center justify-center text-xs font-bold shrink-0">
-                          {slot.patient.initials}
+                          {patientInitials}
                         </div>
                         <div>
-                          <div className="font-bold text-on-surface">{slot.patient.name}</div>
-                          <div className="text-xs text-on-surface-variant">{slot.patient.id}</div>
+                          <div className="font-bold text-on-surface">{patientName}</div>
+                          <div className="text-xs text-on-surface-variant">{patientId}</div>
                         </div>
                       </div>
                     </td>
                     <td className="px-5 py-4">
-                      <div className="font-medium text-on-surface">{slot.type}</div>
-                      <div className="text-xs text-on-surface-variant">{slot.specialty}</div>
+                      <div className="font-medium text-on-surface">{slot.type || 'General Review'}</div>
+                      <div className="text-xs text-on-surface-variant">{slot.specialty || 'General Medicine'}</div>
                     </td>
                     <td className="px-5 py-4">
                       <StatusChip variant={chip.variant} label={chip.label} />
@@ -158,7 +193,8 @@ export const DoctorAppointments = () => {
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2 flex-wrap">
                         <button
-                          onClick={() => navigate(`/clinical/patient/${slot.patient.id}/dossier`)}
+                          onClick={() => navigate(`/clinical/patient/${patientId}/dossier`)}
+                          disabled={!slot?.patient?.id}
                           className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:brightness-110 transition-colors"
                         >
                           Open Chart

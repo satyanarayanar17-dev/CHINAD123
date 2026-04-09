@@ -2,55 +2,28 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { createRateLimiter } = require('../middleware/rateLimit');
 const { get, run } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
-const { JWT_SECRET } = require('../middleware/auth');
+const { JWT_SECRET, requireAuth, requireRole } = require('../middleware/auth');
+const { REFRESH_COOKIE_NAME, getRefreshCookieOptions } = require('../cookies');
 
 const router = express.Router();
 
-// ---------------------------------------------------------------------------
-// IP-based rate limiter — additional layer on top of per-user DB lockout.
-// Tracks failed login attempts per IP. Resets after window expires.
-// ---------------------------------------------------------------------------
-const loginAttempts = new Map(); // key: ip -> { count, resetAt }
-
 const LOGIN_MAX_ATTEMPTS = 10;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-
-function loginRateLimit(req, res, next) {
-  const key = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-  const now = Date.now();
-  const record = loginAttempts.get(key);
-
-  if (record && now < record.resetAt) {
-    if (record.count >= LOGIN_MAX_ATTEMPTS) {
-      console.warn(`[RATE_LIMIT] Login blocked for ${key} — ${record.count} attempts in window`);
-      return res.status(429).json({
-        error: {
-          code: 'RATE_LIMITED',
-          message: `Too many login attempts. Try again in ${Math.ceil((record.resetAt - now) / 60000)} minutes.`
-        }
-      });
-    }
-    record.count++;
-  } else {
-    loginAttempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
-  }
-
-  next();
-}
-
-function clearRateLimit(key) {
-  loginAttempts.delete(key || 'unknown');
-}
-
-// ---------------------------------------------------------------------------
-// Refresh token config
-// ---------------------------------------------------------------------------
 const REFRESH_TOKEN_TTL_DAYS = 30;
 const ACCESS_TOKEN_TTL = '15m';
 const LOCKOUT_THRESHOLD = 5;
 const LOCKOUT_MINUTES = 15;
+const SSE_TOKEN_TTL = '60s';
+
+const loginRateLimit = createRateLimiter({
+  max: LOGIN_MAX_ATTEMPTS,
+  windowMs: LOGIN_WINDOW_MS,
+  keyFn: (req) => req.ip || req.headers['x-forwarded-for'] || 'unknown',
+  message: 'Too many login attempts. Please wait 15 minutes before trying again.'
+});
 
 function refreshTokenExpiresAt() {
   const d = new Date();
@@ -58,7 +31,18 @@ function refreshTokenExpiresAt() {
   return d.toISOString();
 }
 
-// ---------------------------------------------------------------------------
+function setNoStore(res) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+}
+
+function setRefreshCookie(res, token) {
+  res.cookie(REFRESH_COOKIE_NAME, token, getRefreshCookieOptions());
+}
+
+function clearRefreshCookie(res) {
+  res.clearCookie(REFRESH_COOKIE_NAME, getRefreshCookieOptions());
+}
 
 router.post('/login', loginRateLimit, async (req, res, next) => {
   const { username, password } = req.body;
@@ -70,23 +54,44 @@ router.post('/login', loginRateLimit, async (req, res, next) => {
   }
 
   try {
-    const userRow = await get(`SELECT * FROM users WHERE id = ?`, [username]);
+    const userRow = await get(
+      `SELECT * FROM users
+       WHERE id = ? OR (role = 'PATIENT' AND patient_id = ?)
+       ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
+       LIMIT 1`,
+      [username, username, username]
+    );
 
     if (!userRow) {
-      await writeAuditDirect({ correlation_id: req.correlationId, actor_id: username, action: 'SYS_AUTH_DENIAL:UNKNOWN_USER' });
+      await writeAuditDirect({
+        correlation_id: req.correlationId,
+        actor_id: username,
+        action: 'SYS_AUTH_DENIAL:UNKNOWN_USER',
+        new_state: JSON.stringify({ username, ip: ipKey, outcome: 'failure' })
+      });
       return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Invalid username or password.' });
     }
 
     // Account disabled
     if (userRow.is_active === 0) {
-      await writeAuditDirect({ correlation_id: req.correlationId, actor_id: username, action: 'SYS_AUTH_FAILED:INACTIVE' });
+      await writeAuditDirect({
+        correlation_id: req.correlationId,
+        actor_id: username,
+        action: 'SYS_AUTH_FAILED:INACTIVE',
+        new_state: JSON.stringify({ username, ip: ipKey, outcome: 'inactive' })
+      });
       return res.status(401).json({ error: 'ACCOUNT_DISABLED', message: 'This account has been disabled.' });
     }
 
     // Per-user DB lockout check
     if (userRow.locked_until && new Date(userRow.locked_until) > new Date()) {
       const retryAfter = Math.ceil((new Date(userRow.locked_until) - new Date()) / 1000);
-      await writeAuditDirect({ correlation_id: req.correlationId, actor_id: username, action: 'SYS_AUTH_FAILED:LOCKED' });
+      await writeAuditDirect({
+        correlation_id: req.correlationId,
+        actor_id: username,
+        action: 'SYS_AUTH_FAILED:LOCKED',
+        new_state: JSON.stringify({ username, ip: ipKey, outcome: 'locked', retry_after_seconds: retryAfter })
+      });
       return res.status(429).json({
         error: 'ACCOUNT_LOCKED',
         message: `Account temporarily locked. Try again in ${Math.ceil(retryAfter / 60)} minute(s).`,
@@ -111,16 +116,27 @@ router.post('/login', loginRateLimit, async (req, res, next) => {
 
       await run(
         `UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?`,
-        [newAttempts, lockedUntil, username]
+        [newAttempts, lockedUntil, userRow.id]
       );
 
-      await writeAuditDirect({ correlation_id: req.correlationId, actor_id: username, action: 'SYS_AUTH_DENIAL' });
+      await writeAuditDirect({
+        correlation_id: req.correlationId,
+        actor_id: userRow.id,
+        patient_id: userRow.patient_id || null,
+        action: 'SYS_AUTH_DENIAL',
+        new_state: JSON.stringify({
+          username,
+          ip: ipKey,
+          failed_attempts: newAttempts,
+          locked_until: lockedUntil,
+          outcome: 'failure'
+        })
+      });
       return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Invalid username or password.' });
     }
 
-    // Success — clear both IP rate limit record and DB lockout state
-    clearRateLimit(ipKey);
-    await run(`UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?`, [username]);
+    // Success — clear DB lockout state
+    await run(`UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?`, [userRow.id]);
 
     const { id: actorId, role, name } = userRow;
 
@@ -136,12 +152,16 @@ router.post('/login', loginRateLimit, async (req, res, next) => {
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: actorId,
-      action: `SYS_AUTH_LOGIN:${role}`
+      patient_id: userRow.patient_id || null,
+      action: `SYS_AUTH_LOGIN:${role}`,
+      new_state: JSON.stringify({ role, ip: ipKey, outcome: 'success' })
     });
+
+    setRefreshCookie(res, refreshToken);
+    setNoStore(res);
 
     res.json({
       access_token: accessToken,
-      refresh_token: refreshToken,
       token_type: 'bearer',
       userId: actorId,
       name,
@@ -157,9 +177,9 @@ router.post('/login', loginRateLimit, async (req, res, next) => {
 });
 
 router.post('/refresh', async (req, res, next) => {
-  const { refresh_token } = req.body;
+  const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refresh_token;
 
-  if (!refresh_token) {
+  if (!refreshToken) {
     return res.status(401).json({ error: 'REFRESH_REQUIRED', message: 'refresh_token is required.' });
   }
 
@@ -168,27 +188,46 @@ router.post('/refresh', async (req, res, next) => {
       `SELECT rt.*, u.role, u.is_active FROM refresh_tokens rt
        JOIN users u ON u.id = rt.user_id
        WHERE rt.id = ?`,
-      [refresh_token]
+      [refreshToken]
     );
 
     if (!tokenRow) {
+      clearRefreshCookie(res);
       return res.status(401).json({ error: 'REFRESH_INVALID', message: 'Invalid refresh token.' });
     }
 
     if (tokenRow.revoked === 1) {
-      await writeAuditDirect({ correlation_id: req.correlationId, actor_id: tokenRow.user_id, action: 'SYS_AUTH_REFRESH:REVOKED_TOKEN_REUSE' });
+      await writeAuditDirect({
+        correlation_id: req.correlationId,
+        actor_id: tokenRow.user_id,
+        action: 'SYS_AUTH_REFRESH:REVOKED_TOKEN_REUSE',
+        new_state: JSON.stringify({ refresh_token_id: refreshToken })
+      });
+      clearRefreshCookie(res);
       return res.status(401).json({ error: 'REFRESH_REVOKED', message: 'Refresh token has been revoked.' });
     }
 
     if (new Date(tokenRow.expires_at) < new Date()) {
+      await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshToken]);
+      clearRefreshCookie(res);
       return res.status(401).json({ error: 'REFRESH_EXPIRED', message: 'Refresh token has expired. Please log in again.' });
     }
 
     if (tokenRow.is_active === 0) {
+      clearRefreshCookie(res);
       return res.status(401).json({ error: 'ACCOUNT_DISABLED', message: 'This account has been disabled.' });
     }
 
+    await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshToken]);
+    const replacementRefreshToken = crypto.randomUUID();
+    await run(
+      `INSERT INTO refresh_tokens (id, user_id, expires_at, revoked) VALUES (?, ?, ?, 0)`,
+      [replacementRefreshToken, tokenRow.user_id, refreshTokenExpiresAt()]
+    );
+
     const newAccessToken = jwt.sign({ id: tokenRow.user_id, role: tokenRow.role }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_TTL });
+    setRefreshCookie(res, replacementRefreshToken);
+    setNoStore(res);
 
     res.json({ access_token: newAccessToken, token_type: 'bearer' });
   } catch (err) {
@@ -197,24 +236,47 @@ router.post('/refresh', async (req, res, next) => {
 });
 
 router.post('/logout', async (req, res, next) => {
-  const { refresh_token } = req.body;
-  if (refresh_token) {
+  const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refresh_token;
+  if (refreshToken) {
     try {
-      await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refresh_token]);
+      await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshToken]);
+      await writeAuditDirect({
+        correlation_id: req.correlationId,
+        actor_id: 'UNKNOWN',
+        action: 'SYS_AUTH_LOGOUT',
+        new_state: JSON.stringify({ refresh_token_id: refreshToken })
+      });
     } catch (err) {
       console.error('[AUTH] Failed to revoke refresh token:', err.message);
     }
   }
+  clearRefreshCookie(res);
+  setNoStore(res);
   res.json({ message: 'Logged out.' });
 });
 
-router.get('/me', require('../middleware/auth').requireAuth, async (req, res, next) => {
+router.get('/me', requireAuth, async (req, res, next) => {
   try {
     const userRow = await get(`SELECT * FROM users WHERE id = ?`, [req.user.id]);
     if (!userRow || userRow.is_active === 0) {
       return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Identity not found or inactive.' });
     }
+    setNoStore(res);
     return res.json({ id: userRow.id, role: userRow.role.toLowerCase(), name: userRow.name });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/sse-token', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
+  try {
+    const token = jwt.sign(
+      { id: req.user.id, role: req.user.role, purpose: 'sse' },
+      JWT_SECRET,
+      { expiresIn: SSE_TOKEN_TTL }
+    );
+    setNoStore(res);
+    res.json({ token });
   } catch (err) {
     next(err);
   }

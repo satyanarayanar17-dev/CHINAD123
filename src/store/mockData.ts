@@ -1,5 +1,6 @@
 // Centralized mock data store
-// Single source of truth until FastAPI backend integration.
+// These types still back UI rendering where the backend does not yet supply
+// richer clinical shapes.
 
 export interface Medication {
   name: string;

@@ -7,6 +7,12 @@ const { get, run } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
 const { JWT_SECRET, requireAuth, requireRole } = require('../middleware/auth');
 const { REFRESH_COOKIE_NAME, getRefreshCookieOptions } = require('../cookies');
+const {
+  ACCOUNT_TYPES,
+  accountTypeForRole,
+  normalizeAccountType,
+  roleAllowedForAccountType
+} = require('../lib/authBoundary');
 
 const router = express.Router();
 
@@ -44,7 +50,127 @@ function clearRefreshCookie(res) {
   res.clearCookie(REFRESH_COOKIE_NAME, getRefreshCookieOptions());
 }
 
-router.post('/login', loginRateLimit, async (req, res, next) => {
+function signAccessToken({ actorId, role, accountType }) {
+  return jwt.sign(
+    { id: actorId, role, account_type: accountType },
+    JWT_SECRET,
+    { expiresIn: ACCESS_TOKEN_TTL }
+  );
+}
+
+async function writeBoundaryMismatchAudit({ req, userRow, username, attemptedAccountType, endpoint }) {
+  await writeAuditDirect({
+    correlation_id: req.correlationId,
+    actor_id: userRow.id,
+    patient_id: userRow.patient_id || null,
+    action: 'SYS_AUTH_BOUNDARY_DENIAL:ACCOUNT_TYPE_MISMATCH',
+    new_state: JSON.stringify({
+      username,
+      endpoint,
+      attempted_account_type: attemptedAccountType,
+      actual_role: userRow.role,
+      ip: req.ip || req.headers['x-forwarded-for'] || 'unknown'
+    })
+  });
+
+  console.warn('[AUTH_BOUNDARY] Login blocked due to account type mismatch', {
+    correlationId: req.correlationId,
+    endpoint,
+    username,
+    attemptedAccountType,
+    actualRole: userRow.role
+  });
+}
+
+async function recordUnknownLogin({ req, username }) {
+  await writeAuditDirect({
+    correlation_id: req.correlationId,
+    actor_id: username,
+    action: 'SYS_AUTH_DENIAL:UNKNOWN_USER',
+    new_state: JSON.stringify({
+      username,
+      ip: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+      outcome: 'failure'
+    })
+  });
+}
+
+async function recordFailedPassword({ req, userRow, username, ipKey }) {
+  const newAttempts = (userRow.failed_attempts || 0) + 1;
+  const lockedUntil = newAttempts >= LOCKOUT_THRESHOLD
+    ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000).toISOString()
+    : userRow.locked_until || null;
+
+  await run(
+    `UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?`,
+    [newAttempts, lockedUntil, userRow.id]
+  );
+
+  await writeAuditDirect({
+    correlation_id: req.correlationId,
+    actor_id: userRow.id,
+    patient_id: userRow.patient_id || null,
+    action: 'SYS_AUTH_DENIAL',
+    new_state: JSON.stringify({
+      username,
+      ip: ipKey,
+      failed_attempts: newAttempts,
+      locked_until: lockedUntil,
+      outcome: 'failure'
+    })
+  });
+}
+
+async function resolveLoginCandidate(username, accountType) {
+  if (accountType === ACCOUNT_TYPES.PATIENT) {
+    return get(
+      `SELECT * FROM users
+       WHERE role = 'PATIENT' AND (id = ? OR patient_id = ?)
+       ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
+       LIMIT 1`,
+      [username, username, username]
+    );
+  }
+
+  if (accountType === ACCOUNT_TYPES.STAFF) {
+    return get(
+      `SELECT * FROM users
+       WHERE role IN ('DOCTOR', 'NURSE', 'ADMIN') AND id = ?
+       LIMIT 1`,
+      [username]
+    );
+  }
+
+  return null;
+}
+
+async function resolveAnyLoginCandidate(username) {
+  return get(
+    `SELECT * FROM users
+     WHERE id = ? OR (role = 'PATIENT' AND patient_id = ?)
+     ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
+     LIMIT 1`,
+    [username, username, username]
+  );
+}
+
+async function verifyPasswordForUser(userRow, password, isPilotMode) {
+  if (!userRow) {
+    return false;
+  }
+
+  if (isPilotMode && process.env.NODE_ENV !== 'production' && !userRow.password_hash) {
+    return true;
+  }
+
+  if (userRow.password_hash && password) {
+    return bcrypt.compare(password, userRow.password_hash);
+  }
+
+  return false;
+}
+
+async function handleLogin(req, res, next, accountType, endpoint) {
   const { username, password } = req.body;
   const isPilotMode = process.env.PILOT_AUTH_BYPASS === 'true';
   const ipKey = req.ip || req.headers['x-forwarded-for'] || 'unknown';
@@ -54,22 +180,53 @@ router.post('/login', loginRateLimit, async (req, res, next) => {
   }
 
   try {
-    const userRow = await get(
-      `SELECT * FROM users
-       WHERE id = ? OR (role = 'PATIENT' AND patient_id = ?)
-       ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
-       LIMIT 1`,
-      [username, username, username]
-    );
+    const userRow = await resolveLoginCandidate(username, accountType);
 
     if (!userRow) {
-      await writeAuditDirect({
-        correlation_id: req.correlationId,
-        actor_id: username,
-        action: 'SYS_AUTH_DENIAL:UNKNOWN_USER',
-        new_state: JSON.stringify({ username, ip: ipKey, outcome: 'failure' })
-      });
+      const alternateUser = await resolveAnyLoginCandidate(username);
+      if (alternateUser && !roleAllowedForAccountType(alternateUser.role, accountType)) {
+        const isAlternatePasswordValid = await verifyPasswordForUser(alternateUser, password, isPilotMode);
+        if (isAlternatePasswordValid) {
+          await writeBoundaryMismatchAudit({
+            req,
+            userRow: alternateUser,
+            username,
+            attemptedAccountType: accountType,
+            endpoint
+          });
+
+          return res.status(403).json({
+            error: 'ACCOUNT_TYPE_MISMATCH',
+            message: accountType === ACCOUNT_TYPES.PATIENT
+              ? 'This account is not permitted on the patient login path.'
+              : 'This account is not permitted on the staff login path.'
+          });
+        }
+
+        await recordFailedPassword({ req, userRow: alternateUser, username, ipKey });
+      } else {
+        await recordUnknownLogin({ req, username });
+      }
+
       return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Invalid username or password.' });
+    }
+
+    const derivedAccountType = accountTypeForRole(userRow.role);
+    if (derivedAccountType !== accountType) {
+      await writeBoundaryMismatchAudit({
+        req,
+        userRow,
+        username,
+        attemptedAccountType: accountType,
+        endpoint
+      });
+
+      return res.status(403).json({
+        error: 'ACCOUNT_TYPE_MISMATCH',
+        message: accountType === ACCOUNT_TYPES.PATIENT
+          ? 'This account is not permitted on the patient login path.'
+          : 'This account is not permitted on the staff login path.'
+      });
     }
 
     // Account disabled
@@ -99,39 +256,10 @@ router.post('/login', loginRateLimit, async (req, res, next) => {
       });
     }
 
-    let isValidPassword = false;
-
-    if (isPilotMode && process.env.NODE_ENV !== 'production' && !userRow.password_hash) {
-      isValidPassword = true;
-    } else if (userRow.password_hash && password) {
-      isValidPassword = await bcrypt.compare(password, userRow.password_hash);
-    }
+    const isValidPassword = await verifyPasswordForUser(userRow, password, isPilotMode);
 
     if (!isValidPassword) {
-      // Increment failure count; lock account if threshold reached
-      const newAttempts = (userRow.failed_attempts || 0) + 1;
-      const lockedUntil = newAttempts >= LOCKOUT_THRESHOLD
-        ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000).toISOString()
-        : userRow.locked_until || null;
-
-      await run(
-        `UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?`,
-        [newAttempts, lockedUntil, userRow.id]
-      );
-
-      await writeAuditDirect({
-        correlation_id: req.correlationId,
-        actor_id: userRow.id,
-        patient_id: userRow.patient_id || null,
-        action: 'SYS_AUTH_DENIAL',
-        new_state: JSON.stringify({
-          username,
-          ip: ipKey,
-          failed_attempts: newAttempts,
-          locked_until: lockedUntil,
-          outcome: 'failure'
-        })
-      });
+      await recordFailedPassword({ req, userRow, username, ipKey });
       return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Invalid username or password.' });
     }
 
@@ -139,14 +267,15 @@ router.post('/login', loginRateLimit, async (req, res, next) => {
     await run(`UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?`, [userRow.id]);
 
     const { id: actorId, role, name } = userRow;
+    const resolvedAccountType = accountTypeForRole(role);
 
-    const accessToken = jwt.sign({ id: actorId, role }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_TTL });
+    const accessToken = signAccessToken({ actorId, role, accountType: resolvedAccountType });
 
     // Issue refresh token
     const refreshToken = crypto.randomUUID();
     await run(
-      `INSERT INTO refresh_tokens (id, user_id, expires_at, revoked) VALUES (?, ?, ?, 0)`,
-      [refreshToken, actorId, refreshTokenExpiresAt()]
+      `INSERT INTO refresh_tokens (id, user_id, expires_at, revoked, account_type) VALUES (?, ?, ?, 0, ?)`,
+      [refreshToken, actorId, refreshTokenExpiresAt(), resolvedAccountType]
     );
 
     await writeAuditDirect({
@@ -166,6 +295,7 @@ router.post('/login', loginRateLimit, async (req, res, next) => {
       userId: actorId,
       name,
       role: role.toLowerCase(),
+      account_type: resolvedAccountType.toLowerCase(),
       _meta: {
         mode: isPilotMode ? 'PILOT_CONTROLLED' : 'RESTRICTED_DEPLOYMENT',
         safety: isPilotMode ? 'non-production' : 'hardened'
@@ -174,6 +304,27 @@ router.post('/login', loginRateLimit, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+}
+
+router.post('/login/patient', loginRateLimit, async (req, res, next) => {
+  await handleLogin(req, res, next, ACCOUNT_TYPES.PATIENT, '/api/v1/auth/login/patient');
+});
+
+router.post('/login/staff', loginRateLimit, async (req, res, next) => {
+  await handleLogin(req, res, next, ACCOUNT_TYPES.STAFF, '/api/v1/auth/login/staff');
+});
+
+router.post('/login', loginRateLimit, async (req, res, next) => {
+  const accountType = normalizeAccountType(req.body?.account_type);
+  if (!accountType) {
+    return next({
+      status: 400,
+      code: 'ACCOUNT_TYPE_REQUIRED',
+      message: 'Use /auth/login/staff or /auth/login/patient, or provide a valid account_type.'
+    });
+  }
+
+  await handleLogin(req, res, next, accountType, '/api/v1/auth/login');
 });
 
 router.post('/refresh', async (req, res, next) => {
@@ -218,18 +369,47 @@ router.post('/refresh', async (req, res, next) => {
       return res.status(401).json({ error: 'ACCOUNT_DISABLED', message: 'This account has been disabled.' });
     }
 
+    const storedAccountType = normalizeAccountType(tokenRow.account_type);
+    const expectedAccountType = accountTypeForRole(tokenRow.role);
+    if (!storedAccountType || storedAccountType !== expectedAccountType) {
+      await writeAuditDirect({
+        correlation_id: req.correlationId,
+        actor_id: tokenRow.user_id,
+        action: 'SYS_AUTH_REFRESH:ACCOUNT_TYPE_MISMATCH',
+        new_state: JSON.stringify({
+          refresh_token_id: refreshToken,
+          stored_account_type: tokenRow.account_type || null,
+          actual_role: tokenRow.role
+        })
+      });
+      clearRefreshCookie(res);
+      return res.status(401).json({
+        error: 'REFRESH_SCOPE_INVALID',
+        message: 'Session scope is invalid or outdated. Please log in again.'
+      });
+    }
+
     await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshToken]);
     const replacementRefreshToken = crypto.randomUUID();
     await run(
-      `INSERT INTO refresh_tokens (id, user_id, expires_at, revoked) VALUES (?, ?, ?, 0)`,
-      [replacementRefreshToken, tokenRow.user_id, refreshTokenExpiresAt()]
+      `INSERT INTO refresh_tokens (id, user_id, expires_at, revoked, account_type) VALUES (?, ?, ?, 0, ?)`,
+      [replacementRefreshToken, tokenRow.user_id, refreshTokenExpiresAt(), storedAccountType]
     );
 
-    const newAccessToken = jwt.sign({ id: tokenRow.user_id, role: tokenRow.role }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_TTL });
+    const newAccessToken = signAccessToken({
+      actorId: tokenRow.user_id,
+      role: tokenRow.role,
+      accountType: storedAccountType
+    });
     setRefreshCookie(res, replacementRefreshToken);
     setNoStore(res);
 
-    res.json({ access_token: newAccessToken, token_type: 'bearer' });
+    res.json({
+      access_token: newAccessToken,
+      token_type: 'bearer',
+      role: tokenRow.role.toLowerCase(),
+      account_type: storedAccountType.toLowerCase()
+    });
   } catch (err) {
     next(err);
   }
@@ -261,8 +441,33 @@ router.get('/me', requireAuth, async (req, res, next) => {
     if (!userRow || userRow.is_active === 0) {
       return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Identity not found or inactive.' });
     }
+
+    const expectedAccountType = accountTypeForRole(userRow.role);
+    const tokenAccountType = normalizeAccountType(req.user.account_type);
+    if (!expectedAccountType || tokenAccountType !== expectedAccountType) {
+      await writeAuditDirect({
+        correlation_id: req.correlationId,
+        actor_id: req.user.id,
+        patient_id: userRow.patient_id || null,
+        action: 'SYS_AUTH_SESSION_SCOPE_MISMATCH',
+        new_state: JSON.stringify({
+          token_account_type: req.user.account_type || null,
+          actual_role: userRow.role
+        })
+      });
+      return res.status(401).json({
+        error: 'INVALID_SESSION_SCOPE',
+        message: 'Session scope is invalid. Please log in again.'
+      });
+    }
+
     setNoStore(res);
-    return res.json({ id: userRow.id, role: userRow.role.toLowerCase(), name: userRow.name });
+    return res.json({
+      id: userRow.id,
+      role: userRow.role.toLowerCase(),
+      account_type: expectedAccountType.toLowerCase(),
+      name: userRow.name
+    });
   } catch (err) {
     next(err);
   }
@@ -271,7 +476,7 @@ router.get('/me', requireAuth, async (req, res, next) => {
 router.get('/sse-token', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const token = jwt.sign(
-      { id: req.user.id, role: req.user.role, purpose: 'sse' },
+      { id: req.user.id, role: req.user.role, account_type: req.user.account_type, purpose: 'sse' },
       JWT_SECRET,
       { expiresIn: SSE_TOKEN_TTL }
     );

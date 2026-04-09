@@ -29,6 +29,14 @@ function FAIL(label, detail) {
   console.error(`  ✗ FAIL — ${label}${detail ? ': ' + JSON.stringify(detail) : ''}`);
 }
 
+function loginStaff(username, password) {
+  return axios.post(`${API_BASE}/auth/login/staff`, { username, password });
+}
+
+function loginPatient(username, password) {
+  return axios.post(`${API_BASE}/auth/login/patient`, { username, password });
+}
+
 async function runTests() {
   console.log('\n================================================================');
   console.log('  CHETTINAD CARE — BACKEND VERIFICATION SUITE');
@@ -45,7 +53,7 @@ async function runTests() {
 
   try {
     console.log('  [1.1] Login with unknown user (expect 401)');
-    await axios.post(`${API_BASE}/auth/login`, { username: 'sneaky_hacker', password: 'anything' });
+    await loginPatient('sneaky_hacker', 'anything');
     FAIL('Unknown user login should be rejected', 'Got 2xx!');
   } catch (err) {
     if (err.response?.status === 401) PASS('Unknown user login rejected with 401', { code: err.response.data?.error });
@@ -54,7 +62,7 @@ async function runTests() {
 
   try {
     console.log('  [1.2] Login doc1_qa with WRONG password (expect 401)');
-    await axios.post(`${API_BASE}/auth/login`, { username: 'doc1_qa', password: 'WrongPassword!' });
+    await loginStaff('doc1_qa', 'WrongPassword!');
     FAIL('Wrong password should be rejected', 'Got 2xx!');
   } catch (err) {
     if (err.response?.status === 401) PASS('Wrong password rejected with 401');
@@ -63,7 +71,7 @@ async function runTests() {
 
   try {
     console.log('  [1.3] Login doc1_qa with CORRECT password (expect 200 + token)');
-    const res = await axios.post(`${API_BASE}/auth/login`, { username: 'doc1_qa', password: SEEDED_STAFF_PASSWORD });
+    const res = await loginStaff('doc1_qa', SEEDED_STAFF_PASSWORD);
     doctorToken = res.data.access_token;
     if (doctorToken && res.data.role === 'doctor') PASS('Doctor login returned valid token', { role: res.data.role, mode: res.data._meta?.mode });
     else FAIL('Doctor login response malformed', res.data);
@@ -73,7 +81,7 @@ async function runTests() {
 
   try {
     console.log('  [1.4] Login nurse_qa with correct password (expect 200)');
-    const res = await axios.post(`${API_BASE}/auth/login`, { username: 'nurse_qa', password: SEEDED_STAFF_PASSWORD });
+    const res = await loginStaff('nurse_qa', SEEDED_STAFF_PASSWORD);
     nurseToken = res.data.access_token;
     if (nurseToken) PASS('Nurse login succeeded', { role: res.data.role });
     else FAIL('Nurse login', 'No token returned');
@@ -83,7 +91,7 @@ async function runTests() {
 
   try {
     console.log('  [1.5] Login admin_qa with correct password (expect 200)');
-    const res = await axios.post(`${API_BASE}/auth/login`, { username: 'admin_qa', password: SEEDED_STAFF_PASSWORD });
+    const res = await loginStaff('admin_qa', SEEDED_STAFF_PASSWORD);
     adminToken = res.data.access_token;
     if (adminToken) PASS('Admin login succeeded', { role: res.data.role });
     else FAIL('Admin login', 'No token returned');
@@ -284,7 +292,7 @@ async function runTests() {
 
   try {
     console.log('  [7.3] Verify new user can login');
-    const res = await axios.post(`${API_BASE}/auth/login`, { username: 'test_staff_verify', password: 'VerifyNurse2026!' });
+    const res = await loginStaff('test_staff_verify', 'VerifyNurse2026!');
     if (res.data.access_token) PASS('Newly created user can login', { role: res.data.role });
     else FAIL('New user login', res.data);
   } catch (err) {
@@ -302,7 +310,7 @@ async function runTests() {
 
   try {
     console.log('  [7.5] Disabled user cannot login (expect 401)');
-    await axios.post(`${API_BASE}/auth/login`, { username: 'test_staff_verify', password: 'VerifyNurse2026!' });
+    await loginStaff('test_staff_verify', 'VerifyNurse2026!');
     FAIL('Disabled user should not be able to login', 'Got 2xx!');
   } catch (err) {
     if (err.response?.status === 401) PASS('Disabled user login rejected (401)');
@@ -331,7 +339,7 @@ async function runTests() {
 
   try {
     console.log('  [9.1] Pre-activated patient_qa can login (expect 200)');
-    const res = await axios.post(`${API_BASE}/auth/login`, { username: 'patient_qa', password: SEEDED_STAFF_PASSWORD });
+    const res = await loginPatient('patient_qa', SEEDED_STAFF_PASSWORD);
     patientToken = res.data.access_token;
     if (patientToken && res.data.role === 'patient') PASS('Patient login returned token', { role: res.data.role });
     else FAIL('Patient login response malformed', res.data);
@@ -574,7 +582,7 @@ async function runTests() {
     let rateLimitHit = false;
     for (let i = 0; i < 12; i++) {
       try {
-        await axios.post(`${API_BASE}/auth/login`, { username: 'nonexistent_user_rl', password: 'wrong' });
+        await loginPatient('nonexistent_user_rl', 'wrong');
       } catch (e) {
         if (e.response?.status === 429) {
           rateLimitHit = true;
@@ -676,7 +684,7 @@ async function runTests() {
 
   try {
     console.log('  [14.2] Login as revocable user to obtain token');
-    const res = await axios.post(`${API_BASE}/auth/login`, { username: REVOKE_TEST_ID, password: 'RevokeTest2026!' });
+    const res = await loginStaff(REVOKE_TEST_ID, 'RevokeTest2026!');
     revokableToken = res.data.access_token;
     if (revokableToken) PASS('Revocable user logged in', { userId: REVOKE_TEST_ID });
     else FAIL('Revocable user login — no token returned', res.data);

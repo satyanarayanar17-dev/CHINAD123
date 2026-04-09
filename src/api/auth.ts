@@ -1,16 +1,17 @@
 import { api } from './client';
-
-export type Role = 'doctor' | 'patient' | 'nurse' | 'admin' | null;
+import type { AccountType, Role } from '../auth/roleBoundary';
 
 export interface LoginPayload {
   username: string;
   password: string;
+  accountType: Exclude<AccountType, null>;
 }
 
 export interface AuthResponse {
   access_token: string;
   token_type: string;
   role: Role;
+  account_type: AccountType;
   userId: string;
   name?: string;
 }
@@ -18,25 +19,36 @@ export interface AuthResponse {
 export interface SessionResponse {
   id: string;
   role: Role;
+  account_type: AccountType;
   name: string;
 }
 
+type CredentialPayload = Omit<LoginPayload, 'accountType'>;
+
 export const authApi = {
-  login: async (payload: LoginPayload): Promise<AuthResponse> => {
-    const response = await api.post<AuthResponse>('/auth/login', {
-      username: payload.username,
-      password: payload.password
-    });
+  loginPatient: async (payload: CredentialPayload): Promise<AuthResponse> => {
+    const response = await api.post<AuthResponse>('/auth/login/patient', payload);
     return response.data;
   },
+
+  loginStaff: async (payload: CredentialPayload): Promise<AuthResponse> => {
+    const response = await api.post<AuthResponse>('/auth/login/staff', payload);
+    return response.data;
+  },
+
+  login: async (payload: LoginPayload): Promise<AuthResponse> => (
+    payload.accountType === 'patient'
+      ? authApi.loginPatient(payload)
+      : authApi.loginStaff(payload)
+  ),
 
   me: async (): Promise<SessionResponse> => {
     const response = await api.get<SessionResponse>('/auth/me');
     return response.data;
   },
 
-  refresh: async (): Promise<Pick<AuthResponse, 'access_token' | 'token_type'>> => {
-    const response = await api.post<Pick<AuthResponse, 'access_token' | 'token_type'>>('/auth/refresh', {});
+  refresh: async (): Promise<Pick<AuthResponse, 'access_token' | 'token_type' | 'role' | 'account_type'>> => {
+    const response = await api.post<Pick<AuthResponse, 'access_token' | 'token_type' | 'role' | 'account_type'>>('/auth/refresh', {});
     return response.data;
   },
 

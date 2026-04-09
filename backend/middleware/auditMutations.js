@@ -1,6 +1,11 @@
 const { writeAuditDirect } = require('./audit');
 
-const SKIP_PATHS = ['/api/v1/auth/login', '/api/v1/health'];
+const SKIP_PATHS = [
+  '/api/v1/auth/login',
+  '/api/v1/auth/login/patient',
+  '/api/v1/auth/login/staff',
+  '/api/v1/health'
+];
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /**

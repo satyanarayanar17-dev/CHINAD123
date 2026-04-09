@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { ShieldCheck, Menu, X, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { getHomeRouteForRole } from '../../auth/roleBoundary';
 
 export const PublicLayout = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
@@ -52,7 +53,7 @@ export const PublicLayout = () => {
             {/* CTA / Contextual Action */}
             <div className="hidden md:flex items-center gap-4">
               <Link
-                to={role ? (role === 'patient' ? '/patient/dashboard' : '/clinical/command-center') : '/login'}
+                to={role ? getHomeRouteForRole(role) : '/login'}
                 className="bg-primary text-white font-bold text-sm px-6 py-2.5 rounded-full hover:bg-primary/90 hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center gap-1.5"
               >
                 {role ? 'Go to Dashboard' : 'Portal Login'}
@@ -90,7 +91,7 @@ export const PublicLayout = () => {
               ))}
               <div className="pt-4">
                 <Link
-                  to={role ? (role === 'patient' ? '/patient/dashboard' : '/clinical/command-center') : '/login'}
+                  to={role ? getHomeRouteForRole(role) : '/login'}
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="w-full flex justify-center items-center gap-2 bg-primary text-white font-bold text-sm px-6 py-4 rounded-xl shadow-md"
                 >

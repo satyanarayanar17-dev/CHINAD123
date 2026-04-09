@@ -3,6 +3,10 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { get, run, all } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
 const { writeNotification } = require('./notifications');
+const {
+  DISCHARGED_ENCOUNTER_PHASE,
+  validateEncounterLifecycle
+} = require('../lib/clinicalIntegrity');
 
 const router = express.Router();
 
@@ -11,10 +15,19 @@ const BREAK_GLASS_MIN_LENGTH = 50;
 router.get('/:encounterId', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const encounter = await get(
-      `SELECT e.*, p.name as patient_name FROM encounters e JOIN patients p ON e.patient_id = p.id WHERE e.id = ?`,
+      `SELECT e.*, p.name as patient_name FROM encounters e LEFT JOIN patients p ON e.patient_id = p.id WHERE e.id = ?`,
       [req.params.encounterId]
     );
     if (!encounter) return next({ status: 404, code: 'NOT_FOUND' });
+    const encounterState = validateEncounterLifecycle(encounter);
+    if (!encounterState.valid || !encounter.patient_name) {
+      return next({
+        status: 409,
+        code: 'DATA_INTEGRITY_VIOLATION',
+        message: 'Encounter is linked to malformed patient data.',
+        details: encounterState.errors
+      });
+    }
     res.json(encounter);
   } catch (err) { next(err); }
 });
@@ -38,6 +51,15 @@ router.post('/:encounterId/break-glass', requireAuth, requireRole(['DOCTOR', 'NU
   try {
     const encounter = await get(`SELECT * FROM encounters WHERE id = ?`, [encounterId]);
     if (!encounter) return next({ status: 404, code: 'NOT_FOUND' });
+    const encounterState = validateEncounterLifecycle(encounter);
+    if (!encounterState.valid) {
+      return next({
+        status: 409,
+        code: 'DATA_INTEGRITY_VIOLATION',
+        message: 'Encounter is malformed and cannot be used for break-glass access.',
+        details: encounterState.errors
+      });
+    }
 
     await writeAuditDirect({
       correlation_id: req.correlationId,
@@ -73,6 +95,15 @@ router.patch('/:encounterId/discharge', requireAuth, requireRole(['DOCTOR']), as
   try {
     const encounter = await get(`SELECT * FROM encounters WHERE id = ?`, [encounterId]);
     if (!encounter) return next({ status: 404, code: 'NOT_FOUND' });
+    const encounterState = validateEncounterLifecycle(encounter);
+    if (!encounterState.valid) {
+      return next({
+        status: 409,
+        code: 'DATA_INTEGRITY_VIOLATION',
+        message: 'Encounter is malformed and must be repaired before discharge.',
+        details: encounterState.errors
+      });
+    }
     if (encounter.is_discharged) return next({ status: 422, code: 'INVALID_STATE', message: 'Encounter is already discharged.' });
 
     const activeNotes = await all(
@@ -92,17 +123,17 @@ router.patch('/:encounterId/discharge', requireAuth, requireRole(['DOCTOR']), as
     }
 
     await run(
-      `UPDATE encounters SET is_discharged = 1, phase = 'CLOSED', __v = __v + 1 WHERE id = ?`,
-      [encounterId]
+      `UPDATE encounters SET is_discharged = 1, phase = ?, __v = __v + 1 WHERE id = ?`,
+      [DISCHARGED_ENCOUNTER_PHASE, encounterId]
     );
 
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
       patient_id: encounter.patient_id,
-      action: `DISCHARGE:${encounter.phase}->CLOSED`,
+      action: `DISCHARGE:${encounter.phase}->${DISCHARGED_ENCOUNTER_PHASE}`,
       prior_state: JSON.stringify({ phase: encounter.phase, is_discharged: encounter.is_discharged }),
-      new_state: JSON.stringify({ phase: 'CLOSED', is_discharged: 1 })
+      new_state: JSON.stringify({ phase: DISCHARGED_ENCOUNTER_PHASE, is_discharged: 1 })
     });
 
     // Phase 2: Notify admin of discharge
@@ -116,7 +147,7 @@ router.patch('/:encounterId/discharge', requireAuth, requireRole(['DOCTOR']), as
       target_role: 'ADMIN'
     });
 
-    res.json({ message: 'Patient discharged successfully', phase: 'CLOSED' });
+    res.json({ message: 'Patient discharged successfully', phase: DISCHARGED_ENCOUNTER_PHASE });
   } catch (err) { next(err); }
 });
 

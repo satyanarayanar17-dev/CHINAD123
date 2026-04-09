@@ -74,6 +74,7 @@ export const useLiveQueue = () => {
     queue: (query.data || []) as AppointmentSlot[],
     isLoading: query.isLoading,
     isError: query.isError,
+    refetchQueue: query.refetch,
     addSlot: (slot: AppointmentSlot) => addSlotMutation.mutate(slot),
     updateSlotStatus: (encounterId: string, phase: string, version: number) => 
       patchMutation.mutate({ encounterId, phase, version })

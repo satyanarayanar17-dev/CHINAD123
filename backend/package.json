@@ -11,6 +11,8 @@
     "seed": "node scripts/seed.js --mode=append",
     "seed:reset": "node scripts/seed.js --mode=reset --confirm-reset",
     "seed:append": "node scripts/seed.js --mode=append",
+    "diagnose:data": "node scripts/diagnose-data.js",
+    "repair:data": "node scripts/repair-data.js",
     "test": "node test.js"
   },
   "keywords": [],

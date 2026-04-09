@@ -1,5 +1,5 @@
 const express = require('express');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const { get, run } = require('../database');
 
 const router = express.Router();
@@ -9,7 +9,7 @@ function generateEtag() {
 }
 
 // GET /api/drafts/:key
-router.get('/:key', requireAuth, async (req, res, next) => {
+router.get('/:key', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const entry = await get(
       `SELECT data, etag FROM clinical_drafts WHERE key = ?`,
@@ -28,7 +28,7 @@ router.get('/:key', requireAuth, async (req, res, next) => {
 });
 
 // PUT /api/drafts/:key — upsert with If-Match OCC (412 on mismatch)
-router.put('/:key', requireAuth, async (req, res, next) => {
+router.put('/:key', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   const key = req.params.key;
   const ifMatch = req.headers['if-match'];
   try {
@@ -63,7 +63,7 @@ router.put('/:key', requireAuth, async (req, res, next) => {
 });
 
 // DELETE /api/drafts/:key
-router.delete('/:key', requireAuth, async (req, res, next) => {
+router.delete('/:key', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     await run(`DELETE FROM clinical_drafts WHERE key = ?`, [req.params.key]);
     res.json({ message: 'Draft cleared' });

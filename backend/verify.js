@@ -11,7 +11,7 @@
 const axios = require('axios');
 const http = require('http');
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3001/api';
+const API_BASE = process.env.API_BASE || 'http://localhost:3001/api/v1';
 
 // These must match what deploy-seed.js provisions
 const SEEDED_STAFF_PASSWORD = 'Password123!';
@@ -354,10 +354,58 @@ async function runTests() {
       await axios.get(`${API_BASE}/notes/note-1`, { headers: { Authorization: `Bearer ${patientToken}` } });
       FAIL('Patient should be blocked from staff notes', 'Got 2xx!');
     } catch (err) {
-      if (err.response?.status === 403 || err.response?.status === 404) {
-        PASS('Patient denied staff clinical note access', { status: err.response.status });
+      if (err.response?.status === 403) {
+        PASS('Patient denied staff clinical note access (403 FORBIDDEN_ROLE)');
       } else {
-        FAIL('Patient note access RBAC', { status: err.response?.status });
+        FAIL('Patient note access RBAC — expected 403', { status: err.response?.status });
+      }
+    }
+
+    try {
+      console.log('  [9.3b] Patient cannot access staff prescriptions endpoint (expect 403)');
+      await axios.get(`${API_BASE}/prescriptions/rx-1`, { headers: { Authorization: `Bearer ${patientToken}` } });
+      FAIL('Patient should be blocked from staff prescriptions', 'Got 2xx!');
+    } catch (err) {
+      if (err.response?.status === 403) {
+        PASS('Patient denied staff prescription access (403 FORBIDDEN_ROLE)');
+      } else {
+        FAIL('Patient prescription access RBAC — expected 403', { status: err.response?.status });
+      }
+    }
+
+    try {
+      console.log('  [9.3c] Patient cannot access staff encounters endpoint (expect 403)');
+      await axios.get(`${API_BASE}/encounters/enc-1`, { headers: { Authorization: `Bearer ${patientToken}` } });
+      FAIL('Patient should be blocked from staff encounters', 'Got 2xx!');
+    } catch (err) {
+      if (err.response?.status === 403) {
+        PASS('Patient denied staff encounter access (403 FORBIDDEN_ROLE)');
+      } else {
+        FAIL('Patient encounter access RBAC — expected 403', { status: err.response?.status });
+      }
+    }
+
+    try {
+      console.log('  [9.3d] Patient cannot access patient search endpoint (expect 403)');
+      await axios.get(`${API_BASE}/patients`, { headers: { Authorization: `Bearer ${patientToken}` } });
+      FAIL('Patient should be blocked from patient search', 'Got 2xx!');
+    } catch (err) {
+      if (err.response?.status === 403) {
+        PASS('Patient denied patient search access (403 FORBIDDEN_ROLE)');
+      } else {
+        FAIL('Patient search access RBAC — expected 403', { status: err.response?.status });
+      }
+    }
+
+    try {
+      console.log('  [9.3e] Patient cannot access clinical drafts endpoint (expect 403)');
+      await axios.get(`${API_BASE}/drafts/some-key`, { headers: { Authorization: `Bearer ${patientToken}` } });
+      FAIL('Patient should be blocked from clinical drafts', 'Got 2xx!');
+    } catch (err) {
+      if (err.response?.status === 403) {
+        PASS('Patient denied clinical drafts access (403 FORBIDDEN_ROLE)');
+      } else {
+        FAIL('Patient drafts access RBAC — expected 403', { status: err.response?.status });
       }
     }
   }

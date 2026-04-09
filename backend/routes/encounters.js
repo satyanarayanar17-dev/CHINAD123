@@ -8,7 +8,7 @@ const router = express.Router();
 
 const BREAK_GLASS_MIN_LENGTH = 50;
 
-router.get('/:encounterId', requireAuth, async (req, res, next) => {
+router.get('/:encounterId', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const encounter = await get(
       `SELECT e.*, p.name as patient_name FROM encounters e JOIN patients p ON e.patient_id = p.id WHERE e.id = ?`,

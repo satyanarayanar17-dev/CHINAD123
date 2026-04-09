@@ -6,7 +6,7 @@ const { writeAuditDirect } = require('../middleware/audit');
 const router = express.Router();
 
 // GET QUEUE
-router.get('/', requireAuth, async (req, res, next) => {
+router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const rawQueue = await require('../database').all(`
       SELECT e.id as encounter_id, e.patient_id, e.phase, e.__v,

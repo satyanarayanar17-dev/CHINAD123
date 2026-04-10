@@ -21,6 +21,30 @@ function normalizeIdentifier(value) {
   return trimToNull(value);
 }
 
+function normalizePatientPhone(value) {
+  const raw = trimToNull(value);
+  if (!raw) {
+    return null;
+  }
+
+  const cleaned = raw.replace(/[^\d+]/g, '');
+  const digits = cleaned.startsWith('+') ? cleaned.slice(1) : cleaned;
+
+  if (!/^\d{10,15}$/.test(digits)) {
+    return null;
+  }
+
+  if (digits.length === 10) {
+    return `+91${digits}`;
+  }
+
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return `+${digits}`;
+  }
+
+  return cleaned.startsWith('+') ? `+${digits}` : `+${digits}`;
+}
+
 function normalizePatientGender(value) {
   const trimmed = trimToNull(value);
   if (!trimmed) {
@@ -97,6 +121,7 @@ function buildPatientReadModel(row = {}) {
     id: patientId,
     name: displayName,
     mrn: patientId,
+    phone: normalizePatientPhone(row.phone),
     age: calculateAge(dob),
     dob,
     gender,
@@ -339,14 +364,15 @@ function validatePatientRegistrationPayload(payload = {}) {
   const normalized = {
     id: normalizeIdentifier(payload.id),
     name: trimToNull(payload.name),
+    phone: normalizePatientPhone(payload.phone),
     dob: trimToNull(payload.dob),
     gender: normalizePatientGender(payload.gender),
     createEncounter: payload.createEncounter !== false
   };
   const errors = [];
 
-  if (!normalized.id) {
-    errors.push({ field: 'id', message: 'Patient UHID is required.' });
+  if (!normalized.phone) {
+    errors.push({ field: 'phone', message: 'Patient phone must be a valid mobile number.' });
   }
 
   if (!normalized.name) {
@@ -391,6 +417,7 @@ module.exports = {
   isIsoDateOnly,
   trimToNull,
   normalizeIdentifier,
+  normalizePatientPhone,
   normalizePatientGender,
   validatePatientRecord,
   getPatientDisplayName,

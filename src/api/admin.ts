@@ -8,8 +8,9 @@ export interface User {
 }
 
 export interface PatientRegistrationPayload {
-  id: string;
   name: string;
+  phone: string;
+  id?: string;
   dob: string;
   gender: string;
   issueActivationToken?: boolean;
@@ -20,6 +21,7 @@ export interface PatientRegistrationResponse {
     id: string;
     name: string;
     mrn: string;
+    phone?: string | null;
   };
   encounterId: string | null;
   patientCreated: boolean;

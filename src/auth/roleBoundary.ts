@@ -77,6 +77,38 @@ export function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some((route) => matchesRoutePrefix(pathname, route));
 }
 
+export function shouldRedirectToLoginPath(pathname: string | null | undefined): boolean {
+  if (!pathname) {
+    return true;
+  }
+
+  return pathname !== '/login' && !isPublicRoute(pathname);
+}
+
+export function shouldAttemptTokenRefresh({
+  status,
+  url,
+  retried,
+  hasAccessToken,
+  hasAuthorizationHeader,
+}: {
+  status?: number | null;
+  url?: string | null;
+  retried: boolean;
+  hasAccessToken: boolean;
+  hasAuthorizationHeader: boolean;
+}): boolean {
+  if (status !== 401 || retried) {
+    return false;
+  }
+
+  if (url?.includes('/auth/refresh')) {
+    return false;
+  }
+
+  return hasAccessToken || hasAuthorizationHeader;
+}
+
 export function isRouteAllowedForSession(pathname: string, role: Role, accountType: AccountType): boolean {
   if (isPublicRoute(pathname)) {
     return true;

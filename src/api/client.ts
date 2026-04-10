@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { shouldAttemptTokenRefresh, shouldRedirectToLoginPath } from '../auth/roleBoundary';
 import { API_BASE_URL, buildApiUrl } from './config';
 
 let accessToken: string | null = null;
@@ -45,7 +46,7 @@ async function resetBrowserSession() {
     // Best-effort cleanup only.
   }
 
-  if (window.location.pathname !== '/login') {
+  if (shouldRedirectToLoginPath(window.location.pathname)) {
     window.location.href = '/login';
   }
 }
@@ -104,7 +105,7 @@ api.interceptors.response.use(
     if (originalRequest.url?.includes('/auth/refresh')) {
       // If refresh fails, we MUST logout and stop everything.
       clearAccessToken();
-      if (window.location.pathname !== '/login') {
+      if (shouldRedirectToLoginPath(window.location.pathname)) {
         window.location.href = '/login';
       }
       return Promise.reject(error);
@@ -122,8 +123,14 @@ api.interceptors.response.use(
       console.error(`[CRITICAL] 5xx Server Node Failure. Correlation ID: ${error.response.headers?.['x-correlation-id'] || 'unknown'}`);
     }
 
-    // 5. 401 RECOVERY: Standard OAuth2 Refresh Flow.
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // 5. 401 RECOVERY: Only authenticated requests should attempt refresh.
+    if (shouldAttemptTokenRefresh({
+      status: error.response?.status,
+      url: originalRequest.url,
+      retried: Boolean(originalRequest._retry),
+      hasAccessToken: Boolean(accessToken),
+      hasAuthorizationHeader: Boolean(originalRequest.headers?.Authorization || originalRequest.headers?.authorization),
+    })) {
       originalRequest._retry = true;
 
       try {

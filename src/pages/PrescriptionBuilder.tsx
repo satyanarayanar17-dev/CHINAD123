@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDebounce } from '../hooks/useDebounce';
 import { Card, CardContent } from '../components/ui/Card';
 import { StatusChip } from '../components/ui/StatusChip';
@@ -34,6 +34,9 @@ export const PrescriptionBuilder = () => {
   const [newRx, setNewRx] = useState<NewMedication[]>([]);
   const [selectedLabs, setSelectedLabs] = useState<string[]>(['Complete Blood Count (CBC)']);
   const [isInitialized, setIsInitialized] = useState(false);
+  const rxIdRef = useRef<string | null>(rxId);
+  const versionRef = useRef<number>(version);
+  const lastSavedDraftRef = useRef<string | null>(null);
   
   const [medSearch, setMedSearch] = useState('');
   const [labSearch, setLabSearch] = useState('');
@@ -46,8 +49,22 @@ export const PrescriptionBuilder = () => {
   });
 
   useEffect(() => {
+    rxIdRef.current = rxId;
+  }, [rxId]);
+
+  useEffect(() => {
+    versionRef.current = version;
+  }, [version]);
+
+  useEffect(() => {
     if (patient && !isInitialized && (!prescriptionId || prescriptionId === 'new')) {
-       setActiveMeds([...(patient.activeMeds || [])]);
+       const initialActiveMeds = [...(patient.activeMeds || [])];
+       setActiveMeds(initialActiveMeds);
+       lastSavedDraftRef.current = JSON.stringify({
+         activeMeds: initialActiveMeds,
+         newRx: [],
+         selectedLabs: ['Complete Blood Count (CBC)'],
+       });
        setIsInitialized(true);
     }
   }, [patient, isInitialized, prescriptionId]);
@@ -75,6 +92,39 @@ export const PrescriptionBuilder = () => {
          setActiveMeds([...(patient.activeMeds || [])]);
       }
       setVersion(existingRx.__v || 1);
+      versionRef.current = existingRx.__v || 1;
+      rxIdRef.current = existingRx.id || rxIdRef.current;
+      lastSavedDraftRef.current = JSON.stringify({
+        activeMeds: existingRx.rx_content ? (() => {
+          try {
+            return JSON.parse(existingRx.rx_content).activeMeds || [];
+          } catch {
+            return [];
+          }
+        })() : [],
+        newRx: existingRx.rx_content ? (() => {
+          try {
+            return Array.isArray(JSON.parse(existingRx.rx_content).newRx)
+              ? JSON.parse(existingRx.rx_content).newRx.map((medication: any) => ({
+                  name: medication.name || 'Medication',
+                  strength: medication.strength || '500mg',
+                  frequency: medication.frequency || 'OD (Once Daily)',
+                  route: medication.route || 'Oral',
+                  duration: Number(medication.duration) || 30,
+                }))
+              : [];
+          } catch {
+            return [];
+          }
+        })() : [],
+        selectedLabs: existingRx.rx_content ? (() => {
+          try {
+            return JSON.parse(existingRx.rx_content).selectedLabs || [];
+          } catch {
+            return [];
+          }
+        })() : [],
+      });
       if (existingRx.status !== 'DRAFT') {
         setIsAuthorizing(true);
       }
@@ -91,13 +141,22 @@ export const PrescriptionBuilder = () => {
     const saveDraft = async () => {
       try {
         const contentStr = JSON.stringify(debouncedDraft);
-        if (!rxId) {
+        if (rxIdRef.current && lastSavedDraftRef.current === contentStr) {
+          return;
+        }
+
+        if (!rxIdRef.current) {
            const res = await clinicalApi.createPrescription(patientId!, contentStr);
+           rxIdRef.current = res.rxId;
+           versionRef.current = res.newVersion;
+           lastSavedDraftRef.current = contentStr;
            setRxId(res.rxId);
            setVersion(res.newVersion);
            window.history.replaceState(null, '', `/clinical/patient/${patientId}/prescription/${res.rxId}`);
         } else {
-           const res = await clinicalApi.saveDraftPrescription(rxId, contentStr, version);
+           const res = await clinicalApi.saveDraftPrescription(rxIdRef.current, contentStr, versionRef.current);
+           versionRef.current = res.newVersion;
+           lastSavedDraftRef.current = contentStr;
            setVersion(res.newVersion);
         }
       } catch (err: any) {
@@ -110,7 +169,7 @@ export const PrescriptionBuilder = () => {
     };
 
     saveDraft();
-  }, [debouncedDraft, isAuthorizing, isInitialized, isPatientLoading, isRxLoading, patientId, push, rxId, version]);
+  }, [debouncedDraft, isAuthorizing, isInitialized, isPatientLoading, isRxLoading, patientId, push]);
 
   const handleMedAction = (medName: string, action: 'continue' | 'stop' | 'modify') => {
     if (action === 'stop') {

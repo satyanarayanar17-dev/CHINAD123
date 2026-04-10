@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDebounce } from '../hooks/useDebounce';
 import { Card, CardContent } from '../components/ui/Card';
 import { StatusChip } from '../components/ui/StatusChip';
@@ -33,6 +33,9 @@ export const ClinicalNoteEditor = () => {
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpInstructions, setFollowUpInstructions] = useState('');
   const [isInitialized, setIsInitialized] = useState(false);
+  const noteIdRef = useRef<string | null>(noteId);
+  const versionRef = useRef<number>(version);
+  const lastSavedDraftRef = useRef<string | null>(null);
 
   // Load existing note from backend if noteId exists
   const { data: existingNote, isLoading: isNoteLoading } = useQuery({
@@ -43,14 +46,30 @@ export const ClinicalNoteEditor = () => {
   });
 
   useEffect(() => {
+    noteIdRef.current = noteId;
+  }, [noteId]);
+
+  useEffect(() => {
+    versionRef.current = version;
+  }, [version]);
+
+  useEffect(() => {
     if (patient && !isInitialized && consultationId === 'new') {
-      setSoap({
+      const initialDraft = {
         S: prevNote ? `Patient returns for follow-up. Previously: ${prevNote.title}.` : `Patient presents with primary complaints. Background: ${patient.riskFlags.join(', ') || 'None'}.`,
         O: `Vitals: BP ${patient.vitals?.bp} mmHg, HR ${patient.vitals?.hr} bpm, Temp ${patient.vitals?.temp}°C, SpO₂ ${patient.vitals?.spo2}%.`,
         A: '',
         P: '',
-      });
+      };
+      setSoap(initialDraft);
       setDiagnoses(patient.riskFlags.map(f => ({ code: 'Z99.9', name: f, isNew: false })));
+      lastSavedDraftRef.current = JSON.stringify({
+        soap: initialDraft,
+        diagnoses: patient.riskFlags.map(f => ({ code: 'Z99.9', name: f, isNew: false })),
+        followUp: false,
+        followUpDate: '',
+        followUpInstructions: '',
+      });
       setIsInitialized(true);
     }
   }, [patient, isInitialized, consultationId, prevNote]);
@@ -70,6 +89,45 @@ export const ClinicalNoteEditor = () => {
          setDiagnoses(patient.riskFlags.map(f => ({ code: 'Z99.9', name: f, isNew: false })));
       }
       setVersion(existingNote.__v || 1);
+      versionRef.current = existingNote.__v || 1;
+      noteIdRef.current = existingNote.id || noteIdRef.current;
+      lastSavedDraftRef.current = JSON.stringify({
+        soap: existingNote.draft_content ? (() => {
+          try {
+            return JSON.parse(existingNote.draft_content).soap || { S: '', O: '', A: '', P: '' };
+          } catch {
+            return { S: '', O: '', A: '', P: '' };
+          }
+        })() : { S: '', O: '', A: '', P: '' },
+        diagnoses: existingNote.draft_content ? (() => {
+          try {
+            return JSON.parse(existingNote.draft_content).diagnoses || [];
+          } catch {
+            return [];
+          }
+        })() : [],
+        followUp: existingNote.draft_content ? (() => {
+          try {
+            return JSON.parse(existingNote.draft_content).followUp || false;
+          } catch {
+            return false;
+          }
+        })() : false,
+        followUpDate: existingNote.draft_content ? (() => {
+          try {
+            return JSON.parse(existingNote.draft_content).followUpDate || '';
+          } catch {
+            return '';
+          }
+        })() : '',
+        followUpInstructions: existingNote.draft_content ? (() => {
+          try {
+            return JSON.parse(existingNote.draft_content).followUpInstructions || '';
+          } catch {
+            return '';
+          }
+        })() : '',
+      });
       if (existingNote.status === 'FINALIZED') {
         setSigned(true);
       }
@@ -94,15 +152,24 @@ export const ClinicalNoteEditor = () => {
     const saveDraft = async () => {
       try {
         const contentStr = JSON.stringify(debouncedState);
-        if (!noteId) {
+        if (noteIdRef.current && lastSavedDraftRef.current === contentStr) {
+          return;
+        }
+
+        if (!noteIdRef.current) {
            // Create new note
            const res = await clinicalApi.createNote(patientId!, contentStr);
+           noteIdRef.current = res.noteId;
+           versionRef.current = res.newVersion;
+           lastSavedDraftRef.current = contentStr;
            setNoteId(res.noteId);
            setVersion(res.newVersion);
            // replace url
            window.history.replaceState(null, '', `/clinical/patient/${patientId}/note/${res.noteId}`);
         } else {
-           const res = await clinicalApi.saveDraftNote(noteId, contentStr, version);
+           const res = await clinicalApi.saveDraftNote(noteIdRef.current, contentStr, versionRef.current);
+           versionRef.current = res.newVersion;
+           lastSavedDraftRef.current = contentStr;
            setVersion(res.newVersion);
         }
       } catch (err: any) {
@@ -117,7 +184,7 @@ export const ClinicalNoteEditor = () => {
     };
 
     saveDraft();
-  }, [debouncedState, isInitialized, isNoteLoading, isPatientLoading, noteId, patientId, push, signed, version]);
+  }, [debouncedState, isInitialized, isNoteLoading, isPatientLoading, patientId, push, signed]);
 
   const signMutation = useMutation({
     mutationFn: async () => {

@@ -8,7 +8,9 @@ import {
   getHomeRouteForRole,
   getNavigationItemsForRole,
   isRouteAllowedForSession,
-  isSessionBoundaryValid
+  isSessionBoundaryValid,
+  shouldAttemptTokenRefresh,
+  shouldRedirectToLoginPath
 } from './roleBoundary.ts';
 
 test('patients require the patient account type', () => {
@@ -49,6 +51,46 @@ test('route access stays inside explicit role areas', () => {
   assert.equal(isRouteAllowedForSession('/patient/dashboard', 'doctor', 'staff'), false);
   assert.equal(isRouteAllowedForSession('/clinical/command-center', 'patient', 'patient'), false);
   assert.equal(isRouteAllowedForSession('/patient/activate', 'patient', 'patient'), true);
+});
+
+test('login redirect helper preserves public routes', () => {
+  assert.equal(shouldRedirectToLoginPath('/patient/activate'), false);
+  assert.equal(shouldRedirectToLoginPath('/about'), false);
+  assert.equal(shouldRedirectToLoginPath('/login'), false);
+  assert.equal(shouldRedirectToLoginPath('/clinical/command-center'), true);
+});
+
+test('token refresh only runs for authenticated 401s', () => {
+  assert.equal(
+    shouldAttemptTokenRefresh({
+      status: 401,
+      url: '/activation/claim',
+      retried: false,
+      hasAccessToken: false,
+      hasAuthorizationHeader: false,
+    }),
+    false
+  );
+  assert.equal(
+    shouldAttemptTokenRefresh({
+      status: 401,
+      url: '/patients/pat-1',
+      retried: false,
+      hasAccessToken: true,
+      hasAuthorizationHeader: true,
+    }),
+    true
+  );
+  assert.equal(
+    shouldAttemptTokenRefresh({
+      status: 401,
+      url: '/auth/refresh',
+      retried: false,
+      hasAccessToken: true,
+      hasAuthorizationHeader: true,
+    }),
+    false
+  );
 });
 
 test('navigation stays scoped per staff role', () => {

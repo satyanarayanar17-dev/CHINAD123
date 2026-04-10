@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Stethoscope, User, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import type { AccountType } from '../auth/roleBoundary';
-import { getHomeRouteForRole } from '../auth/roleBoundary';
+import { getHomeRouteForSession } from '../auth/roleBoundary';
 
 export const Login = () => {
   const navigate = useNavigate();
@@ -34,7 +34,7 @@ export const Login = () => {
         password: pin.trim(),
         accountType: selectedAccountType
       });
-      navigate(getHomeRouteForRole(finalRole));
+      navigate(getHomeRouteForSession(finalRole, selectedAccountType));
     } catch (e: any) {
       if (e.response?.status === 401) {
         setError('Invalid credentials.');

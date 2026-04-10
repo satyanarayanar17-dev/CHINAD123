@@ -5,20 +5,21 @@ import { Calendar, CheckCircle, Clock, Search, Filter, ChevronDown, User, AlertC
 import { useLiveQueue } from '../hooks/queries/useLiveQueue';
 import { useNavigate } from 'react-router-dom';
 import { useToast, ToastContainer } from '../components/ui/Toast';
+import type { AppointmentSlot } from '../store/mockData';
 
 const SPECIALTIES = ['All', 'Cardiology', 'General Medicine', 'Orthopedics'];
 const FALLBACK_SLOT_STATUS = { cls: 'text-gray-500', border: 'border-l-gray-300' };
 const FALLBACK_LIFECYCLE = { label: 'Unknown', variant: 'surface' as const };
 
-function getPatientName(slot: any) {
+function getPatientName(slot: AppointmentSlot) {
   return slot?.patient?.name || 'Unknown Patient';
 }
 
-function getPatientId(slot: any) {
+function getPatientId(slot: AppointmentSlot) {
   return slot?.patient?.id || 'Unknown ID';
 }
 
-function getPatientInitials(slot: any) {
+function getPatientInitials(slot: AppointmentSlot) {
   if (slot?.patient?.initials) {
     return slot.patient.initials;
   }
@@ -39,11 +40,11 @@ export const DoctorAppointments = () => {
   const { queue, updateSlotStatus, isLoading, isError } = useLiveQueue();
   
   const [filterSpec, setFilterSpec] = useState('All');
-  const [rescheduleSlot, setRescheduleSlot] = useState<any | null>(null);
+  const [rescheduleSlot, setRescheduleSlot] = useState<AppointmentSlot | null>(null);
   const [newTime, setNewTime] = useState('');
   const [search, setSearch] = useState('');
 
-  const filtered = queue.filter((s: Record<string, any>) => {
+  const filtered = queue.filter((s) => {
     const patientName = getPatientName(s);
     const patientId = getPatientId(s);
     const matchSpec = filterSpec === 'All' || (s.specialty || 'General Medicine') === filterSpec;
@@ -53,7 +54,7 @@ export const DoctorAppointments = () => {
     return matchSpec && matchSearch;
   });
 
-  const approve = (slot: any) => {
+  const approve = (slot: AppointmentSlot) => {
     updateSlotStatus(slot.id, 'RECEPTION', slot.__v || 1);
   };
 
@@ -127,9 +128,9 @@ export const DoctorAppointments = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { label: 'Total', count: queue.length, color: 'text-on-surface' },
-            { label: 'Awaiting', count: queue.filter((s: any) => s.lifecycleStatus === 'AWAITING').length, color: 'text-on-surface-variant' },
-            { label: 'In Progress', count: queue.filter((s: any) => s.lifecycleStatus === 'IN_CONSULTATION').length, color: 'text-primary' },
-            { label: 'Checked-in', count: queue.filter((s: any) => s.lifecycleStatus === 'RECEPTION').length, color: 'text-tertiary' },
+            { label: 'Awaiting', count: queue.filter((s) => s.lifecycleStatus === 'AWAITING').length, color: 'text-on-surface-variant' },
+            { label: 'In Progress', count: queue.filter((s) => s.lifecycleStatus === 'IN_CONSULTATION').length, color: 'text-primary' },
+            { label: 'Checked-in', count: queue.filter((s) => s.lifecycleStatus === 'RECEPTION').length, color: 'text-tertiary' },
           ].map(stat => (
             <div key={stat.label} className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4">
               <div className={`text-3xl font-extrabold ${stat.color}`}>{stat.count}</div>

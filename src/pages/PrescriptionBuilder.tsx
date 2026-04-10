@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useDebounce } from '../hooks/useDebounce';
 import { Card, CardContent } from '../components/ui/Card';
 import { StatusChip } from '../components/ui/StatusChip';
-import { Search, Pill, Beaker, CheckCircle, AlertTriangle, X, Plus, Trash2, Edit3, ArrowRight } from 'lucide-react';
+import { Search, Pill, Beaker, CheckCircle, AlertTriangle, X, Plus, Trash2, ArrowRight } from 'lucide-react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicalApi } from '../api/clinical';
-import { usePatient, usePatientTimeline } from '../hooks/queries/usePatients';
+import { usePatient } from '../hooks/queries/usePatients';
 import { useToast, ToastContainer } from '../components/ui/Toast';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
@@ -14,6 +14,7 @@ interface NewMedication {
   name: string;
   strength: string;
   frequency: string;
+  route: string;
   duration: number;
 }
 
@@ -57,7 +58,17 @@ export const PrescriptionBuilder = () => {
         try {
           const parsed = JSON.parse(existingRx.rx_content);
           setActiveMeds(parsed.activeMeds || []);
-          setNewRx(parsed.newRx || []);
+          setNewRx(
+            Array.isArray(parsed.newRx)
+              ? parsed.newRx.map((medication: any) => ({
+                  name: medication.name || 'Medication',
+                  strength: medication.strength || '500mg',
+                  frequency: medication.frequency || 'OD (Once Daily)',
+                  route: medication.route || 'Oral',
+                  duration: Number(medication.duration) || 30,
+                }))
+              : []
+          );
           setSelectedLabs(parsed.selectedLabs || []);
         } catch(e) {}
       } else if (patient && prescriptionId !== 'new') {
@@ -99,7 +110,7 @@ export const PrescriptionBuilder = () => {
     };
 
     saveDraft();
-  }, [debouncedDraft]);
+  }, [debouncedDraft, isAuthorizing, isInitialized, isPatientLoading, isRxLoading, patientId, push, rxId, version]);
 
   const handleMedAction = (medName: string, action: 'continue' | 'stop' | 'modify') => {
     if (action === 'stop') {
@@ -108,11 +119,16 @@ export const PrescriptionBuilder = () => {
   };
 
   const handleAddMed = (name: string) => {
-    setNewRx(prev => [...prev, { name, strength: '', frequency: '', duration: 30 }]);
+    setNewRx(prev => [...prev, { name, strength: '500mg', frequency: 'OD (Once Daily)', route: 'Oral', duration: 30 }]);
     setMedSearch('');
   };
 
   const handleRemoveRx = (index: number) => setNewRx(prev => prev.filter((_, i) => i !== index));
+  const handleUpdateRxField = <K extends keyof NewMedication>(index: number, field: K, value: NewMedication[K]) => {
+    setNewRx((current) => current.map((medication, currentIndex) => (
+      currentIndex === index ? { ...medication, [field]: value } : medication
+    )));
+  };
 
   const handleAddLab = (name: string) => {
     setSelectedLabs(prev => [...prev, name]);
@@ -124,8 +140,9 @@ export const PrescriptionBuilder = () => {
   const authMutation = useMutation({
     mutationFn: async () => {
       if (!rxId) throw new Error("No rx ID found");
-      await clinicalApi.saveDraftPrescription(rxId, JSON.stringify({ activeMeds, newRx, selectedLabs }), version);
-      return await clinicalApi.authorizePrescription(rxId, version + 1);
+      const saveResult = await clinicalApi.saveDraftPrescription(rxId, JSON.stringify({ activeMeds, newRx, selectedLabs }), version);
+      setVersion(saveResult.newVersion);
+      return await clinicalApi.authorizePrescription(rxId, saveResult.newVersion);
     },
     onSuccess: () => {
       setIsAuthorizing(true);
@@ -267,7 +284,12 @@ export const PrescriptionBuilder = () => {
                     <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4 bg-surface">
                       <div>
                         <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest block mb-1">Strength</label>
-                        <select disabled={isAuthorizing} className="w-full text-sm p-2 border border-outline rounded bg-surface-container outline-none focus:border-primary">
+                        <select
+                          disabled={isAuthorizing}
+                          value={rx.strength}
+                          onChange={(event) => handleUpdateRxField(idx, 'strength', event.target.value)}
+                          className="w-full text-sm p-2 border border-outline rounded bg-surface-container outline-none focus:border-primary"
+                        >
                           <option>500mg</option>
                           <option>1000mg</option>
                           <option>As specified</option>
@@ -275,7 +297,12 @@ export const PrescriptionBuilder = () => {
                       </div>
                       <div>
                         <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest block mb-1">Frequency</label>
-                        <select disabled={isAuthorizing} className="w-full text-sm p-2 border border-outline rounded bg-surface-container outline-none focus:border-primary">
+                        <select
+                          disabled={isAuthorizing}
+                          value={rx.frequency}
+                          onChange={(event) => handleUpdateRxField(idx, 'frequency', event.target.value)}
+                          className="w-full text-sm p-2 border border-outline rounded bg-surface-container outline-none focus:border-primary"
+                        >
                           <option>OD (Once Daily)</option>
                           <option>BID (Twice Daily)</option>
                           <option>TID (Thrice Daily)</option>
@@ -284,7 +311,12 @@ export const PrescriptionBuilder = () => {
                       </div>
                       <div>
                         <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest block mb-1">Route</label>
-                        <select disabled={isAuthorizing} className="w-full text-sm p-2 border border-outline rounded bg-surface-container outline-none focus:border-primary">
+                        <select
+                          disabled={isAuthorizing}
+                          value={rx.route}
+                          onChange={(event) => handleUpdateRxField(idx, 'route', event.target.value)}
+                          className="w-full text-sm p-2 border border-outline rounded bg-surface-container outline-none focus:border-primary"
+                        >
                           <option>Oral</option>
                           <option>IV</option>
                           <option>IM</option>
@@ -297,7 +329,8 @@ export const PrescriptionBuilder = () => {
                           <input
                             type="number"
                             disabled={isAuthorizing}
-                            defaultValue={rx.duration}
+                            value={rx.duration}
+                            onChange={(event) => handleUpdateRxField(idx, 'duration', Number(event.target.value) || 0)}
                             className="w-16 text-sm p-2 border border-outline rounded bg-surface-container outline-none focus:border-primary"
                           />
                           <span className="text-sm text-on-surface-variant">Days</span>

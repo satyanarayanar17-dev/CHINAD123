@@ -8,6 +8,7 @@ const {
   describeQueueIntegrityIssue,
   validateEncounterLifecycle
 } = require('../lib/clinicalIntegrity');
+const { logEvent } = require('../lib/logger');
 
 const router = express.Router();
 
@@ -15,26 +16,40 @@ const router = express.Router();
 router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const rawQueue = await all(`
-      SELECT e.id as encounter_id, e.patient_id, e.phase, e.is_discharged, e.__v,
+      SELECT e.id as encounter_id, e.patient_id, e.phase, e.lifecycle_status, e.is_discharged, e.__v,
              p.id AS patient_record_id, p.name, p.dob, p.gender
       FROM encounters e
       LEFT JOIN patients p ON e.patient_id = p.id
       WHERE e.is_discharged = 0
+      ORDER BY e.created_at ASC, e.id ASC
     `);
 
     const slots = [];
+    const activeEncounterCounts = rawQueue.reduce((acc, row) => {
+      const patientId = row.patient_id || 'UNKNOWN_PATIENT';
+      acc.set(patientId, (acc.get(patientId) || 0) + 1);
+      return acc;
+    }, new Map());
 
     for (const row of rawQueue) {
+      if ((activeEncounterCounts.get(row.patient_id || 'UNKNOWN_PATIENT') || 0) > 1) {
+        logEvent('warn', 'queue_row_skipped', {
+          correlationId: req.correlationId,
+          ...describeQueueIntegrityIssue(row, ['duplicate_active_encounter'])
+        });
+        continue;
+      }
+
       const serialized = serializeQueueSlot(row);
       if (serialized.warnings.length > 0) {
-        console.warn('[DATA_INTEGRITY] Queue row normalized for read model', {
+        logEvent('warn', 'queue_row_normalized', {
           correlationId: req.correlationId,
           ...describeQueueIntegrityIssue(row, serialized.warnings)
         });
       }
 
       if (!serialized.slot) {
-        console.warn('[DATA_INTEGRITY] Skipping malformed queue row', {
+        logEvent('warn', 'queue_row_skipped', {
           correlationId: req.correlationId,
           ...describeQueueIntegrityIssue(row, serialized.errors)
         });
@@ -93,11 +108,19 @@ router.patch('/:encounterId', requireAuth, requireRole(['NURSE', 'DOCTOR']), asy
     }
 
     // Attempt the guarded update, atomically incrementing version
-    await run(`
-      UPDATE encounters 
-      SET phase = ?, __v = __v + 1 
+    const result = await run(`
+      UPDATE encounters
+      SET phase = ?, lifecycle_status = ?, __v = __v + 1
       WHERE id = ? AND __v = ?
-    `, [normalizedPhase, encounterId, version]);
+    `, [normalizedPhase, normalizedPhase, encounterId, version]);
+
+    if (result.changes === 0) {
+      return next({
+        status: 409,
+        code: 'STALE_STATE',
+        message: 'Queue state changed by another session. Please reload.'
+      });
+    }
 
     // Deterministic audit log — written before response
     await writeAuditDirect({
@@ -105,8 +128,8 @@ router.patch('/:encounterId', requireAuth, requireRole(['NURSE', 'DOCTOR']), asy
       actor_id: req.user.id,
       patient_id: encounter.patient_id,
       action: `QUEUE_TRANSITION:${encounter.phase}->${normalizedPhase}`,
-      prior_state: JSON.stringify({ phase: encounter.phase, version }),
-      new_state: JSON.stringify({ phase: normalizedPhase, version: version + 1 })
+      prior_state: JSON.stringify({ phase: encounter.phase, lifecycle_status: encounter.lifecycle_status, version }),
+      new_state: JSON.stringify({ phase: normalizedPhase, lifecycle_status: normalizedPhase, version: version + 1 })
     });
 
     res.json({ message: 'Queue updated successfully', newVersion: version + 1 });

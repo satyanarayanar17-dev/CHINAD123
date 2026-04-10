@@ -1,18 +1,23 @@
 const express = require('express');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { get, run } = require('../database');
+const { get, run, all } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
 const { writeNotification } = require('./notifications');
 const {
   normalizePrescriptionStatus,
   validateEncounterLifecycle
 } = require('../lib/clinicalIntegrity');
+const {
+  assertPatientRecord,
+  loadPatientRecord,
+  resolveSingleActiveEncounter
+} = require('../lib/careFlow');
 
 const router = express.Router();
 
 async function loadPrescriptionWithContext(rxId) {
   const rx = await get(
-    `SELECT p.*, e.patient_id, e.phase AS encounter_phase, e.is_discharged, pt.id AS linked_patient_record_id
+    `SELECT p.*, e.patient_id, e.phase AS encounter_phase, e.lifecycle_status, e.is_discharged, pt.id AS linked_patient_record_id
      FROM prescriptions p
      LEFT JOIN encounters e ON p.encounter_id = e.id
      LEFT JOIN patients pt ON pt.id = e.patient_id
@@ -39,6 +44,7 @@ async function loadPrescriptionWithContext(rxId) {
   const encounterState = validateEncounterLifecycle({
     patient_id: rx.patient_id,
     phase: rx.encounter_phase,
+    lifecycle_status: rx.lifecycle_status,
     is_discharged: rx.is_discharged
   });
 
@@ -58,7 +64,7 @@ async function loadPrescriptionWithContext(rxId) {
   return { rx, error: null };
 }
 
-router.get('/:rxId', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
+router.get('/:rxId', requireAuth, requireRole(['DOCTOR']), async (req, res, next) => {
   try {
     const { rx, error } = await loadPrescriptionWithContext(req.params.rxId);
     if (error) return next(error);
@@ -71,27 +77,14 @@ router.post('/', requireAuth, requireRole(['DOCTOR']), async (req, res, next) =>
   const { patientId, rx_content } = req.body;
   if (!patientId) return next({ status: 400, code: 'MISSING_PATIENT_ID' });
   try {
-    const patient = await get(`SELECT id FROM patients WHERE id = ?`, [patientId]);
-    if (!patient) return next({ status: 404, code: 'PATIENT_NOT_FOUND', message: 'Patient not found.' });
+    const patient = await loadPatientRecord({ get }, patientId);
+    assertPatientRecord(patient);
 
-    const encounter = await get(
-      `SELECT id, patient_id, phase, is_discharged
-       FROM encounters
-       WHERE patient_id = ? AND is_discharged = 0
-       ORDER BY created_at DESC, id DESC
-       LIMIT 1`,
-      [patientId]
-    );
-    if (!encounter) return next({ status: 422, code: 'NO_ACTIVE_ENCOUNTER', message: 'Patient lacks an active encounter for prescription.' });
-    const encounterState = validateEncounterLifecycle(encounter);
-    if (!encounterState.valid) {
-      return next({
-        status: 409,
-        code: 'DATA_INTEGRITY_VIOLATION',
-        message: 'Active encounter is malformed and cannot accept prescriptions.',
-        details: encounterState.errors
-      });
-    }
+    const encounter = await resolveSingleActiveEncounter({ all }, patientId, {
+      missingMessage: 'Patient lacks an active encounter for prescription.',
+      malformedMessage: 'Active encounter is malformed and cannot accept prescriptions.',
+      duplicateMessage: 'Multiple active encounters exist for this patient. Repair the data before writing prescriptions.'
+    });
     const rxId = `rx-${Date.now()}`;
     await run(
       `INSERT INTO prescriptions (id, encounter_id, rx_content, status, __v) VALUES (?, ?, ?, 'DRAFT', 1)`,
@@ -118,10 +111,13 @@ router.put('/:rxId', requireAuth, requireRole(['DOCTOR']), async (req, res, next
     if (!rx) return next({ status: 404, code: 'NOT_FOUND' });
     if (rx.status === 'AUTHORIZED') return next({ status: 422, code: 'INVALID_STATE', message: 'Cannot edit an authorized prescription.' });
     if (rx.__v !== version) return next({ status: 409, code: 'STALE_STATE', message: 'Prescription conflict detected.' });
-    await run(
+    const updateResult = await run(
       `UPDATE prescriptions SET rx_content = ?, __v = __v + 1 WHERE id = ? AND __v = ?`,
       [rx_content, rxId, version]
     );
+    if (updateResult.changes === 0) {
+      return next({ status: 409, code: 'STALE_STATE', message: 'Prescription conflict detected.' });
+    }
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
@@ -145,10 +141,13 @@ router.post('/:rxId/authorize', requireAuth, requireRole(['DOCTOR']), async (req
     if (rx.status === 'AUTHORIZED') return next({ status: 422, code: 'INVALID_STATE', message: 'Prescription already authorized.' });
     if (rx.__v !== version) return next({ status: 409, code: 'STALE_STATE' });
 
-    await run(
+    const authorizeResult = await run(
       `UPDATE prescriptions SET status = 'AUTHORIZED', authorizing_user_id = ?, __v = __v + 1 WHERE id = ? AND __v = ?`,
       [doctorId, rxId, version]
     );
+    if (authorizeResult.changes === 0) {
+      return next({ status: 409, code: 'STALE_STATE', message: 'Prescription conflict detected.' });
+    }
 
     await writeAuditDirect({
       correlation_id: req.correlationId,

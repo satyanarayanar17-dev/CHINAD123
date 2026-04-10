@@ -16,6 +16,14 @@ export const PatientActivation = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!patientId.trim()) {
+      setError('Enter the patient UHID exactly as provided during onboarding.');
+      return;
+    }
+    if (!/^\d{6}$/.test(otp.trim())) {
+      setError('Activation code must be exactly 6 digits.');
+      return;
+    }
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
       return;
@@ -59,6 +67,9 @@ export const PatientActivation = () => {
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && <div className="p-3 bg-error/10 text-error text-sm font-semibold rounded-lg border border-error/20">{error}</div>}
           {success && <div className="p-3 bg-emerald-50 text-emerald-700 text-sm font-semibold rounded-lg border border-emerald-200 flex items-center gap-2"><ShieldCheck size={18} /> {success}</div>}
+          <div className="rounded-xl border border-outline/20 bg-surface-container-low p-4 text-xs text-on-surface-variant">
+            Enter the exact UHID and one-time activation code issued during onboarding. Activation only succeeds when the patient identity, active encounter, and unused code all match.
+          </div>
 
           <div>
             <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Patient UHID</label>

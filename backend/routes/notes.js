@@ -1,18 +1,23 @@
 const express = require('express');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { get, run } = require('../database');
+const { get, run, all } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
 const { writeNotification } = require('./notifications');
 const {
   normalizeNoteStatus,
   validateEncounterLifecycle
 } = require('../lib/clinicalIntegrity');
+const {
+  assertPatientRecord,
+  loadPatientRecord,
+  resolveSingleActiveEncounter
+} = require('../lib/careFlow');
 
 const router = express.Router();
 
 async function loadNoteWithContext(noteId) {
   const note = await get(
-    `SELECT cn.*, e.patient_id, e.phase AS encounter_phase, e.is_discharged, p.id AS linked_patient_record_id
+    `SELECT cn.*, e.patient_id, e.phase AS encounter_phase, e.lifecycle_status, e.is_discharged, p.id AS linked_patient_record_id
      FROM clinical_notes cn
      LEFT JOIN encounters e ON cn.encounter_id = e.id
      LEFT JOIN patients p ON p.id = e.patient_id
@@ -39,6 +44,7 @@ async function loadNoteWithContext(noteId) {
   const encounterState = validateEncounterLifecycle({
     patient_id: note.patient_id,
     phase: note.encounter_phase,
+    lifecycle_status: note.lifecycle_status,
     is_discharged: note.is_discharged
   });
 
@@ -58,7 +64,7 @@ async function loadNoteWithContext(noteId) {
   return { note, error: null };
 }
 
-router.get('/:noteId', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
+router.get('/:noteId', requireAuth, requireRole(['DOCTOR']), async (req, res, next) => {
   try {
     const { note, error } = await loadNoteWithContext(req.params.noteId);
     if (error) return next(error);
@@ -71,27 +77,14 @@ router.post('/', requireAuth, requireRole(['DOCTOR']), async (req, res, next) =>
   const { patientId, draft_content } = req.body;
   if (!patientId) return next({ status: 400, code: 'MISSING_PATIENT_ID' });
   try {
-    const patient = await get(`SELECT id FROM patients WHERE id = ?`, [patientId]);
-    if (!patient) return next({ status: 404, code: 'PATIENT_NOT_FOUND', message: 'Patient not found.' });
+    const patient = await loadPatientRecord({ get }, patientId);
+    assertPatientRecord(patient);
 
-    const encounter = await get(
-      `SELECT id, patient_id, phase, is_discharged
-       FROM encounters
-       WHERE patient_id = ? AND is_discharged = 0
-       ORDER BY created_at DESC, id DESC
-       LIMIT 1`,
-      [patientId]
-    );
-    if (!encounter) return next({ status: 422, code: 'NO_ACTIVE_ENCOUNTER', message: 'No active encounter for this patient.' });
-    const encounterState = validateEncounterLifecycle(encounter);
-    if (!encounterState.valid) {
-      return next({
-        status: 409,
-        code: 'DATA_INTEGRITY_VIOLATION',
-        message: 'Active encounter is malformed and cannot accept notes.',
-        details: encounterState.errors
-      });
-    }
+    const encounter = await resolveSingleActiveEncounter({ all }, patientId, {
+      missingMessage: 'No active encounter for this patient.',
+      malformedMessage: 'Active encounter is malformed and cannot accept notes.',
+      duplicateMessage: 'Multiple active encounters exist for this patient. Repair the data before writing notes.'
+    });
     const noteId = `note-${Date.now()}`;
     await run(
       `INSERT INTO clinical_notes (id,encounter_id,draft_content,status,author_id,__v) VALUES (?,?,?,'DRAFT',?,1)`,
@@ -118,10 +111,13 @@ router.put('/:noteId', requireAuth, requireRole(['DOCTOR']), async (req, res, ne
     if (!note) return next({ status: 404, code: 'NOT_FOUND' });
     if (note.status === 'FINALIZED') return next({ status: 422, code: 'INVALID_STATE', message: 'Cannot edit a finalized note.' });
     if (note.__v !== version) return next({ status: 409, code: 'STALE_STATE', message: 'Conflict — another session updated this note.' });
-    await run(
+    const updateResult = await run(
       `UPDATE clinical_notes SET draft_content=?, updated_at=CURRENT_TIMESTAMP, __v=__v+1 WHERE id=? AND __v=?`,
       [draft_content, noteId, version]
     );
+    if (updateResult.changes === 0) {
+      return next({ status: 409, code: 'STALE_STATE', message: 'Conflict — another session updated this note.' });
+    }
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
@@ -144,10 +140,13 @@ router.post('/:noteId/finalize', requireAuth, requireRole(['DOCTOR']), async (re
     if (note.status === 'FINALIZED') return next({ status: 422, code: 'INVALID_STATE', message: 'Already finalized.' });
     if (note.__v !== version) return next({ status: 409, code: 'STALE_STATE', message: 'Note modified. Review before finalizing.' });
 
-    await run(
+    const finalizeResult = await run(
       `UPDATE clinical_notes SET status='FINALIZED', updated_at=CURRENT_TIMESTAMP, __v=__v+1 WHERE id=? AND __v=?`,
       [noteId, version]
     );
+    if (finalizeResult.changes === 0) {
+      return next({ status: 409, code: 'STALE_STATE', message: 'Note modified. Review before finalizing.' });
+    }
 
     await writeAuditDirect({
       correlation_id: req.correlationId,

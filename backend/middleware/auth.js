@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { get } = require('../database');
 const { accountTypeForRole, normalizeAccountType } = require('../lib/authBoundary');
+const { logEvent } = require('../lib/logger');
 
 // In production: JWT_SECRET MUST be set — no fallback permitted.
 // In local_dev: fallback to insecure default with a loud warning (already issued in server.js).
@@ -56,6 +57,12 @@ function enforceTokenScope(decoded) {
 
   const tokenAccountType = normalizeAccountType(decoded.account_type);
   if (tokenAccountType !== expectedAccountType) {
+    logEvent('warn', 'token_scope_mismatch', {
+      userId: decoded.id,
+      role: decoded.role,
+      tokenAccountType: decoded.account_type,
+      expectedAccountType
+    });
     throw tokenError(401, 'INVALID_TOKEN_SCOPE', 'Session scope is invalid. Please log in again.');
   }
 
@@ -160,7 +167,12 @@ function requireRole(allowedRoles) {
     }
 
     if (!allowedRoles.includes(req.user.role)) {
-      console.error(`[SECURITY] User ${req.user.id} (${req.user.role}) attempted unauthorized access. CID: ${req.correlationId}`);
+      logEvent('warn', 'route_role_violation', {
+        correlationId: req.correlationId,
+        userId: req.user.id,
+        role: req.user.role,
+        allowedRoles
+      });
       return next({
         status: 403,
         code: 'FORBIDDEN_ROLE',

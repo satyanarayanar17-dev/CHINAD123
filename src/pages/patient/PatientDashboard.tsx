@@ -7,7 +7,7 @@ import { useAuth } from '../../hooks/useAuth';
 export const PatientDashboard = () => {
   const { user } = useAuth();
   const { appointments, prescriptions: activeMeds, records, isLoading } = usePatientDashboardData();
-  const userName = user || 'Ramesh';
+  const userName = user?.name || 'Patient';
 
   if (isLoading) {
     return (
@@ -31,7 +31,7 @@ export const PatientDashboard = () => {
       <div className="bg-gradient-to-r from-primary to-primary/80 rounded-2xl p-6 text-white shadow-lg shadow-primary/20">
         <p className="text-white/70 text-sm font-medium mb-1">Good morning,</p>
         <h1 className="text-2xl font-extrabold mb-4">
-          {userName.startsWith('CC-') ? 'Ramesh Sivakumar' : userName} 👋
+          {userName} 👋
         </h1>
         {upcomingAppts.length > 0 && (
           <div className="bg-white/15 rounded-xl p-4 flex items-center justify-between">

@@ -7,7 +7,7 @@ function printHumanSummary(report) {
     `[DATA-INTEGRITY] Invalid rows => patients=${report.counts.invalidPatients}, encounters=${report.counts.invalidEncounters}, queue=${report.counts.malformedQueueRows}, notes=${report.counts.invalidNotes}, prescriptions=${report.counts.invalidPrescriptions}`
   );
   console.log(
-    `[DATA-INTEGRITY] Legacy shape mismatches=${report.counts.legacyShapeMismatches}, duplicate_active_encounter_patients=${report.counts.duplicateActiveEncounterPatients}`
+    `[DATA-INTEGRITY] Legacy schema drift=${report.counts.legacySchemaDrift}, duplicate_active_encounter_patients=${report.counts.duplicateActiveEncounterPatients}`
   );
 
   for (const issue of report.invalidPatients) {

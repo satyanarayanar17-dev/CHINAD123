@@ -13,6 +13,7 @@ const {
   normalizeAccountType,
   roleAllowedForAccountType
 } = require('../lib/authBoundary');
+const { logEvent } = require('../lib/logger');
 
 const router = express.Router();
 
@@ -73,7 +74,7 @@ async function writeBoundaryMismatchAudit({ req, userRow, username, attemptedAcc
     })
   });
 
-  console.warn('[AUTH_BOUNDARY] Login blocked due to account type mismatch', {
+  logEvent('warn', 'auth_boundary_violation', {
     correlationId: req.correlationId,
     endpoint,
     username,
@@ -83,6 +84,12 @@ async function writeBoundaryMismatchAudit({ req, userRow, username, attemptedAcc
 }
 
 async function recordUnknownLogin({ req, username }) {
+  logEvent('warn', 'auth_unknown_user', {
+    correlationId: req.correlationId,
+    username,
+    ip: req.ip || req.headers['x-forwarded-for'] || 'unknown'
+  });
+
   await writeAuditDirect({
     correlation_id: req.correlationId,
     actor_id: username,
@@ -105,6 +112,14 @@ async function recordFailedPassword({ req, userRow, username, ipKey }) {
     `UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?`,
     [newAttempts, lockedUntil, userRow.id]
   );
+
+  logEvent('warn', 'auth_failed_password', {
+    correlationId: req.correlationId,
+    userId: userRow.id,
+    username,
+    failedAttempts: newAttempts,
+    lockedUntil
+  });
 
   await writeAuditDirect({
     correlation_id: req.correlationId,
@@ -435,7 +450,7 @@ router.post('/logout', async (req, res, next) => {
   res.json({ message: 'Logged out.' });
 });
 
-router.get('/me', requireAuth, async (req, res, next) => {
+router.get('/me', requireAuth, requireRole(['PATIENT', 'DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const userRow = await get(`SELECT * FROM users WHERE id = ?`, [req.user.id]);
     if (!userRow || userRow.is_active === 0) {

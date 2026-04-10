@@ -1,5 +1,6 @@
 import { api } from './client';
 import type { Patient, TimelineEntry } from '../store/mockData';
+import { normalizePatient, normalizeTimelineEntry } from './contracts';
 
 /**
  * Patient data API — no mock fallbacks.
@@ -8,17 +9,17 @@ import type { Patient, TimelineEntry } from '../store/mockData';
 export const PatientsAPI = {
   getPatient: async (patientId: string): Promise<Patient> => {
     const response = await api.get<Patient>(`/patients/${patientId}`);
-    return response.data;
+    return normalizePatient(response.data);
   },
   
   searchPatients: async (query: string): Promise<Patient[]> => {
     const response = await api.get<Patient[]>('/patients', { params: { q: query } });
-    return response.data;
+    return response.data.map((patient) => normalizePatient(patient));
   },
 
   getPatientTimeline: async (patientId: string): Promise<TimelineEntry[]> => {
     const response = await api.get<TimelineEntry[]>(`/patients/${patientId}/timeline`);
-    return response.data;
+    return response.data.map((entry, index) => normalizeTimelineEntry(entry, index));
   },
 
   breakGlass: async (patientId: string, justification: string): Promise<{ granted: boolean; message: string }> => {

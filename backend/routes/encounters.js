@@ -12,7 +12,7 @@ const router = express.Router();
 
 const BREAK_GLASS_MIN_LENGTH = 50;
 
-router.get('/:encounterId', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
+router.get('/:encounterId', requireAuth, requireRole(['DOCTOR', 'NURSE']), async (req, res, next) => {
   try {
     const encounter = await get(
       `SELECT e.*, p.name as patient_name FROM encounters e LEFT JOIN patients p ON e.patient_id = p.id WHERE e.id = ?`,
@@ -123,8 +123,10 @@ router.patch('/:encounterId/discharge', requireAuth, requireRole(['DOCTOR']), as
     }
 
     await run(
-      `UPDATE encounters SET is_discharged = 1, phase = ?, __v = __v + 1 WHERE id = ?`,
-      [DISCHARGED_ENCOUNTER_PHASE, encounterId]
+      `UPDATE encounters
+       SET is_discharged = 1, phase = ?, lifecycle_status = ?, __v = __v + 1
+       WHERE id = ?`,
+      [DISCHARGED_ENCOUNTER_PHASE, DISCHARGED_ENCOUNTER_PHASE, encounterId]
     );
 
     await writeAuditDirect({
@@ -132,8 +134,16 @@ router.patch('/:encounterId/discharge', requireAuth, requireRole(['DOCTOR']), as
       actor_id: req.user.id,
       patient_id: encounter.patient_id,
       action: `DISCHARGE:${encounter.phase}->${DISCHARGED_ENCOUNTER_PHASE}`,
-      prior_state: JSON.stringify({ phase: encounter.phase, is_discharged: encounter.is_discharged }),
-      new_state: JSON.stringify({ phase: DISCHARGED_ENCOUNTER_PHASE, is_discharged: 1 })
+      prior_state: JSON.stringify({
+        phase: encounter.phase,
+        lifecycle_status: encounter.lifecycle_status,
+        is_discharged: encounter.is_discharged
+      }),
+      new_state: JSON.stringify({
+        phase: DISCHARGED_ENCOUNTER_PHASE,
+        lifecycle_status: DISCHARGED_ENCOUNTER_PHASE,
+        is_discharged: 1
+      })
     });
 
     // Phase 2: Notify admin of discharge

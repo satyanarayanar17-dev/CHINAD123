@@ -1,21 +1,92 @@
 const express = require('express');
+const crypto = require('crypto');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { get, all, run } = require('../database');
+const { get, all, run, withTransaction } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
 const { writeNotification } = require('./notifications');
 const {
   buildPatientReadModel,
   validatePatientRegistrationPayload,
+  validatePatientRecord,
   validateEncounterLifecycle
 } = require('../lib/clinicalIntegrity');
+const {
+  assertPatientRecord,
+  buildIntegrityError,
+  ensureActiveEncounter,
+  loadPatientRecord
+} = require('../lib/careFlow');
+const { logEvent } = require('../lib/logger');
 
 const router = express.Router();
 
 const BREAK_GLASS_MIN_LENGTH = 50;
+const activationOtpDelivery =
+  process.env.ACTIVATION_OTP_DELIVERY ||
+  (process.env.NODE_ENV === 'production' ? 'console' : 'api_response');
+
+function generateActivationCode() {
+  return crypto.randomInt(100000, 1000000).toString();
+}
+
+function buildActivationEnvelope(otp, expiresAt) {
+  const activation = {
+    expires_at: expiresAt,
+    delivery_mode: activationOtpDelivery
+  };
+
+  if (activationOtpDelivery === 'api_response') {
+    activation.activation_code = otp;
+  }
+
+  return activation;
+}
+
+function summarizeNoteContent(rawContent) {
+  let display = rawContent || 'No content recorded.';
+
+  try {
+    const parsed = JSON.parse(rawContent);
+    if (parsed.soap) {
+      const parts = [];
+      if (parsed.soap.S) parts.push(`S: ${parsed.soap.S}`);
+      if (parsed.soap.A) parts.push(`A: ${parsed.soap.A}`);
+      if (parsed.soap.P) parts.push(`P: ${parsed.soap.P}`);
+      if (parts.length > 0) {
+        display = parts.join(' | ');
+      }
+    }
+  } catch (_) {
+    // Preserve raw content when it is not JSON.
+  }
+
+  return display.length > 300 ? `${display.substring(0, 300)}...` : display;
+}
+
+function summarizePrescriptionContent(rawContent) {
+  let display = rawContent || 'Prescription details not available.';
+
+  try {
+    const parsed = JSON.parse(rawContent);
+    if (Array.isArray(parsed.newRx) && parsed.newRx.length > 0) {
+      display = parsed.newRx.map((medication) => medication.name).filter(Boolean).join(', ') || display;
+    }
+  } catch (_) {
+    // Preserve raw content when it is not JSON.
+  }
+
+  return display;
+}
 
 router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
   const validation = validatePatientRegistrationPayload(req.body);
   if (!validation.valid) {
+    logEvent('warn', 'patient_write_rejected', {
+      correlationId: req.correlationId,
+      actorId: req.user.id,
+      code: 'INVALID_PATIENT_PAYLOAD',
+      details: validation.errors
+    });
     return next({
       status: 400,
       code: 'INVALID_PATIENT_PAYLOAD',
@@ -31,201 +102,288 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
     gender,
     createEncounter
   } = validation.value;
+  const issueActivationToken = req.body?.issueActivationToken === true;
 
   try {
-    let patient = await get(`SELECT id, name, dob, gender FROM patients WHERE id = ?`, [id]);
-    let patientCreated = false;
+    const result = await withTransaction(async (tx) => {
+      let patient = await loadPatientRecord(tx, id);
+      let patientCreated = false;
 
-    if (patient) {
-      const existingPatientValidation = validatePatientRegistrationPayload(patient);
-      if (!existingPatientValidation.valid) {
-        return next({
-          status: 409,
-          code: 'DATA_INTEGRITY_VIOLATION',
-          message: 'Existing patient demographics are incomplete. Run the repair script before reusing this UHID.'
-        });
-      }
+      if (patient) {
+        assertPatientRecord(patient);
 
-      if (patient.name !== name || patient.dob !== dob || patient.gender !== gender) {
-        return next({
-          status: 409,
-          code: 'PATIENT_CONFLICT',
-          message: 'A patient with this UHID already exists with different demographic data.'
-        });
-      }
-    } else {
-      await run(
-        `INSERT INTO patients (id, name, dob, gender) VALUES (?, ?, ?, ?)`,
-        [id, name, dob, gender]
-      );
-      patientCreated = true;
-      patient = { id, name, dob, gender };
-    }
-
-    let activeEncounter = null;
-    let encounterCreated = false;
-
-    if (createEncounter !== false) {
-      activeEncounter = await get(
-        `SELECT id, patient_id, phase, is_discharged, __v
-         FROM encounters
-         WHERE patient_id = ? AND is_discharged = 0
-         ORDER BY created_at DESC, id DESC
-         LIMIT 1`,
-        [id]
-      );
-
-      if (!activeEncounter) {
-        activeEncounter = {
-          id: `enc-${Date.now()}`,
-          patient_id: id,
-          phase: 'RECEPTION',
-          is_discharged: 0,
-          __v: 1
-        };
-        await run(
-          `INSERT INTO encounters (id, patient_id, phase, is_discharged, __v)
-           VALUES (?, ?, 'RECEPTION', 0, 1)`,
-          [activeEncounter.id, id]
-        );
-        encounterCreated = true;
-      } else {
-        const encounterState = validateEncounterLifecycle(activeEncounter);
-        if (!encounterState.valid) {
-          return next({
+        if (patient.name !== name || patient.dob !== dob || patient.gender !== gender) {
+          throw {
             status: 409,
-            code: 'DATA_INTEGRITY_VIOLATION',
-            message: 'Existing active encounter is malformed. Run the repair script before onboarding this patient again.',
-            details: encounterState.errors
-          });
+            code: 'PATIENT_CONFLICT',
+            message: 'A patient with this UHID already exists with different demographic data.'
+          };
         }
+      } else {
+        await tx.run(
+          `INSERT INTO patients (id, name, dob, gender) VALUES (?, ?, ?, ?)`,
+          [id, name, dob, gender]
+        );
+        patientCreated = true;
+        patient = { id, name, dob, gender };
       }
-    }
+
+      let activeEncounter = null;
+      let encounterCreated = false;
+
+      if (createEncounter !== false) {
+        const ensuredEncounter = await ensureActiveEncounter(tx, id, {
+          encounterId: `enc-${Date.now()}`
+        });
+        activeEncounter = ensuredEncounter.encounter;
+        encounterCreated = ensuredEncounter.created;
+      }
+
+      let activation = null;
+
+      if (issueActivationToken) {
+        if (!activeEncounter) {
+          throw {
+            status: 422,
+            code: 'NO_ACTIVE_ENCOUNTER',
+            message: 'Patient onboarding requires an active encounter before activation can be issued.'
+          };
+        }
+
+        const existingUser = await tx.get(`SELECT id FROM users WHERE patient_id = ?`, [id]);
+        if (existingUser) {
+          throw {
+            status: 409,
+            code: 'ACCOUNT_EXISTS',
+            message: 'A portal account already exists for this patient.'
+          };
+        }
+
+        const otp = generateActivationCode();
+        const expiresAt = new Date(Date.now() + 20 * 60 * 1000).toISOString();
+
+        await tx.run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [id]);
+        await tx.run(
+          `INSERT INTO patient_activation_tokens (patient_id, otp, expires_at) VALUES (?, ?, ?)`,
+          [id, otp, expiresAt]
+        );
+
+        activation = buildActivationEnvelope(otp, expiresAt);
+      }
+
+      return {
+        patient,
+        patientCreated,
+        activeEncounter,
+        encounterCreated,
+        activation
+      };
+    });
 
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
       patient_id: id,
-      action: `PATIENT_REGISTER:${patientCreated ? 'CREATED' : 'REUSED'}:${encounterCreated ? 'ENCOUNTER_CREATED' : 'ENCOUNTER_REUSED'}`,
+      action: `PATIENT_REGISTER:${result.patientCreated ? 'CREATED' : 'REUSED'}:${result.encounterCreated ? 'ENCOUNTER_CREATED' : 'ENCOUNTER_REUSED'}${result.activation ? ':ACTIVATION_ISSUED' : ''}`,
       new_state: JSON.stringify({
         patient_name: name,
-        patientCreated,
-        encounterCreated,
-        encounterId: activeEncounter?.id || null
+        patientCreated: result.patientCreated,
+        encounterCreated: result.encounterCreated,
+        encounterId: result.activeEncounter?.id || null,
+        activationIssued: Boolean(result.activation)
       })
     });
 
-    res.status(patientCreated ? 201 : 200).json({
-      patient: buildPatientReadModel(patient),
-      encounterId: activeEncounter?.id || null,
-      patientCreated,
-      encounterCreated
+    if (result.activation?.activation_code) {
+      console.log(`\n---------------------------------------------------------`);
+      console.log(`[SYS: MOCK SMS] To: Patient ${id}`);
+      console.log(`[SYS: MOCK SMS] Your Chettinad Care activation code is: ${result.activation.activation_code}. Valid for 20 mins.`);
+      console.log(`---------------------------------------------------------\n`);
+    }
+
+    res.status(result.patientCreated ? 201 : 200).json({
+      patient: buildPatientReadModel(result.patient),
+      encounterId: result.activeEncounter?.id || null,
+      patientCreated: result.patientCreated,
+      encounterCreated: result.encounterCreated,
+      activation: result.activation,
+      activationPath: result.activation ? '/patient/activate' : null
     });
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
+router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE']), async (req, res, next) => {
   try {
     const q = req.query.q || '';
     const patients = q.length >= 2
       ? await all(`SELECT id,name,dob,gender FROM patients WHERE name LIKE ? OR id LIKE ? LIMIT 20`, [`%${q}%`, `%${q}%`])
       : await all(`SELECT id,name,dob,gender FROM patients LIMIT 20`);
-    res.json(patients.map((patient) => buildPatientReadModel(patient)).filter(Boolean));
+
+    const safePatients = patients.flatMap((patient) => {
+      const patientState = validatePatientRecord(patient);
+      if (!patientState.valid) {
+        logEvent('warn', 'invalid_patient_read_skipped', {
+          correlationId: req.correlationId,
+          patientId: patient.id,
+          reasons: patientState.errors
+        });
+        return [];
+      }
+
+      const readModel = buildPatientReadModel(patient);
+      return readModel ? [readModel] : [];
+    });
+
+    res.json(safePatients);
   } catch (err) { next(err); }
 });
 
-router.get('/:patientId', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
+router.get('/:patientId', requireAuth, requireRole(['DOCTOR', 'NURSE']), async (req, res, next) => {
   try {
     const p = await get(`SELECT id,name,dob,gender FROM patients WHERE id = ?`, [req.params.patientId]);
     if (!p) return next({ status: 404, code: 'NOT_FOUND', message: 'Patient not found.' });
+
+    const patientState = validatePatientRecord(p);
+    if (!patientState.valid) {
+      return next(buildIntegrityError(
+        'Patient demographics are malformed and must be repaired before the chart can be opened.',
+        patientState.errors
+      ));
+    }
+
     res.json(buildPatientReadModel(p));
   } catch (err) { next(err); }
 });
 
-router.get('/:patientId/timeline', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
+router.get('/:patientId/timeline', requireAuth, requireRole(['DOCTOR', 'NURSE']), async (req, res, next) => {
   try {
     const { patientId } = req.params;
+    const patient = await loadPatientRecord({ get }, patientId);
+    assertPatientRecord(patient);
 
     const encounters = await all(
-      `SELECT id,phase,is_discharged,__v FROM encounters WHERE patient_id = ? ORDER BY id DESC`,
+      `SELECT id, phase, lifecycle_status, is_discharged, __v, created_at
+       FROM encounters
+       WHERE patient_id = ?
+       ORDER BY created_at DESC, id DESC`,
       [patientId]
     );
 
     const notes = await all(
-      `SELECT cn.id,cn.draft_content,cn.status,cn.author_id,cn.created_at,cn.encounter_id
-       FROM clinical_notes cn JOIN encounters e ON cn.encounter_id = e.id
-       WHERE e.patient_id = ? AND cn.status = 'FINALIZED' ORDER BY cn.created_at DESC`,
+      `SELECT cn.id, cn.draft_content, cn.status, cn.author_id, cn.created_at, cn.encounter_id,
+              e.phase AS encounter_phase, e.lifecycle_status, e.is_discharged
+       FROM clinical_notes cn
+       JOIN encounters e ON cn.encounter_id = e.id
+       WHERE e.patient_id = ? AND cn.status = 'FINALIZED'
+       ORDER BY cn.created_at DESC`,
       [patientId]
     );
 
     const rxRows = await all(
-      `SELECT p.id,p.rx_content,p.status,p.authorizing_user_id,p.created_at,p.encounter_id
-       FROM prescriptions p JOIN encounters e ON p.encounter_id = e.id
-       WHERE e.patient_id = ? AND p.status = 'AUTHORIZED' ORDER BY p.created_at DESC`,
+      `SELECT p.id, p.rx_content, p.status, p.authorizing_user_id, p.created_at, p.encounter_id,
+              e.phase AS encounter_phase, e.lifecycle_status, e.is_discharged
+       FROM prescriptions p
+       JOIN encounters e ON p.encounter_id = e.id
+       WHERE e.patient_id = ? AND p.status = 'AUTHORIZED'
+       ORDER BY p.created_at DESC`,
       [patientId]
     );
 
     const timeline = [];
 
     for (const enc of encounters) {
+      const encounterState = validateEncounterLifecycle(enc);
+      if (!encounterState.valid) {
+        logEvent('warn', 'timeline_encounter_skipped', {
+          correlationId: req.correlationId,
+          patientId,
+          encounterId: enc.id,
+          reasons: encounterState.errors
+        });
+        continue;
+      }
+
+      const occurredAt = enc.created_at || new Date().toISOString();
       timeline.push({
-        id: `tl-enc-${enc.id}`, patientId,
-        date: new Date().toISOString().split('T')[0],
+        id: `tl-enc-${enc.id}`,
+        patientId,
+        date: occurredAt,
+        occurredAt,
         type: enc.is_discharged ? 'discharge' : 'encounter',
-        title: enc.is_discharged ? 'Patient Discharged' : `Active Encounter — ${enc.phase}`,
-        summary: `Encounter phase: ${enc.phase}. ${enc.is_discharged ? 'Encounter closed.' : 'Currently active.'}`,
-        verifiedBy: 'System', encounterId: enc.id
+        title: enc.is_discharged ? 'Patient Discharged' : `Encounter — ${enc.lifecycle_status}`,
+        summary: enc.is_discharged
+          ? 'Encounter completed and closed cleanly.'
+          : `Encounter currently active in ${enc.lifecycle_status}.`,
+        verifiedBy: 'System',
+        encounterId: enc.id
       });
     }
 
     for (const note of notes) {
-      let display = note.draft_content || 'No content recorded.';
-      try {
-        const p = JSON.parse(note.draft_content);
-        if (p.soap) {
-          const parts = [];
-          if (p.soap.S) parts.push(`S: ${p.soap.S}`);
-          if (p.soap.A) parts.push(`A: ${p.soap.A}`);
-          if (p.soap.P) parts.push(`P: ${p.soap.P}`);
-          if (parts.length) display = parts.join(' | ');
-        }
-      } catch (_) {}
+      const encounterState = validateEncounterLifecycle({
+        patient_id: patientId,
+        phase: note.encounter_phase,
+        lifecycle_status: note.lifecycle_status,
+        is_discharged: note.is_discharged
+      });
+      if (!encounterState.valid) {
+        logEvent('warn', 'timeline_note_skipped', {
+          correlationId: req.correlationId,
+          patientId,
+          noteId: note.id,
+          reasons: encounterState.errors
+        });
+        continue;
+      }
 
       timeline.push({
-        id: `tl-note-${note.id}`, patientId,
-        date: note.created_at
-          ? new Date(note.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-          : new Date().toISOString().split('T')[0],
+        id: `tl-note-${note.id}`,
+        patientId,
+        date: note.created_at || new Date().toISOString(),
+        occurredAt: note.created_at || new Date().toISOString(),
         type: 'consultation',
         title: 'Clinical Consultation Note',
-        summary: display.length > 300 ? display.substring(0, 300) + '...' : display,
+        summary: summarizeNoteContent(note.draft_content),
         verifiedBy: note.author_id || 'Attending Physician',
-        noteId: note.id, encounterId: note.encounter_id
+        noteId: note.id,
+        encounterId: note.encounter_id
       });
     }
 
     for (const rx of rxRows) {
-      let display = rx.rx_content || 'Prescription details not available.';
-      try {
-        const p = JSON.parse(rx.rx_content);
-        if (p.newRx && p.newRx.length > 0) display = p.newRx.map(m => m.name).join(', ');
-      } catch (_) {}
+      const encounterState = validateEncounterLifecycle({
+        patient_id: patientId,
+        phase: rx.encounter_phase,
+        lifecycle_status: rx.lifecycle_status,
+        is_discharged: rx.is_discharged
+      });
+      if (!encounterState.valid) {
+        logEvent('warn', 'timeline_prescription_skipped', {
+          correlationId: req.correlationId,
+          patientId,
+          prescriptionId: rx.id,
+          reasons: encounterState.errors
+        });
+        continue;
+      }
 
       timeline.push({
-        id: `tl-rx-${rx.id}`, patientId,
-        date: rx.created_at
-          ? new Date(rx.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-          : new Date().toISOString().split('T')[0],
-        type: 'lab', title: 'Prescription Authorized',
-        summary: display,
+        id: `tl-rx-${rx.id}`,
+        patientId,
+        date: rx.created_at || new Date().toISOString(),
+        occurredAt: rx.created_at || new Date().toISOString(),
+        type: 'prescription',
+        title: 'Prescription Authorized',
+        summary: summarizePrescriptionContent(rx.rx_content),
         verifiedBy: rx.authorizing_user_id || 'Attending Physician',
-        rxId: rx.id, encounterId: rx.encounter_id
+        rxId: rx.id,
+        encounterId: rx.encounter_id
       });
     }
 
-    timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    timeline.sort((a, b) => new Date(b.occurredAt || b.date).getTime() - new Date(a.occurredAt || a.date).getTime());
     res.json(timeline);
   } catch (err) { next(err); }
 });

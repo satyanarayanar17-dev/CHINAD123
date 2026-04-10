@@ -18,6 +18,7 @@ export const PatientOnboarding = () => {
   const [activationCode, setActivationCode] = useState<string | null>(null);
   const [activationExpiresAt, setActivationExpiresAt] = useState<string | null>(null);
   const [encounterId, setEncounterId] = useState<string | null>(null);
+  const [activationPath, setActivationPath] = useState<string | null>(null);
 
   const updateField = (field: keyof typeof defaultForm, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -27,6 +28,7 @@ export const PatientOnboarding = () => {
     setActivationCode(null);
     setActivationExpiresAt(null);
     setEncounterId(null);
+    setActivationPath(null);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -39,13 +41,14 @@ export const PatientOnboarding = () => {
         id: form.id.trim(),
         name: form.name.trim(),
         dob: form.dob,
-        gender: form.gender
+        gender: form.gender,
+        issueActivationToken: true,
       });
 
-      const activation = await adminApi.generatePatientActivation(form.id.trim());
-      setActivationCode(activation.activation_code || null);
-      setActivationExpiresAt(activation.expires_at || null);
+      setActivationCode(registration.activation?.activation_code || null);
+      setActivationExpiresAt(registration.activation?.expires_at || null);
       setEncounterId(registration.encounterId);
+      setActivationPath(registration.activationPath || null);
 
       push(
         'success',
@@ -172,6 +175,11 @@ export const PatientOnboarding = () => {
             {activationExpiresAt && (
               <p className="mt-2 text-xs text-on-surface-variant">
                 Expires: {new Date(activationExpiresAt).toLocaleString('en-IN')}
+              </p>
+            )}
+            {activationPath && (
+              <p className="mt-2 text-xs text-on-surface-variant">
+                Activation path: <span className="font-semibold text-on-surface">{activationPath}</span>
               </p>
             )}
           </div>

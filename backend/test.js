@@ -62,19 +62,19 @@ async function corruptDataForIntegrityScenario() {
 
   await run(`UPDATE patients SET name = '', gender = 'Alien' WHERE id = ?`, ['pat-3']);
   await run(
-    `INSERT INTO encounters (id, patient_id, phase, is_discharged, __v)
-     VALUES (?, ?, ?, 0, 1)`,
-    ['enc-orphan', 'ghost-patient', 'RECEPTION']
+    `INSERT INTO encounters (id, patient_id, phase, lifecycle_status, is_discharged, __v)
+     VALUES (?, ?, ?, ?, 0, 1)`,
+    ['enc-orphan', 'ghost-patient', 'RECEPTION', 'RECEPTION']
   );
   await run(
-    `INSERT INTO encounters (id, patient_id, phase, is_discharged, __v)
-     VALUES (?, ?, ?, 0, 1)`,
-    ['enc-legacy-closed', 'pat-2', 'CLOSED']
+    `INSERT INTO encounters (id, patient_id, phase, lifecycle_status, is_discharged, __v)
+     VALUES (?, ?, ?, ?, 0, 1)`,
+    ['enc-legacy-closed', 'pat-2', 'CLOSED', 'CLOSED']
   );
   await run(
-    `INSERT INTO encounters (id, patient_id, phase, is_discharged, __v)
-     VALUES (?, ?, ?, 0, 1)`,
-    ['enc-ambiguous', 'pat-2', 'MYSTERY']
+    `INSERT INTO encounters (id, patient_id, phase, lifecycle_status, is_discharged, __v)
+     VALUES (?, ?, ?, ?, 0, 1)`,
+    ['enc-ambiguous', 'pat-2', 'MYSTERY', 'MYSTERY']
   );
   await run(
     `INSERT INTO clinical_notes (id, encounter_id, draft_content, status, author_id, __v)
@@ -380,6 +380,33 @@ async function runVerification() {
     .send({ id: 'pat-10', name: 'Pilot Patient', dob: '1988-06-11', gender: 'Female' });
   assert.strictEqual(patientRegisterRes.status, 201, 'Admin patient onboarding must succeed.');
   pass('Admin patient onboarding succeeds');
+
+  const atomicOnboardingRes = await request(app)
+    .post('/api/v1/patients')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      id: 'pat-11',
+      name: 'Activation Ready Patient',
+      dob: '1991-04-05',
+      gender: 'Female',
+      issueActivationToken: true
+    });
+  assert.strictEqual(atomicOnboardingRes.status, 201, 'Atomic onboarding with activation token must succeed.');
+  assert.ok(atomicOnboardingRes.body.encounterId, 'Atomic onboarding must guarantee an active encounter.');
+  assert.strictEqual(atomicOnboardingRes.body.activationPath, '/patient/activate', 'Atomic onboarding must return the activation route.');
+  assert.ok(
+    atomicOnboardingRes.body.activation?.activation_code,
+    'Atomic onboarding must surface the activation code in API delivery mode.'
+  );
+  const activationClaimRes = await request(app)
+    .post('/api/v1/activation/claim')
+    .send({
+      patient_id: 'pat-11',
+      otp: atomicOnboardingRes.body.activation.activation_code,
+      new_password: 'Password123!'
+    });
+  assert.strictEqual(activationClaimRes.status, 200, 'Atomic onboarding activation code must be claimable.');
+  pass('Atomic onboarding flows cleanly from patient creation to activation claim');
 
   const patientRegisterAudit = await get(
     `SELECT action, patient_id, new_state

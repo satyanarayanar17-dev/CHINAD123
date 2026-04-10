@@ -2,9 +2,11 @@ const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { get, run } = require('../database');
+const { get, all, run, withTransaction } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
 const { createRateLimiter } = require('../middleware/rateLimit');
+const { assertPatientRecord, loadPatientRecord, resolveSingleActiveEncounter } = require('../lib/careFlow');
+const { logEvent } = require('../lib/logger');
 
 const router = express.Router();
 const activationOtpDelivery =
@@ -40,17 +42,34 @@ const claimRateLimit = createRateLimiter({
  */
 router.post('/generate', requireAuth, requireRole(['ADMIN', 'NURSE', 'DOCTOR']), generateLimiter, async (req, res, next) => {
   const { patient_id } = req.body;
-  if (!patient_id) return res.status(400).json({ error: 'MISSING_DATA', message: 'patient_id is required' });
+  if (!patient_id) {
+    logEvent('warn', 'activation_generate_rejected', {
+      correlationId: req.correlationId,
+      actorId: req.user.id,
+      reason: 'missing_patient_id'
+    });
+    return res.status(400).json({ error: 'MISSING_DATA', message: 'patient_id is required' });
+  }
 
   try {
-    const patientExists = await get(`SELECT id FROM patients WHERE id = ?`, [patient_id]);
-    if (!patientExists) {
-      return res.status(404).json({ error: 'NOT_FOUND', message: 'Patient demographic record not found.' });
-    }
+    const patientRecord = await loadPatientRecord({ get }, patient_id);
+    assertPatientRecord(patientRecord);
+
+    await resolveSingleActiveEncounter({ all }, patient_id, {
+      missingMessage: 'Patient must have an active encounter before activation can be issued.',
+      malformedMessage: 'Patient activation is blocked because the linked encounter is malformed.',
+      duplicateMessage: 'Multiple active encounters exist for this patient. Repair the data before issuing activation.'
+    });
 
     // Block if a user account already exists for this patient
     const existingUser = await get(`SELECT id FROM users WHERE patient_id = ?`, [patient_id]);
     if (existingUser) {
+      logEvent('warn', 'activation_generate_rejected', {
+        correlationId: req.correlationId,
+        actorId: req.user.id,
+        patientId: patient_id,
+        reason: 'account_already_exists'
+      });
       return res.status(409).json({ error: 'ACCOUNT_EXISTS', message: 'A portal account already exists for this patient.' });
     }
 
@@ -102,58 +121,99 @@ router.post('/generate', requireAuth, requireRole(['ADMIN', 'NURSE', 'DOCTOR']),
 router.post('/claim', claimRateLimit, async (req, res, next) => {
   const { patient_id, otp, new_password } = req.body;
   if (!patient_id || !otp || !new_password) {
+    logEvent('warn', 'activation_claim_rejected', {
+      correlationId: req.correlationId,
+      patientId: patient_id || null,
+      reason: 'missing_fields'
+    });
     return res.status(400).json({ error: 'MISSING_DATA', message: 'patient_id, otp, and new_password are required' });
   }
 
   if (new_password.length < 8) {
+    logEvent('warn', 'activation_claim_rejected', {
+      correlationId: req.correlationId,
+      patientId: patient_id,
+      reason: 'weak_password'
+    });
     return res.status(400).json({ error: 'WEAK_PASSWORD', message: 'Password must be at least 8 characters long.' });
   }
 
   try {
-    const tokenRecord = await get(
-      `SELECT * FROM patient_activation_tokens WHERE patient_id = ? AND otp = ?`,
-      [patient_id, otp]
-    );
+    const activationResult = await withTransaction(async (tx) => {
+      const patientRecord = await loadPatientRecord(tx, patient_id);
+      assertPatientRecord(patientRecord);
 
-    if (!tokenRecord) {
-      return res.status(401).json({ error: 'INVALID_TOKEN', message: 'Activation code is invalid or does not match this UHID.' });
-    }
+      await resolveSingleActiveEncounter(tx, patient_id, {
+        missingMessage: 'Activation cannot continue until an active encounter exists for this patient.',
+        malformedMessage: 'Activation is blocked because the linked encounter is malformed.',
+        duplicateMessage: 'Activation is blocked because multiple active encounters exist for this patient.'
+      });
 
-    const now = new Date();
-    const expiry = new Date(tokenRecord.expires_at);
-    if (now > expiry) {
-      await run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patient_id]);
-      return res.status(401).json({ error: 'EXPIRED_TOKEN', message: 'Activation code has expired. Please request a new one.' });
-    }
+      const tokenRecord = await tx.get(
+        `SELECT * FROM patient_activation_tokens WHERE patient_id = ? AND otp = ?`,
+        [patient_id, otp]
+      );
 
-    const existingUser = await get(`SELECT id FROM users WHERE patient_id = ?`, [patient_id]);
-    if (existingUser) {
-      return res.status(409).json({ error: 'ACCOUNT_EXISTS', message: 'An account has already been claimed for this UHID.' });
-    }
+      if (!tokenRecord) {
+        throw {
+          status: 401,
+          code: 'INVALID_TOKEN',
+          message: 'Activation code is invalid or does not match this UHID.'
+        };
+      }
 
-    const newUserId = `usr-${patient_id}`;
-    const salt = await bcrypt.genSalt(10);
-    const hash = await bcrypt.hash(new_password, salt);
+      const now = new Date();
+      const expiry = new Date(tokenRecord.expires_at);
+      if (now > expiry) {
+        await tx.run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patient_id]);
+        throw {
+          status: 401,
+          code: 'EXPIRED_TOKEN',
+          message: 'Activation code has expired. Please request a new one.'
+        };
+      }
 
-    const patientDemographic = await get(`SELECT name FROM patients WHERE id = ?`, [patient_id]);
+      const existingUser = await tx.get(`SELECT id FROM users WHERE patient_id = ?`, [patient_id]);
+      if (existingUser) {
+        throw {
+          status: 409,
+          code: 'ACCOUNT_EXISTS',
+          message: 'An account has already been claimed for this UHID.'
+        };
+      }
 
-    await run(
-      `INSERT INTO users (id, role, name, password_hash, is_active, patient_id) VALUES (?, ?, ?, ?, ?, ?)`,
-      [newUserId, 'PATIENT', patientDemographic.name, hash, 1, patient_id]
-    );
+      const newUserId = `usr-${patient_id}`;
+      const salt = await bcrypt.genSalt(10);
+      const hash = await bcrypt.hash(new_password, salt);
 
-    await run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patient_id]);
+      await tx.run(
+        `INSERT INTO users (id, role, name, password_hash, is_active, patient_id) VALUES (?, ?, ?, ?, ?, ?)`,
+        [newUserId, 'PATIENT', patientRecord.name, hash, 1, patient_id]
+      );
+
+      await tx.run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patient_id]);
+
+      return { newUserId };
+    });
 
     await writeAuditDirect({
       correlation_id: req.correlationId,
-      actor_id: newUserId,
+      actor_id: activationResult.newUserId,
       patient_id,
       action: 'PATIENT_ACTIVATION_CLAIM_SUCCESS',
-      new_state: JSON.stringify({ activated_user_id: newUserId })
+      new_state: JSON.stringify({ activated_user_id: activationResult.newUserId })
     });
 
     res.json({ message: 'Account successfully activated. You may now log in.' });
   } catch (err) {
+    if (err?.code) {
+      logEvent(err.status >= 500 ? 'error' : 'warn', 'activation_claim_failed', {
+        correlationId: req.correlationId,
+        patientId: patient_id,
+        code: err.code,
+        message: err.message
+      });
+    }
     next(err);
   }
 });

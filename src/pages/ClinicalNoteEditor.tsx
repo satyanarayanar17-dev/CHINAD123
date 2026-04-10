@@ -31,6 +31,7 @@ export const ClinicalNoteEditor = () => {
   const [diagnoses, setDiagnoses] = useState<{code: string, name: string, isNew: boolean}[]>([]);
   const [followUp, setFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpInstructions, setFollowUpInstructions] = useState('');
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Load existing note from backend if noteId exists
@@ -63,6 +64,7 @@ export const ClinicalNoteEditor = () => {
           setDiagnoses(parsed.diagnoses || []);
           setFollowUp(parsed.followUp || false);
           setFollowUpDate(parsed.followUpDate || '');
+          setFollowUpInstructions(parsed.followUpInstructions || '');
         } catch(e) {}
       } else if (patient && consultationId !== 'new') {
          setDiagnoses(patient.riskFlags.map(f => ({ code: 'Z99.9', name: f, isNew: false })));
@@ -75,7 +77,15 @@ export const ClinicalNoteEditor = () => {
     }
   }, [existingNote, isInitialized, patient, consultationId]);
 
-  const debouncedState = useDebounce({ soap, diagnoses, followUp, followUpDate }, 1000);
+  const buildDraftPayload = () => ({
+    soap,
+    diagnoses,
+    followUp,
+    followUpDate,
+    followUpInstructions,
+  });
+
+  const debouncedState = useDebounce(buildDraftPayload(), 1000);
 
   // Auto-save draft
   useEffect(() => {
@@ -107,15 +117,14 @@ export const ClinicalNoteEditor = () => {
     };
 
     saveDraft();
-  }, [debouncedState]);
+  }, [debouncedState, isInitialized, isNoteLoading, isPatientLoading, noteId, patientId, push, signed, version]);
 
   const signMutation = useMutation({
     mutationFn: async () => {
       if (!noteId) throw new Error("No note ID found");
-      // First ensure the latest draft is saved, we don't strictly need to but good practice
-      await clinicalApi.saveDraftNote(noteId, JSON.stringify({ soap, diagnoses, followUp, followUpDate }), version);
-      // Wait for it to save then finalize with version+1
-      return await clinicalApi.finalizeNote(noteId, version + 1);
+      const saveResult = await clinicalApi.saveDraftNote(noteId, JSON.stringify(buildDraftPayload()), version);
+      setVersion(saveResult.newVersion);
+      return await clinicalApi.finalizeNote(noteId, saveResult.newVersion);
     },
     onSuccess: () => {
       setSigned(true);
@@ -282,7 +291,13 @@ export const ClinicalNoteEditor = () => {
                   </div>
                   <div className="flex-1">
                     <label className="text-xs font-bold text-on-surface-variant uppercase mb-1 block">Instructions</label>
-                    <input type="text" placeholder="e.g. Repeat HbA1c in 3 months" className="w-full border border-outline rounded-lg px-3 py-2 text-sm outline-none focus:border-tertiary" />
+                    <input
+                      type="text"
+                      value={followUpInstructions}
+                      onChange={e => setFollowUpInstructions(e.target.value)}
+                      placeholder="e.g. Repeat HbA1c in 3 months"
+                      className="w-full border border-outline rounded-lg px-3 py-2 text-sm outline-none focus:border-tertiary"
+                    />
                   </div>
                 </div>
               )}

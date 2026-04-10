@@ -2,6 +2,7 @@ const PATIENT_GENDERS = ['Male', 'Female', 'Other', 'Not specified'];
 const ACTIVE_ENCOUNTER_PHASES = ['AWAITING', 'RECEPTION', 'IN_CONSULTATION'];
 const DISCHARGED_ENCOUNTER_PHASE = 'DISCHARGED';
 const ALL_ENCOUNTER_PHASES = [...ACTIVE_ENCOUNTER_PHASES, DISCHARGED_ENCOUNTER_PHASE];
+const ENCOUNTER_LIFECYCLE_STATUSES = [...ALL_ENCOUNTER_PHASES];
 const LEGACY_ENCOUNTER_PHASE_ALIASES = {
   CLOSED: DISCHARGED_ENCOUNTER_PHASE
 };
@@ -108,6 +109,50 @@ function buildPatientReadModel(row = {}) {
   };
 }
 
+function validatePatientRecord(row = {}, options = {}) {
+  const {
+    allowDeterministicNameFallback = true,
+    allowDeterministicGenderFallback = true
+  } = options;
+
+  const patientId = normalizeIdentifier(row.id || row.patient_id);
+  const normalizedGender = normalizePatientGender(row.gender);
+  const errors = [];
+  const warnings = [];
+
+  if (!patientId) {
+    errors.push('missing_patient_id');
+  }
+
+  if (!trimToNull(row.name)) {
+    if (allowDeterministicNameFallback) {
+      warnings.push('missing_patient_name_placeholder_applied');
+    } else {
+      errors.push('missing_patient_name');
+    }
+  }
+
+  if (!isIsoDateOnly(row.dob)) {
+    errors.push('invalid_patient_dob');
+  }
+
+  if (!normalizedGender) {
+    if (allowDeterministicGenderFallback) {
+      warnings.push('invalid_patient_gender_normalized');
+    } else {
+      errors.push('invalid_patient_gender');
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    patientId,
+    gender: normalizedGender,
+    errors,
+    warnings
+  };
+}
+
 function normalizeEncounterPhase(value, options = {}) {
   const { allowLegacyAlias = true } = options;
   const trimmed = trimToNull(value);
@@ -118,6 +163,24 @@ function normalizeEncounterPhase(value, options = {}) {
   const upper = trimmed.toUpperCase();
   const candidate = allowLegacyAlias ? (LEGACY_ENCOUNTER_PHASE_ALIASES[upper] || upper) : upper;
   return ALL_ENCOUNTER_PHASES.includes(candidate) ? candidate : null;
+}
+
+function normalizeEncounterLifecycleStatus(value, options = {}) {
+  return normalizeEncounterPhase(value, options);
+}
+
+function deriveEncounterLifecycleStatus(row = {}) {
+  const normalizedPhase = normalizeEncounterPhase(row.phase);
+  if (!normalizedPhase) {
+    return null;
+  }
+
+  const isDischarged = toDischargeFlag(row.is_discharged);
+  if (isDischarged === 1) {
+    return DISCHARGED_ENCOUNTER_PHASE;
+  }
+
+  return normalizedPhase;
 }
 
 function normalizeNoteStatus(value) {
@@ -147,6 +210,8 @@ function toDischargeFlag(value) {
 function validateEncounterLifecycle(row = {}) {
   const patientId = normalizeIdentifier(row.patient_id);
   const phase = normalizeEncounterPhase(row.phase);
+  const lifecycleStatus = normalizeEncounterLifecycleStatus(row.lifecycle_status);
+  const derivedLifecycleStatus = deriveEncounterLifecycleStatus(row);
   const isDischarged = toDischargeFlag(row.is_discharged);
   const errors = [];
 
@@ -158,6 +223,14 @@ function validateEncounterLifecycle(row = {}) {
     errors.push('invalid_phase');
   }
 
+  if (!lifecycleStatus) {
+    errors.push('invalid_lifecycle_status');
+  }
+
+  if (phase && lifecycleStatus && phase !== lifecycleStatus) {
+    errors.push('phase_lifecycle_status_mismatch');
+  }
+
   if (phase === DISCHARGED_ENCOUNTER_PHASE && isDischarged !== 1) {
     errors.push('phase_requires_discharged_flag');
   }
@@ -166,10 +239,16 @@ function validateEncounterLifecycle(row = {}) {
     errors.push('discharged_flag_requires_discharged_phase');
   }
 
+  if (lifecycleStatus && derivedLifecycleStatus && lifecycleStatus !== derivedLifecycleStatus) {
+    errors.push('lifecycle_status_discharge_mismatch');
+  }
+
   return {
     valid: errors.length === 0,
     patientId,
     phase,
+    lifecycleStatus,
+    derivedLifecycleStatus,
     isDischarged,
     errors
   };
@@ -188,7 +267,13 @@ function serializeQueueSlot(row = {}) {
   const encounterId = normalizeIdentifier(row.encounter_id || row.id);
   const patientRecordId = normalizeIdentifier(row.patient_record_id || row.linked_patient_record_id);
   const lifecycle = validateEncounterLifecycle(row);
-  const patient = patientRecordId
+  const patientValidation = validatePatientRecord({
+    id: row.patient_id,
+    name: row.name,
+    dob: row.dob,
+    gender: row.gender
+  });
+  const patient = patientRecordId && patientValidation.valid
     ? buildPatientReadModel({
         id: row.patient_id,
         name: row.name,
@@ -209,8 +294,12 @@ function serializeQueueSlot(row = {}) {
 
   if (!patient) {
     errors.push('missing_patient_payload');
-  } else if (!trimToNull(row.name)) {
-    warnings.push('missing_patient_name_placeholder_applied');
+  } else if (patientValidation.warnings.length > 0) {
+    warnings.push(...patientValidation.warnings);
+  }
+
+  if (!patientValidation.valid) {
+    errors.push(...patientValidation.errors);
   }
 
   if (!lifecycle.valid) {
@@ -237,7 +326,8 @@ function serializeQueueSlot(row = {}) {
       patient,
       type: 'General Review',
       specialty: 'General Medicine',
-      lifecycleStatus: lifecycle.phase,
+      lifecycleStatus: lifecycle.lifecycleStatus,
+      encounterPhase: lifecycle.phase,
       __v: Number.isInteger(row.__v) ? row.__v : Number(row.__v) || 1
     },
     warnings,
@@ -294,6 +384,7 @@ module.exports = {
   ACTIVE_ENCOUNTER_PHASES,
   DISCHARGED_ENCOUNTER_PHASE,
   ALL_ENCOUNTER_PHASES,
+  ENCOUNTER_LIFECYCLE_STATUSES,
   NOTE_STATUSES,
   PRESCRIPTION_STATUSES,
   LEGACY_ENCOUNTER_PHASE_ALIASES,
@@ -301,10 +392,13 @@ module.exports = {
   trimToNull,
   normalizeIdentifier,
   normalizePatientGender,
+  validatePatientRecord,
   getPatientDisplayName,
   buildUnknownPatientName,
   buildPatientReadModel,
   normalizeEncounterPhase,
+  normalizeEncounterLifecycleStatus,
+  deriveEncounterLifecycleStatus,
   normalizeQueueTransitionPhase,
   normalizeNoteStatus,
   normalizePrescriptionStatus,

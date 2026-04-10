@@ -27,6 +27,7 @@ function sqliteStatements() {
       id TEXT PRIMARY KEY,
       patient_id TEXT NOT NULL,
       phase TEXT NOT NULL,
+      lifecycle_status TEXT NOT NULL,
       is_discharged INTEGER NOT NULL DEFAULT 0,
       __v INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -132,6 +133,7 @@ function postgresStatements() {
       id TEXT PRIMARY KEY,
       patient_id TEXT NOT NULL REFERENCES patients(id),
       phase TEXT NOT NULL,
+      lifecycle_status TEXT NOT NULL,
       is_discharged INTEGER NOT NULL DEFAULT 0,
       __v INTEGER NOT NULL DEFAULT 1,
       created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -239,6 +241,24 @@ async function ensureEncounterCreatedAt(context) {
   await context.run(`UPDATE encounters SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL`);
 }
 
+async function ensureEncounterLifecycleStatus(context) {
+  const columnExists = await hasColumn(context, 'encounters', 'lifecycle_status');
+  if (columnExists) {
+    return;
+  }
+
+  await context.run(`ALTER TABLE encounters ADD COLUMN lifecycle_status TEXT`);
+  await context.run(
+    `UPDATE encounters
+     SET lifecycle_status = CASE
+       WHEN is_discharged = 1 OR UPPER(TRIM(phase)) IN ('DISCHARGED', 'CLOSED') THEN 'DISCHARGED'
+       WHEN UPPER(TRIM(phase)) IN ('AWAITING', 'RECEPTION', 'IN_CONSULTATION') THEN UPPER(TRIM(phase))
+       ELSE lifecycle_status
+     END
+     WHERE lifecycle_status IS NULL OR TRIM(lifecycle_status) = ''`
+  );
+}
+
 module.exports = {
   id: '001_initial_schema',
   async up(context) {
@@ -248,6 +268,8 @@ module.exports = {
     }
 
     await ensureEncounterCreatedAt(context);
+    await ensureEncounterLifecycleStatus(context);
     await context.run(`CREATE INDEX IF NOT EXISTS idx_encounters_created_at ON encounters(created_at)`);
+    await context.run(`CREATE INDEX IF NOT EXISTS idx_encounters_lifecycle_status ON encounters(lifecycle_status)`);
   }
 };

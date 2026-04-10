@@ -16,6 +16,28 @@ const useDatabaseSsl =
 let db;
 let pgPool;
 
+function createPostgresQueryContext(client) {
+  return {
+    dialect: dbDialect,
+    run: async (sql, params = []) => {
+      const res = await client.query(transpileQuery(sql), params);
+      return {
+        lastID: res.rows?.[0]?.id ?? null,
+        changes: res.rowCount,
+        rows: res.rows
+      };
+    },
+    get: async (sql, params = []) => {
+      const res = await client.query(transpileQuery(sql), params);
+      return res.rows[0];
+    },
+    all: async (sql, params = []) => {
+      const res = await client.query(transpileQuery(sql), params);
+      return res.rows;
+    }
+  };
+}
+
 if (dbDialect === 'postgres') {
   console.log('[DB] Connecting to PostgreSQL pool...');
   pgPool = new Pool({
@@ -122,6 +144,47 @@ async function migrateDatabase() {
   await applyMigrations({ run, all, dialect: dbDialect });
 }
 
+async function withTransaction(work) {
+  if (typeof work !== 'function') {
+    throw new Error('withTransaction requires a callback.');
+  }
+
+  if (dbDialect === 'postgres') {
+    const client = await pgPool.connect();
+    const context = createPostgresQueryContext(client);
+
+    try {
+      await client.query('BEGIN');
+      const result = await work(context);
+      await client.query('COMMIT');
+      return result;
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackErr) {
+        console.error('[DB] PostgreSQL rollback failed:', rollbackErr.message);
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  await run('BEGIN IMMEDIATE');
+  try {
+    const result = await work({ run, get, all, dialect: dbDialect });
+    await run('COMMIT');
+    return result;
+  } catch (err) {
+    try {
+      await run('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('[DB] SQLite rollback failed:', rollbackErr.message);
+    }
+    throw err;
+  }
+}
+
 async function dropAllTables() {
   const tables = [
     'refresh_tokens',
@@ -133,6 +196,7 @@ async function dropAllTables() {
     'clinical_notes',
     'encounters',
     'patient_activation_tokens',
+    'data_integrity_quarantine',
     'users',
     'patients',
     'schema_migrations'
@@ -175,6 +239,7 @@ module.exports = {
   all,
   pingDatabase,
   migrateDatabase,
+  withTransaction,
   dropAllTables,
   resetAndSeedDatabase
 };

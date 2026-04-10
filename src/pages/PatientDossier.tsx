@@ -2,38 +2,55 @@ import React, { useState } from 'react';
 import { Card, CardContent } from '../components/ui/Card';
 import { Tabs } from '../components/ui/Tabs';
 import { AuditMetadata } from '../components/ui/AuditMetadata';
-import { AlertTriangle, LockOpen, FileText, Activity, Database, History as HistoryIcon, ArrowLeft } from 'lucide-react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { AlertTriangle, LockOpen, FileText, Activity, History as HistoryIcon, ArrowLeft, ClipboardList, Pill } from 'lucide-react';
+import { useParams, Link } from 'react-router-dom';
 import { usePatient, usePatientTimeline } from '../hooks/queries/usePatients';
 import { PatientsAPI } from '../api/patients';
 import { useMutation } from '@tanstack/react-query';
 import { useToast, ToastContainer } from '../components/ui/Toast';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
+import { useAuth } from '../hooks/useAuth';
+import type { TimelineEntry } from '../store/mockData';
+
+const TIMELINE_META: Record<TimelineEntry['type'], { label: string; accent: string }> = {
+  encounter: { label: 'Encounter Opened', accent: 'text-primary' },
+  consultation: { label: 'Clinical Note', accent: 'text-primary' },
+  prescription: { label: 'Prescription Authorized', accent: 'text-tertiary' },
+  discharge: { label: 'Encounter Closed', accent: 'text-emerald-700' },
+  lab: { label: 'Lab Record', accent: 'text-tertiary' },
+  radiology: { label: 'Imaging Record', accent: 'text-on-surface-variant' },
+};
 
 export const PatientDossier = () => {
   const { patientId } = useParams<{ patientId: string }>();
-  const navigate = useNavigate();
+  const { role } = useAuth();
   const { toasts, push, dismiss } = useToast();
   const [breakGlassOpen, setBreakGlassOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('timeline');
   const [isEmergencyAccess, setIsEmergencyAccess] = useState(false);
   const [justification, setJustification] = useState('');
+  const canWriteDoctorOrders = role === 'doctor';
+  const registryRoute = role === 'nurse' ? '/operations/nurse-triage' : '/clinical/command-center';
 
-  // Resolve patient from centralized store — fall back to first patient if id unknown
-  const fallbackId = patientId ?? 'CC-99821';
-  const { data: patient, isLoading: isPatientLoading, isError: isPatientError } = usePatient(fallbackId);
-  const { data: fullTimeline = [], isLoading: isTimelineLoading } = usePatientTimeline(fallbackId);
+  const { data: patient, isLoading: isPatientLoading, isError: isPatientError } = usePatient(patientId);
+  const { data: fullTimeline = [], isLoading: isTimelineLoading } = usePatientTimeline(patientId);
   
   const isLoading = isPatientLoading || isTimelineLoading;
-  const isError = isPatientError;
+  const isError = isPatientError || !patientId;
   
   const timeline = fullTimeline.filter((t) => {
     if (!patient || t.patientId !== patient.id) return false;
     if (activeTab === 'timeline') return true;
-    if (activeTab === 'pathology') return t.type === 'lab';
-    if (activeTab === 'radiology') return t.type === 'radiology';
+    if (activeTab === 'encounters') return t.type === 'encounter' || t.type === 'discharge';
+    if (activeTab === 'consultations') return t.type === 'consultation';
+    if (activeTab === 'prescriptions') return t.type === 'prescription';
     return true;
   });
+  const continuityStats = {
+    encounters: fullTimeline.filter((entry) => entry.type === 'encounter' || entry.type === 'discharge').length,
+    consultations: fullTimeline.filter((entry) => entry.type === 'consultation').length,
+    prescriptions: fullTimeline.filter((entry) => entry.type === 'prescription').length,
+  };
 
   const breakGlassMutation = useMutation({
     mutationFn: async (reason: string) => {
@@ -80,7 +97,7 @@ export const PatientDossier = () => {
         <>
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm font-medium mb-6">
-        <Link to="/clinical/command-center" className="text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
+        <Link to={registryRoute} className="text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
           <ArrowLeft size={14} /> Registry
         </Link>
         <span className="text-on-surface-variant opacity-30">&gt;</span>
@@ -172,12 +189,14 @@ export const PatientDossier = () => {
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-xs font-bold uppercase text-on-surface-variant tracking-widest">Active Meds</h2>
-                <Link
-                  to={`/clinical/patient/${patient.id}/prescription/new`}
-                  className="text-xs font-bold text-primary hover:underline"
-                >
-                  + Prescribe
-                </Link>
+                {canWriteDoctorOrders && (
+                  <Link
+                    to={`/clinical/patient/${patient.id}/prescription/new`}
+                    className="text-xs font-bold text-primary hover:underline"
+                  >
+                    + Prescribe
+                  </Link>
+                )}
               </div>
               {patient.activeMeds.length === 0 ? (
                 <p className="text-xs text-on-surface-variant">No active medications.</p>
@@ -227,34 +246,36 @@ export const PatientDossier = () => {
             </div>
           )}
 
-          {/* Order Tracking */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-white p-4 rounded-xl border border-outline border-l-4 border-l-amber-400 shadow-sm">
-              <span className="text-[10px] font-bold text-on-surface-variant block mb-2">ETA: Today, 04:00 PM</span>
-              <span className="text-xs font-bold block mb-2">Lipid Profile</span>
-              <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-700 uppercase">Sample Collected</span>
+          {/* Continuity Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-outline border-l-4 border-l-primary shadow-sm">
+              <span className="text-[10px] font-bold text-on-surface-variant block mb-2">Continuity Loop</span>
+              <span className="text-2xl font-extrabold text-on-surface">{continuityStats.encounters}</span>
+              <span className="text-xs font-semibold text-on-surface-variant">encounter milestones on file</span>
             </div>
-            <div className="bg-white p-4 rounded-xl border border-outline border-l-4 border-l-emerald-400 shadow-sm">
-              <span className="text-[10px] font-bold text-on-surface-variant block mb-2">Ready for pickup</span>
-              <span className="text-xs font-bold block mb-2">Gliclazide 80mg</span>
-              <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase">Dispensed</span>
+            <div className="bg-white p-4 rounded-xl border border-outline border-l-4 border-l-tertiary shadow-sm">
+              <span className="text-[10px] font-bold text-on-surface-variant block mb-2">Clinical Notes</span>
+              <span className="text-2xl font-extrabold text-on-surface">{continuityStats.consultations}</span>
+              <span className="text-xs font-semibold text-on-surface-variant">finalized consultations available</span>
             </div>
-            <div className="bg-white p-4 rounded-xl border border-outline border-l-4 border-l-blue-400 shadow-sm">
-              <span className="text-[10px] font-bold text-on-surface-variant block mb-2">Processing</span>
-              <span className="text-xs font-bold block mb-2">Urine Culture</span>
-              <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700 uppercase">In-Process</span>
+            <div className="bg-white p-4 rounded-xl border border-outline border-l-4 border-l-emerald-500 shadow-sm">
+              <span className="text-[10px] font-bold text-on-surface-variant block mb-2">Authorized Rx</span>
+              <span className="text-2xl font-extrabold text-on-surface">{continuityStats.prescriptions}</span>
+              <span className="text-xs font-semibold text-on-surface-variant">prescriptions in the timeline</span>
             </div>
           </div>
 
           {/* Timeline Header */}
           <div className="flex items-center justify-between mt-4">
             <h2 className="text-2xl font-extrabold text-on-surface">Clinical Timeline</h2>
-            <Link
-              to={`/clinical/patient/${patient.id}/note/new`}
-              className="bg-primary text-white px-6 py-2 rounded-lg text-sm font-bold shadow-sm hover:brightness-110 transition-all"
-            >
-              + New Encounter
-            </Link>
+            {canWriteDoctorOrders && (
+              <Link
+                to={`/clinical/patient/${patient.id}/note/new`}
+                className="bg-primary text-white px-6 py-2 rounded-lg text-sm font-bold shadow-sm hover:brightness-110 transition-all"
+              >
+                + New Note
+              </Link>
+            )}
           </div>
 
           {/* Timeline Tabs + Entries */}
@@ -264,21 +285,20 @@ export const PatientDossier = () => {
               onChange={setActiveTab}
               tabs={[
                 { id: 'timeline', label: 'Timeline', icon: <HistoryIcon size={16} /> },
-                { id: 'pathology', label: 'Pathology', icon: <Database size={16} /> },
-                { id: 'radiology', label: 'Radiology', icon: <FileText size={16} /> },
+                { id: 'encounters', label: 'Encounters', icon: <Activity size={16} /> },
+                { id: 'consultations', label: 'Notes', icon: <ClipboardList size={16} /> },
+                { id: 'prescriptions', label: 'Prescriptions', icon: <Pill size={16} /> },
               ]}
             />
 
             <div className="p-6 space-y-6">
               {timeline.length === 0 ? (
-                <p className="text-sm text-on-surface-variant text-center py-8">No timeline entries for this patient yet.</p>
+                <p className="text-sm text-on-surface-variant text-center py-8">No continuity events have been recorded for this patient yet.</p>
               ) : (
                 timeline.map((entry) => (
                   <div key={entry.id} className="bg-surface rounded-xl shadow-sm border border-outline p-6 hover:shadow-md transition-all">
-                    <span className={`text-xs font-bold uppercase tracking-widest block mb-1 ${
-                      entry.type === 'consultation' ? 'text-primary' : entry.type === 'lab' ? 'text-tertiary' : 'text-on-surface-variant'
-                    }`}>
-                      {entry.type === 'consultation' ? 'Consultation' : entry.type === 'lab' ? 'Lab Report: Pathology' : 'Radiology'}
+                    <span className={`text-xs font-bold uppercase tracking-widest block mb-1 ${TIMELINE_META[entry.type].accent}`}>
+                      {TIMELINE_META[entry.type].label}
                     </span>
                     <span className="text-xs font-medium text-on-surface-variant block mb-3">• {entry.date}</span>
                     <h3 className="text-lg font-bold text-on-surface mb-2">{entry.title}</h3>

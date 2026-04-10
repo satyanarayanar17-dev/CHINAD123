@@ -12,12 +12,20 @@ export interface PatientRegistrationPayload {
   name: string;
   dob: string;
   gender: string;
+  issueActivationToken?: boolean;
 }
 
 export interface PatientRegistrationResponse {
+  patient: {
+    id: string;
+    name: string;
+    mrn: string;
+  };
   encounterId: string | null;
   patientCreated: boolean;
   encounterCreated: boolean;
+  activation?: ActivationResponse | null;
+  activationPath?: string | null;
 }
 
 export interface ActivationResponse {

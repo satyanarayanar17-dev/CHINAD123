@@ -1,7 +1,9 @@
 const {
   buildUnknownPatientName,
+  deriveEncounterLifecycleStatus,
   isIsoDateOnly,
   normalizeEncounterPhase,
+  normalizeEncounterLifecycleStatus,
   normalizeIdentifier,
   normalizeNoteStatus,
   normalizePatientGender,
@@ -49,33 +51,34 @@ function normalizeRawStatusForComparison(value) {
   return trimmed ? trimmed.toUpperCase() : null;
 }
 
-async function scanDataIntegrity(context) {
+async function scanDataIntegrity(context, options = {}) {
+  const includeSnapshots = options.includeSnapshots !== false;
   const patients = await context.all(
     `SELECT id, name, dob, gender
      FROM patients
      ORDER BY id ASC`
   );
   const encounters = await context.all(
-    `SELECT id, patient_id, phase, is_discharged, __v, created_at
+    `SELECT id, patient_id, phase, lifecycle_status, is_discharged, __v, created_at
      FROM encounters
      ORDER BY created_at ASC, id ASC`
   );
   const notes = await context.all(
-    `SELECT cn.*, e.id AS linked_encounter_id, e.patient_id, e.phase AS encounter_phase, e.is_discharged, p.id AS linked_patient_record_id
+    `SELECT cn.*, e.id AS linked_encounter_id, e.patient_id, e.phase AS encounter_phase, e.lifecycle_status, e.is_discharged, p.id AS linked_patient_record_id
      FROM clinical_notes cn
      LEFT JOIN encounters e ON e.id = cn.encounter_id
      LEFT JOIN patients p ON p.id = e.patient_id
      ORDER BY cn.id ASC`
   );
   const prescriptions = await context.all(
-    `SELECT p.*, e.id AS linked_encounter_id, e.patient_id, e.phase AS encounter_phase, e.is_discharged, pt.id AS linked_patient_record_id
+    `SELECT p.*, e.id AS linked_encounter_id, e.patient_id, e.phase AS encounter_phase, e.lifecycle_status, e.is_discharged, pt.id AS linked_patient_record_id
      FROM prescriptions p
      LEFT JOIN encounters e ON e.id = p.encounter_id
      LEFT JOIN patients pt ON pt.id = e.patient_id
      ORDER BY p.id ASC`
   );
   const queueRows = await context.all(
-    `SELECT e.id AS encounter_id, e.patient_id, e.phase, e.is_discharged, e.__v, p.id AS patient_record_id, p.name, p.dob, p.gender
+    `SELECT e.id AS encounter_id, e.patient_id, e.phase, e.lifecycle_status, e.is_discharged, e.__v, p.id AS patient_record_id, p.name, p.dob, p.gender
      FROM encounters e
      LEFT JOIN patients p ON p.id = e.patient_id
      WHERE e.is_discharged = 0
@@ -132,7 +135,10 @@ async function scanDataIntegrity(context) {
     const reasons = [];
     const lifecycle = validateEncounterLifecycle(encounter);
     const normalizedPhase = normalizeEncounterPhase(encounter.phase);
+    const normalizedLifecycleStatus = normalizeEncounterLifecycleStatus(encounter.lifecycle_status);
     const rawPhase = trimToNull(encounter.phase);
+    const rawLifecycleStatus = trimToNull(encounter.lifecycle_status);
+    const derivedLifecycleStatus = deriveEncounterLifecycleStatus(encounter);
 
     if (!patientsById.has(encounter.patient_id)) {
       reasons.push('orphan_patient_reference');
@@ -154,6 +160,17 @@ async function scanDataIntegrity(context) {
         from: encounter.phase,
         to: normalizedPhase,
         reason: 'encounter_phase_normalization'
+      });
+    }
+
+    if (derivedLifecycleStatus && rawLifecycleStatus !== derivedLifecycleStatus) {
+      legacyShapeMismatches.push({
+        table: 'encounters',
+        id: encounter.id,
+        field: 'lifecycle_status',
+        from: encounter.lifecycle_status,
+        to: derivedLifecycleStatus,
+        reason: normalizedLifecycleStatus ? 'encounter_lifecycle_normalization' : 'encounter_lifecycle_backfill'
       });
     }
 
@@ -180,6 +197,7 @@ async function scanDataIntegrity(context) {
       const encounterState = validateEncounterLifecycle({
         patient_id: note.patient_id,
         phase: note.encounter_phase,
+        lifecycle_status: note.lifecycle_status,
         is_discharged: note.is_discharged
       });
 
@@ -218,6 +236,7 @@ async function scanDataIntegrity(context) {
       const encounterState = validateEncounterLifecycle({
         patient_id: prescription.patient_id,
         phase: prescription.encounter_phase,
+        lifecycle_status: prescription.lifecycle_status,
         is_discharged: prescription.is_discharged
       });
 
@@ -258,13 +277,13 @@ async function scanDataIntegrity(context) {
   }
 
   return {
-    snapshots: {
+    snapshots: includeSnapshots ? {
       patients,
       encounters,
       notes,
       prescriptions,
       queueRows
-    },
+    } : undefined,
     counts: {
       invalidPatients: invalidPatients.length,
       invalidEncounters: invalidEncounters.length,
@@ -272,6 +291,7 @@ async function scanDataIntegrity(context) {
       invalidNotes: invalidNotes.length,
       invalidPrescriptions: invalidPrescriptions.length,
       duplicateActiveEncounterPatients: duplicateActiveEncounterPatients.length,
+      legacySchemaDrift: legacyShapeMismatches.length,
       legacyShapeMismatches: legacyShapeMismatches.length
     },
     invalidPatients,
@@ -378,14 +398,16 @@ async function repairPatients(result, context, scan) {
 async function repairEncounters(result, context, scan) {
   const notesByEncounter = new Map();
   const prescriptionsByEncounter = new Map();
+  const noteSnapshots = scan.snapshots?.notes || [];
+  const prescriptionSnapshots = scan.snapshots?.prescriptions || [];
 
-  for (const note of scan.snapshots.notes) {
+  for (const note of noteSnapshots) {
     const current = notesByEncounter.get(note.encounter_id) || [];
     current.push(note);
     notesByEncounter.set(note.encounter_id, current);
   }
 
-  for (const prescription of scan.snapshots.prescriptions) {
+  for (const prescription of prescriptionSnapshots) {
     const current = prescriptionsByEncounter.get(prescription.encounter_id) || [];
     current.push(prescription);
     prescriptionsByEncounter.set(prescription.encounter_id, current);
@@ -430,6 +452,8 @@ async function repairEncounters(result, context, scan) {
 
     const updates = {};
     const normalizedPhase = normalizeEncounterPhase(encounter.phase);
+    const normalizedLifecycleStatus = normalizeEncounterLifecycleStatus(encounter.lifecycle_status);
+    const derivedLifecycleStatus = deriveEncounterLifecycleStatus(encounter);
     const dischargeFlag = Number(encounter.is_discharged) === 1 ? 1 : 0;
 
     if (dischargeFlag === 1 && encounter.phase !== 'DISCHARGED') {
@@ -443,6 +467,14 @@ async function repairEncounters(result, context, scan) {
 
     if (!normalizedPhase && dischargeFlag === 1) {
       updates.phase = 'DISCHARGED';
+    }
+
+    if (derivedLifecycleStatus && normalizedLifecycleStatus !== derivedLifecycleStatus) {
+      updates.lifecycle_status = derivedLifecycleStatus;
+    }
+
+    if (updates.phase && !updates.lifecycle_status) {
+      updates.lifecycle_status = updates.phase;
     }
 
     if (Object.keys(updates).length > 0) {
@@ -575,6 +607,7 @@ async function repairNotesAndPrescriptions(result, context, scan) {
     const encounterState = validateEncounterLifecycle({
       patient_id: note.patient_id,
       phase: note.encounter_phase,
+      lifecycle_status: note.lifecycle_status,
       is_discharged: note.is_discharged
     });
 
@@ -599,6 +632,7 @@ async function repairNotesAndPrescriptions(result, context, scan) {
     const encounterState = validateEncounterLifecycle({
       patient_id: prescription.patient_id,
       phase: prescription.encounter_phase,
+      lifecycle_status: prescription.lifecycle_status,
       is_discharged: prescription.is_discharged
     });
 
@@ -635,13 +669,13 @@ function formatIntegrityReport(report) {
 
   lines.push(`[DATA-INTEGRITY] Mode: ${phaseLabel}`);
   lines.push(
-    `[DATA-INTEGRITY] Before: patients=${report.before.counts.invalidPatients}, encounters=${report.before.counts.invalidEncounters}, queue=${report.before.counts.malformedQueueRows}, notes=${report.before.counts.invalidNotes}, prescriptions=${report.before.counts.invalidPrescriptions}, legacy=${report.before.counts.legacyShapeMismatches}`
+    `[DATA-INTEGRITY] Before: patients=${report.before.counts.invalidPatients}, encounters=${report.before.counts.invalidEncounters}, queue=${report.before.counts.malformedQueueRows}, notes=${report.before.counts.invalidNotes}, prescriptions=${report.before.counts.invalidPrescriptions}, duplicate_active=${report.before.counts.duplicateActiveEncounterPatients}, legacy_schema_drift=${report.before.counts.legacySchemaDrift}`
   );
   lines.push(
     `[DATA-INTEGRITY] Actions: repaired=${report.repaired.length}, quarantined=${report.quarantined.length}, manual_review=${report.manualReview.length}`
   );
   lines.push(
-    `[DATA-INTEGRITY] After: patients=${report.after.counts.invalidPatients}, encounters=${report.after.counts.invalidEncounters}, queue=${report.after.counts.malformedQueueRows}, notes=${report.after.counts.invalidNotes}, prescriptions=${report.after.counts.invalidPrescriptions}, legacy=${report.after.counts.legacyShapeMismatches}`
+    `[DATA-INTEGRITY] After: patients=${report.after.counts.invalidPatients}, encounters=${report.after.counts.invalidEncounters}, queue=${report.after.counts.malformedQueueRows}, notes=${report.after.counts.invalidNotes}, prescriptions=${report.after.counts.invalidPrescriptions}, duplicate_active=${report.after.counts.duplicateActiveEncounterPatients}, legacy_schema_drift=${report.after.counts.legacySchemaDrift}`
   );
 
   for (const repair of report.repaired) {

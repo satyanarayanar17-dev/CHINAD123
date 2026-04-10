@@ -14,6 +14,7 @@ export interface Patient {
   name: string;
   initials: string;
   age: number;
+  dob: string | null;
   gender: string;
   bloodGroup: string;
   riskFlags: string[];
@@ -30,6 +31,7 @@ export interface AppointmentSlot {
   type: string;
   specialty: string;
   lifecycleStatus: 'AWAITING' | 'RECEPTION' | 'IN_CONSULTATION' | 'DISCHARGED';
+  encounterPhase?: string;
   __v?: number;
 }
 
@@ -37,10 +39,14 @@ export interface TimelineEntry {
   id: string;
   patientId: string;
   date: string;
-  type: 'consultation' | 'lab' | 'radiology';
+  occurredAt?: string;
+  type: 'encounter' | 'consultation' | 'prescription' | 'discharge' | 'lab' | 'radiology';
   title: string;
   summary: string;
   verifiedBy: string;
+  encounterId?: string | null;
+  noteId?: string | null;
+  rxId?: string | null;
 }
 
 // ── Phase 2: Patient-facing types ────────────────────────────────────────────
@@ -65,6 +71,7 @@ export interface Prescription {
   refillDate: string;
   daysRemaining: number;
   reminderEnabled: boolean;
+  status?: string;
 }
 
 export interface LabReport {
@@ -72,7 +79,7 @@ export interface LabReport {
   date: string;
   testName: string;
   status: 'READY' | 'PROCESSING';
-  category: 'lab' | 'scan';
+  category: 'lab' | 'scan' | 'note';
   findings?: string;
   requestedBy: string;
 }
@@ -86,6 +93,7 @@ export const MOCK_PATIENTS: Record<string, Patient> = {
     name: 'Ramesh Sivakumar',
     initials: 'RS',
     age: 42,
+    dob: '1982-03-14',
     gender: 'Male',
     bloodGroup: 'O Negative',
     riskFlags: ['Diabetic (Type II)', 'Hypertensive'],
@@ -102,6 +110,7 @@ export const MOCK_PATIENTS: Record<string, Patient> = {
     name: 'Arjun Singhania',
     initials: 'AS',
     age: 35,
+    dob: '1989-08-22',
     gender: 'Male',
     bloodGroup: 'B Positive',
     riskFlags: [],
@@ -115,6 +124,7 @@ export const MOCK_PATIENTS: Record<string, Patient> = {
     name: 'Meera Krishnamurthy',
     initials: 'MK',
     age: 58,
+    dob: '1966-02-05',
     gender: 'Female',
     bloodGroup: 'A Positive',
     riskFlags: ['Cardiac Risk', 'Hypertensive'],

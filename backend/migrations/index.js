@@ -1,8 +1,9 @@
 const initialSchema = require('./001_initial_schema');
 const dataIntegrityGuards = require('./002_data_integrity_guards');
 const refreshTokenAccountType = require('./003_refresh_token_account_type');
+const encounterLifecycleContract = require('./004_encounter_lifecycle_contract');
 
-const migrations = [initialSchema, dataIntegrityGuards, refreshTokenAccountType];
+const migrations = [initialSchema, dataIntegrityGuards, refreshTokenAccountType, encounterLifecycleContract];
 
 function migrationTableSql(dialect) {
   if (dialect === 'postgres') {

@@ -13,7 +13,7 @@ const NAV_ITEMS = [
 export const PatientLayout = () => {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
-  const username = user || 'Patient';
+  const username = user?.name || 'Patient';
 
   const handleLogout = () => {
     logout();

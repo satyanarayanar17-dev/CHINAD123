@@ -8,6 +8,8 @@ export const InstitutionalSettings = () => {
   const { toasts, push, dismiss } = useToast();
   const { role, user } = useAuth();
   const displayRole = role?.toUpperCase() || 'STAFF';
+  const displayName = user?.name || 'Chettinad Care User';
+  const displayId = user?.id || 'Unavailable';
   
   const [activeTab, setActiveTab] = useState('profile');
 
@@ -64,7 +66,7 @@ export const InstitutionalSettings = () => {
                     CC
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold">{user || 'Chettinad Care User'}</h2>
+                    <h2 className="text-lg font-bold">{displayName}</h2>
                     <span className="text-xs font-black uppercase tracking-widest text-primary bg-primary/10 px-2 py-0.5 rounded">{displayRole}</span>
                   </div>
                 </div>
@@ -74,11 +76,11 @@ export const InstitutionalSettings = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant block mb-1">Full Name</label>
-                    <input type="text" disabled value={user || 'Default User'} className="w-full bg-surface-container-low border border-outline/30 rounded p-2 text-sm text-on-surface-variant" />
+                    <input type="text" disabled value={displayName} className="w-full bg-surface-container-low border border-outline/30 rounded p-2 text-sm text-on-surface-variant" />
                   </div>
                   <div>
                     <label className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant block mb-1">Staff ID</label>
-                    <input type="text" disabled value="CC-STAFF-902" className="w-full bg-surface-container-low border border-outline/30 rounded p-2 text-sm text-on-surface-variant" />
+                    <input type="text" disabled value={displayId} className="w-full bg-surface-container-low border border-outline/30 rounded p-2 text-sm text-on-surface-variant" />
                   </div>
                 </div>
               </CardContent>

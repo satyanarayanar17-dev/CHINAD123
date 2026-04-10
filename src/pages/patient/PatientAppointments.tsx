@@ -3,6 +3,8 @@ import { Calendar, MapPin, X, AlertCircle, Clock, History } from 'lucide-react';
 import { useMyAppointments } from '../../hooks/queries/usePatientPortal';
 import { useToast, ToastContainer } from '../../components/ui/Toast';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { getDateBadgeParts } from '../../api/contracts';
+import type { PatientAppointment } from '../../store/mockData';
 
 const SPECIALTIES = ['General Medicine', 'Cardiology', 'Orthopedics', 'Pathology', 'Radiology', 'Dermatology'];
 
@@ -16,8 +18,8 @@ export const PatientAppointments = () => {
   const [reason, setReason] = useState('');
   const [booked, setBooked] = useState(false);
 
-  const upcoming = appointments.filter((a: any) => a.status === 'UPCOMING');
-  const past = appointments.filter((a: any) => a.status !== 'UPCOMING');
+  const upcoming = appointments.filter((a) => a.status === 'UPCOMING');
+  const past = appointments.filter((a) => a.status !== 'UPCOMING');
 
   const displayList = tab === 'upcoming' ? upcoming : past;
 
@@ -72,20 +74,22 @@ export const PatientAppointments = () => {
       {/* Appointment Cards */}
       <div className="space-y-4">
         {displayList.length > 0 ? (
-          displayList.map((appt: any) => (
+          displayList.map((appt: PatientAppointment) => {
+            const dateBadge = getDateBadgeParts(appt.date);
+            return (
             <div key={appt.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex items-start gap-5 hover:shadow-md transition-shadow">
               {/* Date block */}
               <div className={`shrink-0 w-16 text-center rounded-xl p-2 ${
                 appt.status === 'UPCOMING' ? 'bg-primary/10' : 'bg-gray-100'
               }`}>
                 <div className="text-[10px] font-bold uppercase text-on-surface-variant">
-                  {appt.date.split(' ')[0]}
+                  {dateBadge.month}
                 </div>
                 <div className={`text-2xl font-extrabold ${appt.status === 'UPCOMING' ? 'text-primary' : 'text-on-surface-variant'}`}>
-                  {appt.date.split(' ')[1].replace(',', '')}
+                  {dateBadge.day}
                 </div>
                 <div className="text-[10px] text-on-surface-variant font-semibold">
-                  {appt.date.split(' ')[2]}
+                  {dateBadge.year}
                 </div>
               </div>
 
@@ -133,7 +137,7 @@ export const PatientAppointments = () => {
                 </div>
               )}
             </div>
-          ))
+          )})
         ) : (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
             <EmptyState

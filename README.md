@@ -1,10 +1,13 @@
 # Chettinad Care Pilot App
 
-Chettinad Care is a split frontend/backend clinical pilot app designed for a small remote pilot:
+Chettinad Care is a pilot-grade, not production-grade, care continuity system for a restricted clinical pilot.
 
-- up to 10 patients
-- up to 10 nurses
-- up to 10 doctors
+This repo is focused on one hardened loop:
+
+- admin creates or reuses a patient identity
+- the system guarantees a single valid active encounter
+- the patient activates portal access with a one-time code
+- the doctor opens the chart, writes the note, authorizes the prescription, and continues the timeline cleanly
 
 The live deployment path is now PostgreSQL-backed. SQLite remains available only as a local development fallback.
 
@@ -26,6 +29,7 @@ The live deployment path is now PostgreSQL-backed. SQLite remains available only
 - Data integrity: OCC/version checks on queue, notes, prescriptions, and draft ETag protection
 - Backend write invariants: SQLite foreign keys enabled, queue transitions limited to active phases, discharge normalized to `DISCHARGED`, canonical patient/note/prescription validation shared across routes
 - Legacy-data tooling: `diagnose:data` and `repair:data` scripts for pilot data audits, deterministic fixes, and quarantine of unusable rows
+- Health visibility: `/api/v1/health` now reports database reachability, migration alignment, and a basic integrity summary
 - Audit logging: sensitive actions continue to write to `audit_logs`
 - Upload/storage: no file upload or object storage pipeline is implemented in this repo today
 
@@ -56,6 +60,22 @@ Local demo accounts after `npm run seed:reset`:
 - `doc1_qa` / `Password123!`
 - `doc2_qa` / `Password123!`
 - patient login via UHID `pat-1` / `Password123!`
+
+## Clean Demo State
+
+Use this when you need a deterministic, demo-safe environment from scratch:
+
+`cd backend && npm run seed:reset`
+
+What `seed:reset` guarantees locally:
+
+- 1 admin, 1 nurse, and multiple doctor/staff demo identities
+- 3 patients with valid demographics
+- active encounters with canonical lifecycle state
+- at least one returning patient with prior discharged history, finalized notes, and authorized prescriptions
+- no malformed queue rows in the seeded state
+
+This command is for local/demo use only and should not be enabled in the live pilot.
 
 ## Pilot Deployment
 
@@ -101,9 +121,10 @@ Staff onboarding:
 Patient onboarding:
 
 - Admin dashboard → `Patient Onboarding`
-- Register the patient demographic record
-- The backend ensures an active encounter exists
-- The backend issues an activation code
+- Register the patient demographic record in one call
+- The backend either creates or reuses the patient safely
+- The backend guarantees an active encounter before returning success
+- The backend issues the activation code from the same onboarding flow
 - Patient opens `/patient/activate`, enters UHID + activation code, sets password
 - Patient then logs in with their UHID and password
 
@@ -131,6 +152,7 @@ Practical result:
 Integrity guarantees now enforced on new writes:
 
 - patient records require non-empty `id`, `name`, valid `dob`, and allowed `gender`
+- encounters require `patient_id`, canonical `phase`, and canonical `lifecycle_status`
 - active encounter transitions accept only `AWAITING`, `RECEPTION`, or `IN_CONSULTATION`
 - discharged encounters are stored consistently as `phase='DISCHARGED'` with `is_discharged=1`
 - note statuses are limited to `DRAFT` or `FINALIZED`
@@ -151,8 +173,17 @@ What the repair script will do:
 - fills a deterministic placeholder name for patients whose name is blank
 - normalizes invalid patient gender to `Not specified`
 - converts legacy closed encounters to `DISCHARGED`
+- backfills canonical encounter `lifecycle_status` when the mapping is deterministic
 - normalizes repairable note/prescription statuses to canonical uppercase values
 - quarantines orphaned encounters, orphaned notes, and unusable prescriptions into `data_integrity_quarantine`
+
+What diagnostics summarize:
+
+- total invalid patients
+- invalid encounters
+- malformed queue rows
+- duplicate active encounters
+- legacy schema drift
 
 Remaining legacy-data risks:
 
@@ -163,23 +194,15 @@ Remaining legacy-data risks:
 
 Checks run successfully during this update:
 
-- `cd backend && npm run migrate`
-- `cd backend && npm run seed:reset`
-- `cd backend && npm run diagnose:data`
-- `cd backend && npm run repair:data`
 - `cd backend && npm test`
 - `npm run test:auth-boundary`
 - `npm run build`
 
-An additional restricted-pilot boot check was also run locally against a temporary PostgreSQL container:
-
-- PostgreSQL migration succeeded with `DB_DIALECT=postgres`
-- backend booted in `restricted_web_pilot` mode
-- `/api/v1/health` returned `{"status":"ok","db":"postgres","db_status":"ok"}`
-
 ## Pilot Limitations
 
-- Access tokens are no longer stored in `localStorage`, but this is still not a full cookie-only CSRF-protected session architecture.
-- Existing pre-deploy in-memory access tokens without the new `account_type` claim may require one refresh cycle or a fresh login after deployment.
-- SSE uses a short-lived purpose-limited query token rather than a bearer header because `EventSource` cannot send custom auth headers.
-- Rate limiting is in-process only, which is acceptable for a very small pilot but not for a larger horizontally scaled system.
+- This system is pilot-grade, not production-grade.
+- Access tokens remain browser-memory bearer tokens; this is safer than `localStorage`, but it is not a full server-managed session architecture.
+- Rate limiting is still in-process only, so it does not provide strong protection under horizontal scale.
+- OTP delivery is still operationally simple and meant for restricted pilot use, not consumer-scale identity recovery.
+- Billing, insurance, uploads, and broad patient self-service scheduling are intentionally out of scope.
+- Some UI areas outside the core care loop still contain stubbed/offline actions and should not be presented as live integrations.

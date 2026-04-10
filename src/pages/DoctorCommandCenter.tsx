@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '../components/ui/Card';
 import { StatusChip } from '../components/ui/StatusChip';
@@ -31,7 +31,9 @@ export const DoctorCommandCenter = () => {
   };
 
   const handleStartConsultation = (slot: AppointmentSlot) => {
-    updateSlotStatus(slot.id, 'IN_CONSULTATION', slot.__v || 1);
+    if (slot.lifecycleStatus !== 'IN_CONSULTATION') {
+      updateSlotStatus(slot.id, 'IN_CONSULTATION', slot.__v || 1);
+    }
     openChart(slot.patient.id);
   };
 
@@ -46,6 +48,8 @@ export const DoctorCommandCenter = () => {
   const filteredQueue = filter === 'All' 
     ? queue 
     : queue.filter(slot => slot.specialty === filter);
+  const activeConsultation = queue.find((slot) => slot.lifecycleStatus === 'IN_CONSULTATION') || null;
+  const nextWaitingPatient = queue.find((slot) => slot.lifecycleStatus === 'AWAITING' || slot.lifecycleStatus === 'RECEPTION');
 
   return (
     <div className="space-y-6 relative">
@@ -65,41 +69,50 @@ export const DoctorCommandCenter = () => {
             </h2>
 
             <Card>
-              <div className="p-4 border-l-4 border-error/80 bg-error/5">
-                <div className="flex justify-between items-start mb-2">
-                  <span className="text-error font-bold text-xs uppercase tracking-widest">Unread Critical Labs</span>
-                  <span className="bg-error text-white px-2 py-0.5 rounded text-[10px] font-bold">3 NEW</span>
+              {activeConsultation ? (
+                <div className="p-4 border-l-4 border-error/80 bg-error/5">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-error font-bold text-xs uppercase tracking-widest">Active Consultation</span>
+                    <span className="bg-error text-white px-2 py-0.5 rounded text-[10px] font-bold">{activeConsultation.lifecycleStatus}</span>
+                  </div>
+                  <p className="text-sm font-bold text-on-surface mb-1">
+                    Patient: {activeConsultation.patient.name}
+                  </p>
+                  <p className="text-xs text-error font-medium">{activeConsultation.type} · {activeConsultation.specialty}</p>
+                  <button
+                    onClick={() => openChart(activeConsultation.patient.id)}
+                    className="mt-3 text-xs font-bold text-primary hover:underline"
+                  >
+                    Resume Chart →
+                  </button>
                 </div>
-                <p className="text-sm font-bold text-on-surface mb-1">
-                  Patient: Arjun R.
-                </p>
-                <p className="text-xs text-error font-medium">Potassium Level: 6.2 mEq/L (Critical High)</p>
-                <button
-                  onClick={() => openChart('CC-99821')}
-                  className="mt-3 text-xs font-bold text-primary hover:underline"
-                >
-                  Review Now →
-                </button>
-              </div>
+              ) : (
+                <div className="p-4 border-l-4 border-outline/40 bg-surface-container-low">
+                  <span className="text-on-surface-variant font-bold text-xs uppercase tracking-widest">No active consults</span>
+                  <p className="text-sm text-on-surface-variant mt-2">The doctor queue is currently clear.</p>
+                </div>
+              )}
 
-              <div className="p-4 border-t border-outline/20 border-l-4 border-primary/80 bg-primary/5">
-                <div className="flex justify-between items-start mb-2">
-                  <span className="text-primary font-bold text-xs uppercase tracking-widest">High-Priority Triage</span>
-                  <span className="bg-primary text-white px-2 py-0.5 rounded text-[10px] font-bold">2 ACTIVE</span>
+              {nextWaitingPatient && (
+                <div className="p-4 border-t border-outline/20 border-l-4 border-primary/80 bg-primary/5">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-primary font-bold text-xs uppercase tracking-widest">Next In Queue</span>
+                    <span className="bg-primary text-white px-2 py-0.5 rounded text-[10px] font-bold">{nextWaitingPatient.lifecycleStatus}</span>
+                  </div>
+                  <p className="text-sm font-bold text-on-surface mb-1">
+                    Patient: {nextWaitingPatient.patient.name}
+                  </p>
+                  <p className="text-xs text-primary font-medium flex items-center gap-1">
+                    <Activity size={14} /> {nextWaitingPatient.type} · {nextWaitingPatient.specialty}
+                  </p>
+                  <button
+                    onClick={() => handleStartConsultation(nextWaitingPatient)}
+                    className="mt-3 text-xs font-bold text-primary hover:underline"
+                  >
+                    Open Chart →
+                  </button>
                 </div>
-                <p className="text-sm font-bold text-on-surface mb-1">
-                  Patient: Meera K.
-                </p>
-                <p className="text-xs text-primary font-medium flex items-center gap-1">
-                  <Activity size={14} /> Arrhythmia Alert (Level 2)
-                </p>
-                <button
-                  onClick={() => openChart('CC-9021')}
-                  className="mt-3 text-xs font-bold text-primary hover:underline"
-                >
-                  Respond →
-                </button>
-              </div>
+              )}
             </Card>
           </ErrorBoundary>
 

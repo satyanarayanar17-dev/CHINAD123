@@ -7,13 +7,17 @@ const {
   migrateDatabase,
   pingDatabase,
   run,
-  get
+  get,
+  all
 } = require('./database');
 const {
   ensureBootstrapAdmin,
   ensureAdminAccessProvisioned
 } = require('./bootstrapAdmin');
 const { getRefreshCookieOptions } = require('./cookies');
+const { migrations } = require('./migrations');
+const { scanDataIntegrity } = require('./lib/dataIntegrityAudit');
+const { logEvent } = require('./lib/logger');
 
 const app = express();
 
@@ -126,7 +130,11 @@ app.use((req, res, next) => {
   const correlationId = req.headers['x-correlation-id'] || 'SERVER-GENERATED-' + Date.now();
   req.correlationId = correlationId;
   res.setHeader('x-correlation-id', correlationId);
-  console.log(`[REQ] ${req.method} ${req.path} | CID: ${correlationId}`);
+  logEvent('info', 'request_received', {
+    correlationId,
+    method: req.method,
+    path: req.path
+  });
   next();
 });
 
@@ -170,12 +178,38 @@ app.use('/api/v1/sse', sseRouter);
 app.get('/api/v1/health', async (req, res) => {
   try {
     await pingDatabase();
+    const migrationState = await get(`SELECT COUNT(*) AS count FROM schema_migrations`);
+    const latestMigration = await get(
+      `SELECT id, applied_at
+       FROM schema_migrations
+       ORDER BY applied_at DESC, id DESC
+       LIMIT 1`
+    );
+    const integrity = await scanDataIntegrity({ all }, { includeSnapshots: false });
+
     res.json({
       status: 'ok',
       env: process.env.NODE_ENV || 'development',
       app_env: process.env.APP_ENV || 'local_dev',
       db: dbDialect,
       db_status: 'ok',
+      migrations: {
+        applied: Number(migrationState?.count || 0),
+        expected: migrations.length,
+        latest: latestMigration?.id || null,
+        up_to_date: Number(migrationState?.count || 0) >= migrations.length
+      },
+      integrity: {
+        status: integrity.counts.invalidPatients === 0 &&
+          integrity.counts.invalidEncounters === 0 &&
+          integrity.counts.malformedQueueRows === 0 &&
+          integrity.counts.invalidNotes === 0 &&
+          integrity.counts.invalidPrescriptions === 0 &&
+          integrity.counts.duplicateActiveEncounterPatients === 0
+          ? 'clean'
+          : 'issues_detected',
+        counts: integrity.counts
+      },
       correlation_id: req.correlationId
     });
   } catch (err) {
@@ -195,12 +229,23 @@ app.get('/api/v1/health', async (req, res) => {
 // 6. GLOBAL ERROR ENVELOPE
 // ===========================================================================
 app.use((err, req, res, next) => {
-  console.error(`[ERR] CID: ${req.correlationId} |`, err.message || err);
-
   const status = err.status || 500;
+  const code = err.code || 'INTERNAL_SERVER_ERROR';
+
+  logEvent(status >= 500 ? 'error' : 'warn', 'request_failed', {
+    correlationId: req.correlationId,
+    method: req.method,
+    path: req.path,
+    actorId: req.user?.id || null,
+    status,
+    code,
+    message: err.message || 'An unexpected error occurred.',
+    details: err.details || null
+  });
+
   const errorEnvelope = {
     error: {
-      code: err.code || 'INTERNAL_SERVER_ERROR',
+      code,
       message: err.message || 'An unexpected error occurred.',
       details: err.details || null
     },

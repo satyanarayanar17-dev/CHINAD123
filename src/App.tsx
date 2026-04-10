@@ -2,7 +2,7 @@ import React from 'react'
 import { Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { getHomeRouteForRole, isSessionBoundaryValid } from './auth/roleBoundary'
+import { getHomeRouteForSession, isRouteAllowedForSession, isSessionBoundaryValid } from './auth/roleBoundary'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,6 +21,23 @@ const SessionResetRedirect = ({ to, state }: { to: string; state?: unknown }) =>
   }, [logout])
 
   return <Navigate to={to} replace state={state} />
+}
+
+const SessionBoundaryWatcher = () => {
+  const { role, accountType, status, logout } = useAuth()
+  const location = useLocation()
+
+  React.useEffect(() => {
+    if (status !== 'authenticated') {
+      return
+    }
+
+    if (!isRouteAllowedForSession(location.pathname, role, accountType)) {
+      logout()
+    }
+  }, [accountType, location.pathname, logout, role, status])
+
+  return null
 }
 
 // Layouts
@@ -76,13 +93,14 @@ const RootRedirect = () => {
   if (status === 'bootstrapping') return <div className="min-h-screen bg-surface-container flex items-center justify-center text-primary font-bold">Loading session...</div>;
   if (!role) return <Navigate to="/login" replace />
   if (!isSessionBoundaryValid(role, accountType)) return <SessionResetRedirect to="/login" />
-  return <Navigate to={getHomeRouteForRole(role)} replace />
+  return <Navigate to={getHomeRouteForSession(role, accountType)} replace />
 }
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <SessionBoundaryWatcher />
         <Routes>
 
         {/* ── Public Website ── */}
@@ -98,10 +116,20 @@ function App() {
         <Route path="/patient/activate" element={<PatientActivation />} />
 
         {/* ── Clinical Staff (Shared Dossier/Access) ── */}
-        <Route element={<StaffGuard />}>
+        <Route element={<RequireRole allowed={['doctor', 'nurse', 'admin']} />}>
           <Route element={<BaseLayout />}>
             <Route path="/settings" element={<InstitutionalSettings />} />
+          </Route>
+        </Route>
+
+        <Route element={<RequireRole allowed={['doctor', 'nurse']} />}>
+          <Route element={<BaseLayout />}>
             <Route path="/clinical/patient/:patientId/dossier" element={<PatientDossier />} />
+          </Route>
+        </Route>
+
+        <Route element={<RequireRole allowed={['doctor']} />}>
+          <Route element={<BaseLayout />}>
             <Route path="/clinical/patient/:patientId/note/:consultationId?" element={<ClinicalNoteEditor />} />
             <Route path="/clinical/patient/:patientId/prescription/:prescriptionId?" element={<PrescriptionBuilder />} />
           </Route>

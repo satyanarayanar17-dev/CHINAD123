@@ -8,10 +8,15 @@ import { isSessionBoundaryValid } from '../auth/roleBoundary';
 
 export type AuthStatus = 'bootstrapping' | 'authenticated' | 'unauthenticated' | 'backend_unavailable' | 'error';
 
+export interface AuthUser {
+  id: string;
+  name: string;
+}
+
 interface AuthContextType {
   role: Role;
   accountType: AccountType;
-  user: string | null;
+  user: AuthUser | null;
   status: AuthStatus;
   login: (payload: LoginPayload) => Promise<Role>;
   logout: () => void;
@@ -22,7 +27,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [role, setRole] = useState<Role>(null);
   const [accountType, setAccountType] = useState<AccountType>(null);
-  const [user, setUser] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [status, setStatus] = useState<AuthStatus>('bootstrapping');
 
   const clearSession = useCallback((nextStatus: AuthStatus = 'unauthenticated', revokeRemote = false) => {
@@ -36,14 +41,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setStatus(nextStatus);
   }, []);
 
-  const establishSession = useCallback((nextRole: Role, nextAccountType: AccountType, nextUserId: string) => {
+  const establishSession = useCallback((nextRole: Role, nextAccountType: AccountType, nextUser: AuthUser) => {
     if (!isSessionBoundaryValid(nextRole, nextAccountType)) {
       throw new Error('INVALID_SESSION_BOUNDARY');
     }
 
     setRole(nextRole);
     setAccountType(nextAccountType);
-    setUser(nextUserId);
+    setUser(nextUser);
     setStatus('authenticated');
   }, []);
 
@@ -66,7 +71,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      establishSession(session.role, session.account_type, session.id);
+      establishSession(session.role, session.account_type, {
+        id: session.id,
+        name: session.name || session.id,
+      });
     } catch (e: any) {
       clearSession();
       
@@ -93,7 +101,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     setAccessToken(res.access_token);
-    establishSession(res.role, res.account_type, res.userId);
+    establishSession(res.role, res.account_type, {
+      id: res.userId,
+      name: res.name || res.userId,
+    });
     return res.role;
   };
 

@@ -1,5 +1,7 @@
 # Chettinad Care Pilot Deployment
 
+This repo is pilot-grade, not production-grade. Deploy it only for a restricted pilot with known staff, known patients, and controlled operational support.
+
 ## Architecture Summary
 
 This repo now supports a restricted web pilot with this shape:
@@ -19,6 +21,7 @@ This repo now supports a restricted web pilot with this shape:
   short-lived purpose-limited SSE tokens
 - Integrity controls: OCC/version checks for queue, notes, prescriptions, and ETag draft protection
 - Write invariants: patient demographics, encounter lifecycle values, note status, and prescription status are validated in shared backend guards; SQLite foreign keys are enabled and pilot-safe DB guards are installed by migration
+- Health endpoint: `/api/v1/health` reports DB status, migration alignment, and a basic integrity signal
 - Audit trail: sensitive actions append to `audit_logs`
 
 For the live pilot, deploy:
@@ -156,6 +159,7 @@ What the repair flow does:
 
 - normalizes blank patient display names to a deterministic placeholder
 - normalizes legacy encounter closure rows to `DISCHARGED`
+- backfills canonical encounter `lifecycle_status` when deterministic
 - normalizes repairable note and prescription statuses to canonical uppercase values
 - quarantines orphaned encounters, orphaned notes, and unusable prescriptions into `data_integrity_quarantine`
 
@@ -163,6 +167,14 @@ What still requires manual review:
 
 - patient rows with invalid or missing DOB
 - encounters with unknown active lifecycle values or duplicate active encounters for the same patient
+
+Diagnostics now summarize:
+
+- invalid patients
+- invalid encounters
+- malformed queue rows
+- duplicate active encounters
+- legacy schema drift
 
 ## PostgreSQL Setup Requirements
 
@@ -254,10 +266,20 @@ After changing `VITE_API_BASE_URL`, redeploy the frontend so Vite picks up the n
 
 1. Deploy PostgreSQL.
 2. Deploy the backend with `BOOTSTRAP_ADMIN_*` set.
-3. Wait for `/api/v1/health` to return `status=ok` and `db=postgres`.
+3. Wait for `/api/v1/health` to return `status=ok`, `db_status=ok`, and migrations `up_to_date=true`.
 4. Deploy the frontend with `VITE_API_BASE_URL` pointing at the backend.
 5. Open the frontend URL and sign in with the bootstrap admin credentials.
 6. Rotate the bootstrap admin password after you create permanent admin/staff accounts.
+
+## Safe Demo Reset
+
+For local demos only:
+
+```bash
+cd backend && npm run seed:reset
+```
+
+This creates a deterministic demo state with valid users, valid patients, valid encounters, and usable continuity history. Do not expose this reset path in the live pilot.
 
 ## How To Onboard Test Users
 

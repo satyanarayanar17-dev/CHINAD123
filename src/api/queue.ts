@@ -1,5 +1,6 @@
 import { api } from './client';
 import type { AppointmentSlot } from '../store/mockData';
+import { normalizeQueueSlot } from './contracts';
 
 export class QueueConflictError extends Error {
   constructor(message: string = 'Queue state changed by another session. Optimistic update reversed.') {
@@ -11,7 +12,9 @@ export class QueueConflictError extends Error {
 export const queueApi = {
   fetchQueue: async (): Promise<AppointmentSlot[]> => {
     const response = await api.get<AppointmentSlot[]>('/queue');
-    return response.data;
+    return response.data
+      .map((slot, index) => normalizeQueueSlot(slot, index))
+      .filter((slot): slot is AppointmentSlot => Boolean(slot));
   },
 
   addQueueSlot: async (slot: AppointmentSlot): Promise<void> => {

@@ -18,30 +18,94 @@ const SEEDED_USERS = [
 ];
 
 const SEEDED_ENCOUNTERS = [
-  { id: 'enc-1', patient_id: 'pat-1', phase: 'RECEPTION', is_discharged: 0, __v: 1 },
-  { id: 'enc-2', patient_id: 'pat-2', phase: 'IN_CONSULTATION', is_discharged: 0, __v: 1 },
-  { id: 'enc-3', patient_id: 'pat-3', phase: 'AWAITING', is_discharged: 0, __v: 1 }
+  {
+    id: 'enc-0',
+    patient_id: 'pat-1',
+    phase: 'DISCHARGED',
+    lifecycle_status: 'DISCHARGED',
+    is_discharged: 1,
+    __v: 2,
+    created_at: '2026-03-15T09:00:00.000Z'
+  },
+  {
+    id: 'enc-1',
+    patient_id: 'pat-1',
+    phase: 'RECEPTION',
+    lifecycle_status: 'RECEPTION',
+    is_discharged: 0,
+    __v: 1,
+    created_at: '2026-04-09T08:00:00.000Z'
+  },
+  {
+    id: 'enc-2',
+    patient_id: 'pat-2',
+    phase: 'IN_CONSULTATION',
+    lifecycle_status: 'IN_CONSULTATION',
+    is_discharged: 0,
+    __v: 1,
+    created_at: '2026-04-09T08:15:00.000Z'
+  },
+  {
+    id: 'enc-3',
+    patient_id: 'pat-3',
+    phase: 'AWAITING',
+    lifecycle_status: 'AWAITING',
+    is_discharged: 0,
+    __v: 1,
+    created_at: '2026-04-09T08:30:00.000Z'
+  }
 ];
 
 const SEEDED_NOTES = [
+  {
+    id: 'note-history-1',
+    encounter_id: 'enc-0',
+    draft_content: JSON.stringify({
+      soap: {
+        S: 'Returning diabetes follow-up after prior visit.',
+        O: 'Vitals stable and symptoms improved.',
+        A: 'Type 2 diabetes under active management.',
+        P: 'Continue current medications and review in 6 weeks.'
+      }
+    }),
+    status: 'FINALIZED',
+    author_id: 'doc1_qa',
+    __v: 2,
+    created_at: '2026-03-15T09:20:00.000Z',
+    updated_at: '2026-03-15T09:25:00.000Z'
+  },
   {
     id: 'note-1',
     encounter_id: 'enc-2',
     draft_content: 'Patient presents with general fatigue. Vitals stable.',
     status: 'DRAFT',
     author_id: 'doc1_qa',
-    __v: 1
+    __v: 1,
+    created_at: '2026-04-09T08:45:00.000Z',
+    updated_at: '2026-04-09T08:45:00.000Z'
   }
 ];
 
 const SEEDED_PRESCRIPTIONS = [
+  {
+    id: 'rx-history-1',
+    encounter_id: 'enc-0',
+    rx_content: JSON.stringify({
+      newRx: [{ name: 'Metformin 500mg' }, { name: 'Aspirin 75mg' }]
+    }),
+    status: 'AUTHORIZED',
+    authorizing_user_id: 'doc1_qa',
+    __v: 2,
+    created_at: '2026-03-15T09:30:00.000Z'
+  },
   {
     id: 'rx-1',
     encounter_id: 'enc-2',
     rx_content: 'Paracetamol 500mg TDS x 5 days',
     status: 'DRAFT',
     authorizing_user_id: null,
-    __v: 1
+    __v: 1,
+    created_at: '2026-04-09T08:50:00.000Z'
   }
 ];
 
@@ -143,13 +207,25 @@ async function seedUsers(context, passwordHash) {
 
 async function seedEncounters(context) {
   for (const encounter of SEEDED_ENCOUNTERS) {
-    await upsertByPrimaryKey(context, 'encounters', 'id', encounter, ['phase', 'is_discharged', '__v']);
+    await upsertByPrimaryKey(
+      context,
+      'encounters',
+      'id',
+      encounter,
+      ['patient_id', 'phase', 'lifecycle_status', 'is_discharged', '__v', 'created_at']
+    );
   }
 }
 
 async function seedNotes(context) {
   for (const note of SEEDED_NOTES) {
-    await upsertByPrimaryKey(context, 'clinical_notes', 'id', note, ['draft_content', 'status', 'author_id', '__v']);
+    await upsertByPrimaryKey(
+      context,
+      'clinical_notes',
+      'id',
+      note,
+      ['encounter_id', 'draft_content', 'status', 'author_id', '__v', 'created_at', 'updated_at']
+    );
   }
 }
 
@@ -160,7 +236,7 @@ async function seedPrescriptions(context) {
       'prescriptions',
       'id',
       prescription,
-      ['rx_content', 'status', 'authorizing_user_id', '__v']
+      ['encounter_id', 'rx_content', 'status', 'authorizing_user_id', '__v', 'created_at']
     );
   }
 }

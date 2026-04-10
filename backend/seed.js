@@ -4,9 +4,9 @@ const SEEDED_PASSWORD = 'Password123!';
 const SEEDED_ACTIVATION_CODE = '123456';
 
 const SEEDED_PATIENTS = [
-  { id: 'pat-1', name: 'John Doe', dob: '1980-01-01', gender: 'Male' },
-  { id: 'pat-2', name: 'Jane Smith', dob: '1990-05-15', gender: 'Female' },
-  { id: 'pat-3', name: 'Ramesh Sivakumar', dob: '1975-03-22', gender: 'Male' }
+  { id: 'pat-1', name: 'John Doe', phone: '+919876543210', dob: '1980-01-01', gender: 'Male' },
+  { id: 'pat-2', name: 'Jane Smith', phone: '+919876543211', dob: '1990-05-15', gender: 'Female' },
+  { id: 'pat-3', name: 'Ramesh Sivakumar', phone: '+919876543212', dob: '1975-03-22', gender: 'Male' }
 ];
 
 const SEEDED_USERS = [
@@ -180,7 +180,7 @@ function normalizeContext(db) {
 
 async function seedPatients(context) {
   for (const patient of SEEDED_PATIENTS) {
-    await upsertByPrimaryKey(context, 'patients', 'id', patient, ['name', 'dob', 'gender']);
+    await upsertByPrimaryKey(context, 'patients', 'id', patient, ['name', 'phone', 'dob', 'gender']);
   }
 }
 

@@ -13,6 +13,7 @@ const {
   normalizeAccountType,
   roleAllowedForAccountType
 } = require('../lib/authBoundary');
+const { normalizePatientPhone } = require('../lib/clinicalIntegrity');
 const { logEvent } = require('../lib/logger');
 
 const router = express.Router();
@@ -138,12 +139,20 @@ async function recordFailedPassword({ req, userRow, username, ipKey }) {
 
 async function resolveLoginCandidate(username, accountType) {
   if (accountType === ACCOUNT_TYPES.PATIENT) {
+    const normalizedPhone = normalizePatientPhone(username);
     return get(
-      `SELECT * FROM users
-       WHERE role = 'PATIENT' AND (id = ? OR patient_id = ?)
-       ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
+      `SELECT u.*, p.phone AS patient_phone
+       FROM users u
+       LEFT JOIN patients p ON p.id = u.patient_id
+       WHERE u.role = 'PATIENT' AND (u.id = ? OR u.patient_id = ? OR p.phone = ?)
+       ORDER BY CASE
+         WHEN p.phone = ? THEN 0
+         WHEN u.id = ? THEN 1
+         WHEN u.patient_id = ? THEN 2
+         ELSE 3
+       END
        LIMIT 1`,
-      [username, username, username]
+      [username, username, normalizedPhone, normalizedPhone, username, username]
     );
   }
 
@@ -160,12 +169,20 @@ async function resolveLoginCandidate(username, accountType) {
 }
 
 async function resolveAnyLoginCandidate(username) {
+  const normalizedPhone = normalizePatientPhone(username);
   return get(
-    `SELECT * FROM users
-     WHERE id = ? OR (role = 'PATIENT' AND patient_id = ?)
-     ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
+    `SELECT u.*, p.phone AS patient_phone
+     FROM users u
+     LEFT JOIN patients p ON p.id = u.patient_id
+     WHERE u.id = ? OR (u.role = 'PATIENT' AND (u.patient_id = ? OR p.phone = ?))
+     ORDER BY CASE
+       WHEN p.phone = ? THEN 0
+       WHEN u.id = ? THEN 1
+       WHEN u.patient_id = ? THEN 2
+       ELSE 3
+     END
      LIMIT 1`,
-    [username, username, username]
+    [username, username, normalizedPhone, normalizedPhone, username, username]
   );
 }
 

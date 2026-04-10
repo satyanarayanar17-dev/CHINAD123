@@ -15,6 +15,12 @@ const { resetAndSeedDatabase, get, run, all, dbDialect } = require('./database')
 const { SEEDED_PASSWORD } = require('./seed');
 const { scanDataIntegrity, repairData } = require('./lib/dataIntegrityAudit');
 
+const SEEDED_PATIENT_PHONES = {
+  pat1: '+919876543210',
+  pat2: '+919876543211',
+  pat3: '+919876543212'
+};
+
 function pass(label, detail) {
   console.log(`  ✓ PASS — ${label}${detail ? `: ${JSON.stringify(detail)}` : ''}`);
 }
@@ -177,7 +183,7 @@ async function runVerification() {
   assert.strictEqual(adminViaPatientLogin.body.error, 'ACCOUNT_TYPE_MISMATCH', 'Admin patient-login rejection must be explicit.');
   pass('Admin credentials are rejected by the patient login path');
 
-  const patientViaStaffLogin = await loginStaff('pat-1', SEEDED_PASSWORD);
+  const patientViaStaffLogin = await loginStaff(SEEDED_PATIENT_PHONES.pat1, SEEDED_PASSWORD);
   assert.strictEqual(patientViaStaffLogin.status, 403, 'Patient credentials must be rejected on staff login.');
   assert.strictEqual(patientViaStaffLogin.body.error, 'ACCOUNT_TYPE_MISMATCH', 'Patient staff-login rejection must be explicit.');
   pass('Patient credentials are rejected by the staff login path');
@@ -213,7 +219,7 @@ async function runVerification() {
   assert.strictEqual(meRes.body.account_type, 'staff', '/auth/me must preserve the staff account type.');
   pass('/auth/me succeeds with refreshed access token');
 
-  const patientLogin = await loginPatient('pat-1', SEEDED_PASSWORD, patientAgent);
+  const patientLogin = await loginPatient(SEEDED_PATIENT_PHONES.pat1, SEEDED_PASSWORD, patientAgent);
   assert.strictEqual(patientLogin.status, 200, 'Patient login must succeed on the patient login path.');
   assert.strictEqual(patientLogin.body.account_type, 'patient', 'Patient login must return the patient account type.');
 
@@ -261,7 +267,7 @@ async function runVerification() {
 
   const nurseLogin = await loginStaff('nurse_qa', SEEDED_PASSWORD);
   const adminLogin = await loginStaff('admin_qa', SEEDED_PASSWORD);
-  const patientPortalLogin = await loginPatient('pat-1', SEEDED_PASSWORD);
+  const patientPortalLogin = await loginPatient(SEEDED_PATIENT_PHONES.pat1, SEEDED_PASSWORD);
 
   assert.strictEqual(nurseLogin.status, 200, 'Nurse login must succeed.');
   assert.strictEqual(adminLogin.status, 200, 'Admin login must succeed.');
@@ -358,7 +364,7 @@ async function runVerification() {
   for (let attempt = 1; attempt <= 6; attempt += 1) {
     const res = await request(app)
       .post('/api/v1/activation/claim')
-      .send({ patient_id: 'pat-2', otp: '000000', new_password: 'Password123!' });
+      .send({ phone: SEEDED_PATIENT_PHONES.pat2, otp: '000000', new_password: 'Password123!' });
     if (attempt < 6) {
       assert.strictEqual(res.status, 401, `Activation claim attempt ${attempt} should fail with 401.`);
     } else {
@@ -377,16 +383,18 @@ async function runVerification() {
   const patientRegisterRes = await request(app)
     .post('/api/v1/patients')
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ id: 'pat-10', name: 'Pilot Patient', dob: '1988-06-11', gender: 'Female' });
+    .send({ name: 'Pilot Patient', phone: '+919876543220', dob: '1988-06-11', gender: 'Female' });
   assert.strictEqual(patientRegisterRes.status, 201, 'Admin patient onboarding must succeed.');
+  assert.ok(patientRegisterRes.body.patient?.id, 'Server-generated onboarding must return a patient identifier.');
+  assert.strictEqual(patientRegisterRes.body.patient.phone, '+919876543220', 'Patient onboarding must persist the normalized phone number.');
   pass('Admin patient onboarding succeeds');
 
   const atomicOnboardingRes = await request(app)
     .post('/api/v1/patients')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
-      id: 'pat-11',
       name: 'Activation Ready Patient',
+      phone: '+919876543221',
       dob: '1991-04-05',
       gender: 'Female',
       issueActivationToken: true
@@ -401,7 +409,7 @@ async function runVerification() {
   const activationClaimRes = await request(app)
     .post('/api/v1/activation/claim')
     .send({
-      patient_id: 'pat-11',
+      phone: atomicOnboardingRes.body.patient.phone,
       otp: atomicOnboardingRes.body.activation.activation_code,
       new_password: 'Password123!'
     });
@@ -411,13 +419,22 @@ async function runVerification() {
   const patientRegisterAudit = await get(
     `SELECT action, patient_id, new_state
      FROM audit_logs
-     WHERE patient_id = 'pat-10' AND action LIKE 'PATIENT_REGISTER:%'
+     WHERE patient_id = ? AND action LIKE 'PATIENT_REGISTER:%'
      ORDER BY id DESC
-     LIMIT 1`
+     LIMIT 1`,
+    [patientRegisterRes.body.patient.id]
   );
   assert.ok(patientRegisterAudit, 'Patient onboarding must write audit.');
   assert.ok(patientRegisterAudit.new_state, 'Patient onboarding audit must include context.');
   pass('Patient onboarding writes contextual audit record');
+
+  const duplicatePhoneRes = await request(app)
+    .post('/api/v1/patients')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ name: 'Conflicting Patient', phone: '+919876543220', dob: '1970-01-01', gender: 'Male' });
+  assert.strictEqual(duplicatePhoneRes.status, 409, 'Duplicate patient phone numbers must be rejected.');
+  assert.strictEqual(duplicatePhoneRes.body.error.code, 'PHONE_ALREADY_REGISTERED', 'Duplicate phone rejections must use a stable error code.');
+  pass('Duplicate patient phone numbers are rejected safely');
 
   const activationAudit = await get(
     `SELECT action, patient_id, new_state
@@ -454,6 +471,22 @@ async function runVerification() {
     .send({ patientId: 'pat-2', draft_content: 'Pilot note' });
   assert.strictEqual(noteCreateRes.status, 200, 'Doctor note creation must succeed.');
   pass('Doctor note creation succeeds');
+
+  const noteSaveRes = await request(app)
+    .put(`/api/v1/notes/${noteCreateRes.body.noteId}`)
+    .set('Authorization', `Bearer ${doctorToken}`)
+    .send({ draft_content: 'First save', version: 1 });
+  assert.strictEqual(noteSaveRes.status, 200, 'Doctor note save must succeed with the current version.');
+
+  const staleNoteSaveRes = await request(app)
+    .put(`/api/v1/notes/${noteCreateRes.body.noteId}`)
+    .set('Authorization', `Bearer ${doctorToken}`)
+    .send({ draft_content: 'Stale save', version: 1 });
+  assert.strictEqual(staleNoteSaveRes.status, 409, 'Stale note saves must return 409.');
+  assert.strictEqual(staleNoteSaveRes.body.error.code, 'STALE_STATE', 'Stale note saves must use a stable conflict code.');
+  assert.strictEqual(staleNoteSaveRes.body.error.details.latest.__v, 2, 'Conflict response must include the latest server version.');
+  assert.strictEqual(staleNoteSaveRes.body.error.details.latest.draft_content, 'First save', 'Conflict response must include the latest server draft content.');
+  pass('Stale note saves return latest server content for recovery');
 
   const noteCreateAudit = await get(
     `SELECT action, patient_id, new_state

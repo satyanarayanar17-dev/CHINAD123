@@ -11,6 +11,7 @@ export interface Medication {
 export interface Patient {
   id: string;
   mrn: string;
+  phone?: string | null;
   name: string;
   initials: string;
   age: number;

@@ -115,6 +115,7 @@ export function normalizePatient(raw: unknown): Patient {
   return {
     id,
     mrn: asString(row.mrn) || id,
+    phone: asString(row.phone),
     name,
     initials: asString(row.initials) || buildInitials(name),
     age: Math.max(0, asNumber(row.age, 0)),

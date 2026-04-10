@@ -6,6 +6,7 @@ const { writeAuditDirect } = require('../middleware/audit');
 const { writeNotification } = require('./notifications');
 const {
   buildPatientReadModel,
+  normalizePatientPhone,
   validatePatientRegistrationPayload,
   validatePatientRecord,
   validateEncounterLifecycle
@@ -40,6 +41,41 @@ function buildActivationEnvelope(otp, expiresAt) {
   }
 
   return activation;
+}
+
+function isPhoneUniqueConstraint(err) {
+  const message = String(err?.message || '');
+  const detail = String(err?.detail || '');
+  return message.includes('idx_patients_phone_unique') || detail.includes('idx_patients_phone_unique');
+}
+
+async function findPatientByPhone(context, phone) {
+  if (!phone) {
+    return null;
+  }
+
+  return context.get(
+    `SELECT id, name, phone, dob, gender
+     FROM patients
+     WHERE phone = ?`,
+    [phone]
+  );
+}
+
+async function generatePatientId(context) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const candidate = `pat-${crypto.randomBytes(4).toString('hex')}`;
+    const existing = await context.get(`SELECT id FROM patients WHERE id = ?`, [candidate]);
+    if (!existing) {
+      return candidate;
+    }
+  }
+
+  throw {
+    status: 500,
+    code: 'PATIENT_ID_GENERATION_FAILED',
+    message: 'Could not generate a stable patient identifier. Please retry.'
+  };
 }
 
 function summarizeNoteContent(rawContent) {
@@ -96,8 +132,9 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
   }
 
   const {
-    id,
+    id: requestedId,
     name,
+    phone,
     dob,
     gender,
     createEncounter
@@ -106,8 +143,18 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
 
   try {
     const result = await withTransaction(async (tx) => {
-      let patient = await loadPatientRecord(tx, id);
+      const patientByPhone = await findPatientByPhone(tx, phone);
+      const patientById = requestedId ? await loadPatientRecord(tx, requestedId) : null;
+      let patient = patientByPhone || patientById;
       let patientCreated = false;
+
+      if (patientByPhone && patientById && patientByPhone.id !== patientById.id) {
+        throw {
+          status: 409,
+          code: 'PATIENT_IDENTITY_CONFLICT',
+          message: 'This phone number is already linked to a different patient record.'
+        };
+      }
 
       if (patient) {
         assertPatientRecord(patient);
@@ -115,24 +162,38 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
         if (patient.name !== name || patient.dob !== dob || patient.gender !== gender) {
           throw {
             status: 409,
-            code: 'PATIENT_CONFLICT',
-            message: 'A patient with this UHID already exists with different demographic data.'
+            code: patient.phone === phone ? 'PHONE_ALREADY_REGISTERED' : 'PATIENT_CONFLICT',
+            message: patient.phone === phone
+              ? 'This phone number is already registered to a different patient profile.'
+              : 'A patient with this identifier already exists with different demographic data.'
+          };
+        }
+
+        if (!patient.phone && patientById && !patientByPhone) {
+          await tx.run(`UPDATE patients SET phone = ? WHERE id = ?`, [phone, patient.id]);
+          patient = { ...patient, phone };
+        } else if (patient.phone !== phone) {
+          throw {
+            status: 409,
+            code: 'PHONE_ALREADY_REGISTERED',
+            message: 'This phone number does not match the existing patient record.'
           };
         }
       } else {
+        const patientId = requestedId || await generatePatientId(tx);
         await tx.run(
-          `INSERT INTO patients (id, name, dob, gender) VALUES (?, ?, ?, ?)`,
-          [id, name, dob, gender]
+          `INSERT INTO patients (id, name, phone, dob, gender) VALUES (?, ?, ?, ?, ?)`,
+          [patientId, name, phone, dob, gender]
         );
         patientCreated = true;
-        patient = { id, name, dob, gender };
+        patient = { id: patientId, name, phone, dob, gender };
       }
 
       let activeEncounter = null;
       let encounterCreated = false;
 
       if (createEncounter !== false) {
-        const ensuredEncounter = await ensureActiveEncounter(tx, id, {
+        const ensuredEncounter = await ensureActiveEncounter(tx, patient.id, {
           encounterId: `enc-${Date.now()}`
         });
         activeEncounter = ensuredEncounter.encounter;
@@ -150,22 +211,22 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
           };
         }
 
-        const existingUser = await tx.get(`SELECT id FROM users WHERE patient_id = ?`, [id]);
+        const existingUser = await tx.get(`SELECT id FROM users WHERE patient_id = ?`, [patient.id]);
         if (existingUser) {
           throw {
             status: 409,
             code: 'ACCOUNT_EXISTS',
-            message: 'A portal account already exists for this patient.'
+            message: 'A portal account already exists for this phone number.'
           };
         }
 
         const otp = generateActivationCode();
         const expiresAt = new Date(Date.now() + 20 * 60 * 1000).toISOString();
 
-        await tx.run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [id]);
+        await tx.run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patient.id]);
         await tx.run(
           `INSERT INTO patient_activation_tokens (patient_id, otp, expires_at) VALUES (?, ?, ?)`,
-          [id, otp, expiresAt]
+          [patient.id, otp, expiresAt]
         );
 
         activation = buildActivationEnvelope(otp, expiresAt);
@@ -183,10 +244,11 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
-      patient_id: id,
+      patient_id: result.patient.id,
       action: `PATIENT_REGISTER:${result.patientCreated ? 'CREATED' : 'REUSED'}:${result.encounterCreated ? 'ENCOUNTER_CREATED' : 'ENCOUNTER_REUSED'}${result.activation ? ':ACTIVATION_ISSUED' : ''}`,
       new_state: JSON.stringify({
         patient_name: name,
+        phone,
         patientCreated: result.patientCreated,
         encounterCreated: result.encounterCreated,
         encounterId: result.activeEncounter?.id || null,
@@ -196,7 +258,7 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
 
     if (result.activation?.activation_code) {
       console.log(`\n---------------------------------------------------------`);
-      console.log(`[SYS: MOCK SMS] To: Patient ${id}`);
+      console.log(`[SYS: MOCK SMS] To: Patient ${result.patient.phone || result.patient.id}`);
       console.log(`[SYS: MOCK SMS] Your Chettinad Care activation code is: ${result.activation.activation_code}. Valid for 20 mins.`);
       console.log(`---------------------------------------------------------\n`);
     }
@@ -210,6 +272,13 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
       activationPath: result.activation ? '/patient/activate' : null
     });
   } catch (err) {
+    if (isPhoneUniqueConstraint(err)) {
+      return next({
+        status: 409,
+        code: 'PHONE_ALREADY_REGISTERED',
+        message: 'This phone number is already linked to another patient record.'
+      });
+    }
     next(err);
   }
 });
@@ -217,9 +286,16 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
 router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE']), async (req, res, next) => {
   try {
     const q = req.query.q || '';
+    const normalizedQueryPhone = normalizePatientPhone(q);
     const patients = q.length >= 2
-      ? await all(`SELECT id,name,dob,gender FROM patients WHERE name LIKE ? OR id LIKE ? LIMIT 20`, [`%${q}%`, `%${q}%`])
-      : await all(`SELECT id,name,dob,gender FROM patients LIMIT 20`);
+      ? await all(
+        `SELECT id,name,phone,dob,gender
+         FROM patients
+         WHERE name LIKE ? OR id LIKE ? OR phone LIKE ? OR (? IS NOT NULL AND phone = ?)
+         LIMIT 20`,
+        [`%${q}%`, `%${q}%`, `%${q}%`, normalizedQueryPhone, normalizedQueryPhone]
+      )
+      : await all(`SELECT id,name,phone,dob,gender FROM patients LIMIT 20`);
 
     const safePatients = patients.flatMap((patient) => {
       const patientState = validatePatientRecord(patient);
@@ -242,7 +318,7 @@ router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE']), async (req, res, 
 
 router.get('/:patientId', requireAuth, requireRole(['DOCTOR', 'NURSE']), async (req, res, next) => {
   try {
-    const p = await get(`SELECT id,name,dob,gender FROM patients WHERE id = ?`, [req.params.patientId]);
+    const p = await get(`SELECT id,name,phone,dob,gender FROM patients WHERE id = ?`, [req.params.patientId]);
     if (!p) return next({ status: 404, code: 'NOT_FOUND', message: 'Patient not found.' });
 
     const patientState = validatePatientRecord(p);

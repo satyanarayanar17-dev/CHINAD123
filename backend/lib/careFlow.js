@@ -15,7 +15,7 @@ function buildIntegrityError(message, details = [], code = 'DATA_INTEGRITY_VIOLA
 
 async function loadPatientRecord(context, patientId) {
   return context.get(
-    `SELECT id, name, dob, gender
+    `SELECT id, name, phone, dob, gender
      FROM patients
      WHERE id = ?`,
     [patientId]

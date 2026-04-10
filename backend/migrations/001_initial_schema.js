@@ -3,6 +3,7 @@ function sqliteStatements() {
     `CREATE TABLE IF NOT EXISTS patients (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      phone TEXT,
       dob TEXT NOT NULL,
       gender TEXT NOT NULL DEFAULT 'Not specified'
     )`,
@@ -100,6 +101,7 @@ function sqliteStatements() {
     `CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id ON audit_logs(actor_id)`,
     `CREATE INDEX IF NOT EXISTS idx_audit_logs_patient_id ON audit_logs(patient_id)`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_patient_id_unique ON users(patient_id) WHERE patient_id IS NOT NULL`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_phone_unique ON patients(phone) WHERE phone IS NOT NULL`,
     `CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read)`,
     `CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at)`,
     `CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id)`
@@ -111,6 +113,7 @@ function postgresStatements() {
     `CREATE TABLE IF NOT EXISTS patients (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      phone TEXT,
       dob TEXT NOT NULL,
       gender TEXT NOT NULL DEFAULT 'Not specified'
     )`,
@@ -202,6 +205,7 @@ function postgresStatements() {
     `CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id ON audit_logs(actor_id)`,
     `CREATE INDEX IF NOT EXISTS idx_audit_logs_patient_id ON audit_logs(patient_id)`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_patient_id_unique ON users(patient_id) WHERE patient_id IS NOT NULL`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_phone_unique ON patients(phone) WHERE phone IS NOT NULL`,
     `CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read)`,
     `CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at)`,
     `CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id)`

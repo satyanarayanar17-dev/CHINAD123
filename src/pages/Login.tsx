@@ -166,13 +166,13 @@ export const Login = () => {
               {/* Credential fields */}
               <div>
                 <label className="block text-xs font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  {selectedAccountType === 'staff' ? 'Staff ID' : 'Patient UHID'}
+                  {selectedAccountType === 'staff' ? 'Staff ID' : 'Mobile Number'}
                 </label>
                 <input
-                  type="text"
+                  type={selectedAccountType === 'staff' ? 'text' : 'tel'}
                   value={id}
                   onChange={e => setId(e.target.value)}
-                  placeholder={selectedAccountType === 'staff' ? 'e.g. CHRI-DOC-001' : 'e.g. CC-99821'}
+                  placeholder={selectedAccountType === 'staff' ? 'e.g. CHRI-DOC-001' : 'e.g. 98765 43210'}
                   className="w-full bg-white border border-outline rounded-xl px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                 />
               </div>
@@ -197,7 +197,7 @@ export const Login = () => {
                     onClick={() => navigate('/patient/activate')}
                     className="text-xs font-bold text-tertiary hover:underline"
                   >
-                    First time bridging account? Activate here.
+                    First time using the portal? Activate with your mobile number.
                   </button>
                 </div>
               )}

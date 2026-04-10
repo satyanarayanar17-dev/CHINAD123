@@ -5,6 +5,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { get, all, run, withTransaction } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
 const { createRateLimiter } = require('../middleware/rateLimit');
+const { normalizePatientPhone } = require('../lib/clinicalIntegrity');
 const { assertPatientRecord, loadPatientRecord, resolveSingleActiveEncounter } = require('../lib/careFlow');
 const { logEvent } = require('../lib/logger');
 
@@ -31,9 +32,22 @@ const generateLimiter = createRateLimiter({
 const claimRateLimit = createRateLimiter({
   max: 5,
   windowMs: 20 * 60 * 1000,
-  keyFn: (req) => req.body?.patient_id || req.ip,
-  message: 'Too many activation attempts for this UHID. Please wait 20 minutes before trying again.'
+  keyFn: (req) => normalizePatientPhone(req.body?.phone) || req.body?.patient_id || req.ip,
+  message: 'Too many activation attempts for this phone number. Please wait 20 minutes before trying again.'
 });
+
+async function findPatientByPhone(context, phone) {
+  if (!phone) {
+    return null;
+  }
+
+  return context.get(
+    `SELECT id, name, phone, dob, gender
+     FROM patients
+     WHERE phone = ?`,
+    [phone]
+  );
+}
 
 /**
  * POST /api/activation/generate
@@ -54,6 +68,12 @@ router.post('/generate', requireAuth, requireRole(['ADMIN', 'NURSE', 'DOCTOR']),
   try {
     const patientRecord = await loadPatientRecord({ get }, patient_id);
     assertPatientRecord(patientRecord);
+    if (!patientRecord.phone) {
+      return res.status(422).json({
+        error: 'PHONE_REQUIRED',
+        message: 'Patient activation requires a validated phone number on the patient profile.'
+      });
+    }
 
     await resolveSingleActiveEncounter({ all }, patient_id, {
       missingMessage: 'Patient must have an active encounter before activation can be issued.',
@@ -91,7 +111,7 @@ router.post('/generate', requireAuth, requireRole(['ADMIN', 'NURSE', 'DOCTOR']),
     });
 
     console.log(`\n---------------------------------------------------------`);
-    console.log(`[SYS: MOCK SMS] To: Patient ${patient_id}`);
+    console.log(`[SYS: MOCK SMS] To: Patient ${patientRecord.phone || patient_id}`);
     console.log(`[SYS: MOCK SMS] Your Chettinad Care activation code is: ${otp}. Valid for 20 mins.`);
     console.log(`---------------------------------------------------------\n`);
 
@@ -115,24 +135,25 @@ router.post('/generate', requireAuth, requireRole(['ADMIN', 'NURSE', 'DOCTOR']),
 
 /**
  * POST /api/activation/claim
- * Public route — patient claims their account using UHID + OTP.
- * Rate limited to 5 attempts per UHID within the OTP window.
+ * Public route — patient claims their account using phone + OTP.
+ * Rate limited to 5 attempts per phone within the OTP window.
  */
 router.post('/claim', claimRateLimit, async (req, res, next) => {
-  const { patient_id, otp, new_password } = req.body;
-  if (!patient_id || !otp || !new_password) {
+  const normalizedPhone = normalizePatientPhone(req.body?.phone);
+  const { otp, new_password } = req.body;
+  if (!normalizedPhone || !otp || !new_password) {
     logEvent('warn', 'activation_claim_rejected', {
       correlationId: req.correlationId,
-      patientId: patient_id || null,
+      phone: normalizedPhone || null,
       reason: 'missing_fields'
     });
-    return res.status(400).json({ error: 'MISSING_DATA', message: 'patient_id, otp, and new_password are required' });
+    return res.status(400).json({ error: 'MISSING_DATA', message: 'phone, otp, and new_password are required' });
   }
 
   if (new_password.length < 8) {
     logEvent('warn', 'activation_claim_rejected', {
       correlationId: req.correlationId,
-      patientId: patient_id,
+      phone: normalizedPhone,
       reason: 'weak_password'
     });
     return res.status(400).json({ error: 'WEAK_PASSWORD', message: 'Password must be at least 8 characters long.' });
@@ -140,10 +161,10 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
 
   try {
     const activationResult = await withTransaction(async (tx) => {
-      const patientRecord = await loadPatientRecord(tx, patient_id);
+      const patientRecord = await findPatientByPhone(tx, normalizedPhone);
       assertPatientRecord(patientRecord);
 
-      await resolveSingleActiveEncounter(tx, patient_id, {
+      await resolveSingleActiveEncounter(tx, patientRecord.id, {
         missingMessage: 'Activation cannot continue until an active encounter exists for this patient.',
         malformedMessage: 'Activation is blocked because the linked encounter is malformed.',
         duplicateMessage: 'Activation is blocked because multiple active encounters exist for this patient.'
@@ -151,21 +172,21 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
 
       const tokenRecord = await tx.get(
         `SELECT * FROM patient_activation_tokens WHERE patient_id = ? AND otp = ?`,
-        [patient_id, otp]
+        [patientRecord.id, otp]
       );
 
       if (!tokenRecord) {
         throw {
           status: 401,
           code: 'INVALID_TOKEN',
-          message: 'Activation code is invalid or does not match this UHID.'
+          message: 'Activation code is invalid or does not match this phone number.'
         };
       }
 
       const now = new Date();
       const expiry = new Date(tokenRecord.expires_at);
       if (now > expiry) {
-        await tx.run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patient_id]);
+        await tx.run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patientRecord.id]);
         throw {
           status: 401,
           code: 'EXPIRED_TOKEN',
@@ -173,33 +194,33 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
         };
       }
 
-      const existingUser = await tx.get(`SELECT id FROM users WHERE patient_id = ?`, [patient_id]);
+      const existingUser = await tx.get(`SELECT id FROM users WHERE patient_id = ?`, [patientRecord.id]);
       if (existingUser) {
         throw {
           status: 409,
           code: 'ACCOUNT_EXISTS',
-          message: 'An account has already been claimed for this UHID.'
+          message: 'An account has already been claimed for this phone number.'
         };
       }
 
-      const newUserId = `usr-${patient_id}`;
+      const newUserId = `usr-${patientRecord.id}`;
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(new_password, salt);
 
       await tx.run(
         `INSERT INTO users (id, role, name, password_hash, is_active, patient_id) VALUES (?, ?, ?, ?, ?, ?)`,
-        [newUserId, 'PATIENT', patientRecord.name, hash, 1, patient_id]
+        [newUserId, 'PATIENT', patientRecord.name, hash, 1, patientRecord.id]
       );
 
-      await tx.run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patient_id]);
+      await tx.run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patientRecord.id]);
 
-      return { newUserId };
+      return { newUserId, patientId: patientRecord.id };
     });
 
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: activationResult.newUserId,
-      patient_id,
+      patient_id: activationResult.patientId,
       action: 'PATIENT_ACTIVATION_CLAIM_SUCCESS',
       new_state: JSON.stringify({ activated_user_id: activationResult.newUserId })
     });
@@ -209,7 +230,7 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
     if (err?.code) {
       logEvent(err.status >= 500 ? 'error' : 'warn', 'activation_claim_failed', {
         correlationId: req.correlationId,
-        patientId: patient_id,
+        phone: normalizedPhone,
         code: err.code,
         message: err.message
       });

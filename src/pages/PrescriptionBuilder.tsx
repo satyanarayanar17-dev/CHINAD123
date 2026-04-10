@@ -2,13 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useDebounce } from '../hooks/useDebounce';
 import { Card, CardContent } from '../components/ui/Card';
 import { StatusChip } from '../components/ui/StatusChip';
-import { Search, Pill, Beaker, CheckCircle, AlertTriangle, X, Plus, Trash2, ArrowRight } from 'lucide-react';
+import { Search, Pill, Beaker, CheckCircle, AlertTriangle, X, Plus, Trash2, ArrowRight, Printer } from 'lucide-react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicalApi } from '../api/clinical';
 import { usePatient } from '../hooks/queries/usePatients';
 import { useToast, ToastContainer } from '../components/ui/Toast';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
+import { useAuth } from '../hooks/useAuth';
 
 interface NewMedication {
   name: string;
@@ -23,6 +24,7 @@ export const PrescriptionBuilder = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toasts, push, dismiss } = useToast();
+  const { user } = useAuth();
 
   const { data: patient, isLoading: isPatientLoading } = usePatient(patientId!);
   
@@ -195,6 +197,31 @@ export const PrescriptionBuilder = () => {
   };
 
   const handleRemoveLab = (name: string) => setSelectedLabs(prev => prev.filter(l => l !== name));
+
+  const printableMedications = (newRx.length > 0 ? newRx : activeMeds).map((medication: any) => ({
+    name: medication.name || 'Medication',
+    strength: medication.strength || medication.dose || 'As prescribed',
+    frequency: medication.frequency || 'As directed',
+    route: medication.route || 'Oral',
+    duration: medication.duration ? `${medication.duration} days` : 'As directed',
+  }));
+
+  const handlePrintPrescription = () => {
+    if (printableMedications.length === 0) {
+      return;
+    }
+
+    const printClass = 'print-prescription';
+    const cleanup = () => {
+      document.body.classList.remove(printClass);
+      window.removeEventListener('afterprint', cleanup);
+    };
+
+    document.body.classList.add(printClass);
+    window.addEventListener('afterprint', cleanup);
+    window.print();
+    window.setTimeout(cleanup, 1000);
+  };
 
   const authMutation = useMutation({
     mutationFn: async () => {
@@ -479,6 +506,20 @@ export const PrescriptionBuilder = () => {
             )}
           </div>
 
+          <button
+            type="button"
+            onClick={handlePrintPrescription}
+            disabled={printableMedications.length === 0}
+            className={`w-full rounded-xl border px-4 py-3 text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+              printableMedications.length === 0
+                ? 'cursor-not-allowed border-outline bg-surface-container text-on-surface-variant'
+                : 'border-primary/20 bg-white text-primary hover:bg-primary/5'
+            }`}
+          >
+            <Printer size={18} />
+            Print Prescription
+          </button>
+
           <button 
             onClick={handleAuthorize}
             disabled={authMutation.isPending || isAuthorizing || !rxId}
@@ -492,6 +533,79 @@ export const PrescriptionBuilder = () => {
           </ErrorBoundary>
         </div>
       </div>
+
+      <section className="print-surface print-surface--prescription hidden">
+        <div className="mx-auto max-w-3xl rounded-2xl border border-slate-300 bg-white p-8 text-slate-900 shadow-none">
+          <div className="border-b border-slate-300 pb-4">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Chettinad Care</p>
+            <h1 className="mt-2 text-2xl font-bold">Prescription</h1>
+            <p className="mt-1 text-sm text-slate-600">Chettinad Hospital &amp; Research Institute</p>
+          </div>
+
+          <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Patient</p>
+              <p className="mt-1 font-semibold">{patient.name}</p>
+              <p className="text-slate-600">{patient.mrn}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Doctor</p>
+              <p className="mt-1 font-semibold">{user?.name || 'Attending Doctor'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Date</p>
+              <p className="mt-1 font-semibold">{new Date().toLocaleDateString('en-IN')}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Patient Details</p>
+              <p className="mt-1 text-slate-700">{patient.age}Y · {patient.gender}</p>
+            </div>
+          </div>
+
+          <table className="mt-6 w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-slate-300 text-left">
+                <th className="py-2 pr-3 font-bold">Medication</th>
+                <th className="py-2 pr-3 font-bold">Strength</th>
+                <th className="py-2 pr-3 font-bold">Frequency</th>
+                <th className="py-2 pr-3 font-bold">Route</th>
+                <th className="py-2 font-bold">Duration</th>
+              </tr>
+            </thead>
+            <tbody>
+              {printableMedications.map((medication, index) => (
+                <tr key={`${medication.name}-${index}`} className="border-b border-slate-200 align-top">
+                  <td className="py-3 pr-3 font-semibold">{medication.name}</td>
+                  <td className="py-3 pr-3">{medication.strength}</td>
+                  <td className="py-3 pr-3">{medication.frequency}</td>
+                  <td className="py-3 pr-3">{medication.route}</td>
+                  <td className="py-3">{medication.duration}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {selectedLabs.length > 0 && (
+            <div className="mt-6">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Requested Tests</p>
+              <p className="mt-2 text-sm text-slate-700">{selectedLabs.join(', ')}</p>
+            </div>
+          )}
+
+          <div className="mt-12 grid grid-cols-2 gap-8 text-sm">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Instructions</p>
+              <p className="mt-2 text-slate-700">Take medications exactly as advised. Return to the clinic if symptoms worsen or new symptoms appear.</p>
+            </div>
+            <div className="flex flex-col justify-end">
+              <div className="mt-10 border-t border-slate-400 pt-2 text-right">
+                <p className="font-semibold">{user?.name || 'Attending Doctor'}</p>
+                <p className="text-xs text-slate-500">Signature</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 };

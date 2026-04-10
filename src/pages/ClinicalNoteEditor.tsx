@@ -11,6 +11,74 @@ import { clinicalApi } from '../api/clinical';
 import { usePatient, usePatientTimeline } from '../hooks/queries/usePatients';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
+type Diagnosis = { code: string; name: string; isNew: boolean };
+type NoteDraftPayload = {
+  soap: { S: string; O: string; A: string; P: string };
+  diagnoses: Diagnosis[];
+  followUp: boolean;
+  followUpDate: string;
+  followUpInstructions: string;
+};
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict';
+
+type ConflictState = {
+  localDraft: string;
+  serverDraft: string;
+  updatedAt: string | null;
+  localDraftApplied: boolean;
+  recoveredFromBrowser: boolean;
+};
+
+const EMPTY_SOAP = { S: '', O: '', A: '', P: '' };
+
+function parseDraftContent(rawContent?: string | null): NoteDraftPayload {
+  if (!rawContent) {
+    return {
+      soap: { ...EMPTY_SOAP },
+      diagnoses: [],
+      followUp: false,
+      followUpDate: '',
+      followUpInstructions: '',
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(rawContent);
+    return {
+      soap: parsed.soap || { ...EMPTY_SOAP },
+      diagnoses: Array.isArray(parsed.diagnoses) ? parsed.diagnoses : [],
+      followUp: Boolean(parsed.followUp),
+      followUpDate: parsed.followUpDate || '',
+      followUpInstructions: parsed.followUpInstructions || '',
+    };
+  } catch {
+    return {
+      soap: { ...EMPTY_SOAP },
+      diagnoses: [],
+      followUp: false,
+      followUpDate: '',
+      followUpInstructions: '',
+    };
+  }
+}
+
+function formatSaveTimestamp(timestamp: string | null) {
+  if (!timestamp) {
+    return null;
+  }
+
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export const ClinicalNoteEditor = () => {
   const { patientId, consultationId } = useParams<{ patientId: string; consultationId: string }>();
   const navigate = useNavigate();
@@ -26,9 +94,13 @@ export const ClinicalNoteEditor = () => {
   const [version, setVersion] = useState<number>(1);
   const [signed, setSigned] = useState(false);
   const [diagSearch, setDiagSearch] = useState('');
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [conflictState, setConflictState] = useState<ConflictState | null>(null);
 
   const [soap, setSoap] = useState<any>({ S: '', O: '', A: '', P: '' });
-  const [diagnoses, setDiagnoses] = useState<{code: string, name: string, isNew: boolean}[]>([]);
+  const [diagnoses, setDiagnoses] = useState<Diagnosis[]>([]);
   const [followUp, setFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpInstructions, setFollowUpInstructions] = useState('');
@@ -36,6 +108,7 @@ export const ClinicalNoteEditor = () => {
   const noteIdRef = useRef<string | null>(noteId);
   const versionRef = useRef<number>(version);
   const lastSavedDraftRef = useRef<string | null>(null);
+  const recoveryDraftStorageKeyRef = useRef<string>('');
 
   // Load existing note from backend if noteId exists
   const { data: existingNote, isLoading: isNoteLoading } = useQuery({
@@ -53,89 +126,15 @@ export const ClinicalNoteEditor = () => {
     versionRef.current = version;
   }, [version]);
 
-  useEffect(() => {
-    if (patient && !isInitialized && consultationId === 'new') {
-      const initialDraft = {
-        S: prevNote ? `Patient returns for follow-up. Previously: ${prevNote.title}.` : `Patient presents with primary complaints. Background: ${patient.riskFlags.join(', ') || 'None'}.`,
-        O: `Vitals: BP ${patient.vitals?.bp} mmHg, HR ${patient.vitals?.hr} bpm, Temp ${patient.vitals?.temp}°C, SpO₂ ${patient.vitals?.spo2}%.`,
-        A: '',
-        P: '',
-      };
-      setSoap(initialDraft);
-      setDiagnoses(patient.riskFlags.map(f => ({ code: 'Z99.9', name: f, isNew: false })));
-      lastSavedDraftRef.current = JSON.stringify({
-        soap: initialDraft,
-        diagnoses: patient.riskFlags.map(f => ({ code: 'Z99.9', name: f, isNew: false })),
-        followUp: false,
-        followUpDate: '',
-        followUpInstructions: '',
-      });
-      setIsInitialized(true);
-    }
-  }, [patient, isInitialized, consultationId, prevNote]);
+  const applyDraftPayload = (draft: NoteDraftPayload) => {
+    setSoap(draft.soap);
+    setDiagnoses(draft.diagnoses);
+    setFollowUp(draft.followUp);
+    setFollowUpDate(draft.followUpDate);
+    setFollowUpInstructions(draft.followUpInstructions);
+  };
 
-  useEffect(() => {
-    if (existingNote && !isInitialized) {
-      if (existingNote.draft_content) {
-        try {
-          const parsed = JSON.parse(existingNote.draft_content);
-          setSoap(parsed.soap || { S: '', O: '', A: '', P: '' });
-          setDiagnoses(parsed.diagnoses || []);
-          setFollowUp(parsed.followUp || false);
-          setFollowUpDate(parsed.followUpDate || '');
-          setFollowUpInstructions(parsed.followUpInstructions || '');
-        } catch(e) {}
-      } else if (patient && consultationId !== 'new') {
-         setDiagnoses(patient.riskFlags.map(f => ({ code: 'Z99.9', name: f, isNew: false })));
-      }
-      setVersion(existingNote.__v || 1);
-      versionRef.current = existingNote.__v || 1;
-      noteIdRef.current = existingNote.id || noteIdRef.current;
-      lastSavedDraftRef.current = JSON.stringify({
-        soap: existingNote.draft_content ? (() => {
-          try {
-            return JSON.parse(existingNote.draft_content).soap || { S: '', O: '', A: '', P: '' };
-          } catch {
-            return { S: '', O: '', A: '', P: '' };
-          }
-        })() : { S: '', O: '', A: '', P: '' },
-        diagnoses: existingNote.draft_content ? (() => {
-          try {
-            return JSON.parse(existingNote.draft_content).diagnoses || [];
-          } catch {
-            return [];
-          }
-        })() : [],
-        followUp: existingNote.draft_content ? (() => {
-          try {
-            return JSON.parse(existingNote.draft_content).followUp || false;
-          } catch {
-            return false;
-          }
-        })() : false,
-        followUpDate: existingNote.draft_content ? (() => {
-          try {
-            return JSON.parse(existingNote.draft_content).followUpDate || '';
-          } catch {
-            return '';
-          }
-        })() : '',
-        followUpInstructions: existingNote.draft_content ? (() => {
-          try {
-            return JSON.parse(existingNote.draft_content).followUpInstructions || '';
-          } catch {
-            return '';
-          }
-        })() : '',
-      });
-      if (existingNote.status === 'FINALIZED') {
-        setSigned(true);
-      }
-      setIsInitialized(true);
-    }
-  }, [existingNote, isInitialized, patient, consultationId]);
-
-  const buildDraftPayload = () => ({
+  const buildDraftPayload = (): NoteDraftPayload => ({
     soap,
     diagnoses,
     followUp,
@@ -143,58 +142,243 @@ export const ClinicalNoteEditor = () => {
     followUpInstructions,
   });
 
+  const serializeDraftPayload = (payload: NoteDraftPayload = buildDraftPayload()) => JSON.stringify(payload);
+
+  const persistRecoverableDraft = (draftContent: string, reason: 'conflict' | 'save_failed') => {
+    const storageKey = recoveryDraftStorageKeyRef.current;
+    if (!storageKey) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify({
+        draftContent,
+        reason,
+        noteId: noteIdRef.current,
+        patientId,
+        storedAt: new Date().toISOString(),
+      }));
+    } catch {
+      // Best-effort local recovery only.
+    }
+  };
+
+  const clearRecoverableDraft = () => {
+    const storageKey = recoveryDraftStorageKeyRef.current;
+    if (!storageKey) {
+      return;
+    }
+
+    try {
+      window.localStorage.removeItem(storageKey);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
+  };
+
+  const resolveConflictFromLatest = (latest: any, localDraft: string, recoveredFromBrowser = false) => {
+    const latestDraft = latest?.draft_content || '';
+    applyDraftPayload(parseDraftContent(latestDraft));
+    if (latest?.id) {
+      setNoteId(latest.id);
+      noteIdRef.current = latest.id;
+    }
+    if (Number.isInteger(latest?.__v)) {
+      setVersion(latest.__v);
+      versionRef.current = latest.__v;
+    }
+    if (latest?.status === 'FINALIZED') {
+      setSigned(true);
+    }
+    lastSavedDraftRef.current = latestDraft;
+    setLastSavedAt(latest?.updated_at || latest?.created_at || new Date().toISOString());
+    setSaveError('Another session changed this note. Review the latest server version before saving again.');
+    setSaveState('conflict');
+    setConflictState({
+      localDraft,
+      serverDraft: latestDraft,
+      updatedAt: latest?.updated_at || latest?.created_at || null,
+      localDraftApplied: false,
+      recoveredFromBrowser,
+    });
+    persistRecoverableDraft(localDraft, 'conflict');
+  };
+
+  useEffect(() => {
+    if (patient && !isInitialized && consultationId === 'new') {
+      const seededDiagnoses = patient.riskFlags.map((flag) => ({ code: 'Z99.9', name: flag, isNew: false }));
+      const initialSoap = {
+        S: prevNote ? `Patient returns for follow-up. Previously: ${prevNote.title}.` : `Patient presents with primary complaints. Background: ${patient.riskFlags.join(', ') || 'None'}.`,
+        O: `Vitals: BP ${patient.vitals?.bp} mmHg, HR ${patient.vitals?.hr} bpm, Temp ${patient.vitals?.temp}°C, SpO₂ ${patient.vitals?.spo2}%.`,
+        A: '',
+        P: '',
+      };
+      const unsavedDraft = {
+        soap: initialSoap,
+        diagnoses: seededDiagnoses,
+        followUp: false,
+        followUpDate: '',
+        followUpInstructions: '',
+      };
+      applyDraftPayload(unsavedDraft);
+      lastSavedDraftRef.current = serializeDraftPayload(unsavedDraft);
+      recoveryDraftStorageKeyRef.current = `cc-note-recovery:${patientId}:new`;
+      setLastSavedAt(null);
+      setSaveState('idle');
+      setIsInitialized(true);
+    }
+  }, [patient, isInitialized, consultationId, prevNote, patientId]);
+
+  useEffect(() => {
+    if (existingNote && !isInitialized) {
+      const parsedDraft = existingNote.draft_content
+        ? parseDraftContent(existingNote.draft_content)
+        : {
+            soap: { ...EMPTY_SOAP },
+            diagnoses: patient && consultationId !== 'new'
+              ? patient.riskFlags.map((flag) => ({ code: 'Z99.9', name: flag, isNew: false }))
+              : [],
+            followUp: false,
+            followUpDate: '',
+            followUpInstructions: '',
+          };
+
+      applyDraftPayload(parsedDraft);
+      setVersion(existingNote.__v || 1);
+      versionRef.current = existingNote.__v || 1;
+      noteIdRef.current = existingNote.id || noteIdRef.current;
+      recoveryDraftStorageKeyRef.current = `cc-note-recovery:${patientId}:${existingNote.id || noteIdRef.current || 'existing'}`;
+      lastSavedDraftRef.current = existingNote.draft_content || serializeDraftPayload(parsedDraft);
+      setLastSavedAt(existingNote.updated_at || existingNote.created_at || null);
+      setSaveState('saved');
+      if (existingNote.status === 'FINALIZED') {
+        setSigned(true);
+      }
+      setIsInitialized(true);
+    }
+  }, [existingNote, isInitialized, patient, consultationId]);
+
   const debouncedState = useDebounce(buildDraftPayload(), 1000);
+
+  useEffect(() => {
+    if (!isInitialized || conflictState || !recoveryDraftStorageKeyRef.current) {
+      return;
+    }
+
+    try {
+      const stored = window.localStorage.getItem(recoveryDraftStorageKeyRef.current);
+      if (!stored) {
+        return;
+      }
+
+      const parsed = JSON.parse(stored);
+      if (parsed?.reason !== 'conflict' || typeof parsed?.draftContent !== 'string') {
+        return;
+      }
+
+      resolveConflictFromLatest({
+        id: noteIdRef.current,
+        draft_content: lastSavedDraftRef.current || '',
+        updated_at: lastSavedAt,
+        __v: versionRef.current,
+        status: signed ? 'FINALIZED' : 'DRAFT',
+      }, parsed.draftContent, true);
+    } catch {
+      // Ignore malformed local recovery data.
+    }
+  }, [conflictState, isInitialized, lastSavedAt, signed]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!isInitialized || signed) {
+        return;
+      }
+
+      const hasUnsavedDraft = serializeDraftPayload() !== (lastSavedDraftRef.current || '');
+      if (!hasUnsavedDraft && saveState !== 'saving' && saveState !== 'error' && saveState !== 'conflict') {
+        return;
+      }
+
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [soap, diagnoses, followUp, followUpDate, followUpInstructions, isInitialized, saveState, signed]);
 
   // Auto-save draft
   useEffect(() => {
-    if (!isInitialized || signed || isNoteLoading || isPatientLoading) return;
+    if (!isInitialized || signed || isNoteLoading || isPatientLoading || conflictState) return;
 
     const saveDraft = async () => {
-      try {
-        const contentStr = JSON.stringify(debouncedState);
-        if (noteIdRef.current && lastSavedDraftRef.current === contentStr) {
-          return;
+      const contentStr = serializeDraftPayload(debouncedState);
+      if (noteIdRef.current && lastSavedDraftRef.current === contentStr) {
+        if (saveState === 'saving') {
+          setSaveState('saved');
         }
+        return;
+      }
 
+      setSaveState('saving');
+      setSaveError(null);
+
+      try {
         if (!noteIdRef.current) {
-           // Create new note
-           const res = await clinicalApi.createNote(patientId!, contentStr);
-           noteIdRef.current = res.noteId;
-           versionRef.current = res.newVersion;
-           lastSavedDraftRef.current = contentStr;
-           setNoteId(res.noteId);
-           setVersion(res.newVersion);
-           // replace url
-           window.history.replaceState(null, '', `/clinical/patient/${patientId}/note/${res.noteId}`);
+          const res = await clinicalApi.createNote(patientId!, contentStr);
+          noteIdRef.current = res.noteId;
+          versionRef.current = res.newVersion;
+          lastSavedDraftRef.current = contentStr;
+          setNoteId(res.noteId);
+          setVersion(res.newVersion);
+          recoveryDraftStorageKeyRef.current = `cc-note-recovery:${patientId}:${res.noteId}`;
+          window.history.replaceState(null, '', `/clinical/patient/${patientId}/note/${res.noteId}`);
         } else {
-           const res = await clinicalApi.saveDraftNote(noteIdRef.current, contentStr, versionRef.current);
-           versionRef.current = res.newVersion;
-           lastSavedDraftRef.current = contentStr;
-           setVersion(res.newVersion);
+          const res = await clinicalApi.saveDraftNote(noteIdRef.current, contentStr, versionRef.current);
+          versionRef.current = res.newVersion;
+          lastSavedDraftRef.current = contentStr;
+          setVersion(res.newVersion);
         }
+        clearRecoverableDraft();
+        setConflictState(null);
+        setLastSavedAt(new Date().toISOString());
+        setSaveState('saved');
       } catch (err: any) {
         if (err.response?.status === 409) {
-          push('warning', 'Conflict Detected', 'Another session updated this draft. Please refresh.');
+          resolveConflictFromLatest(
+            err.response?.data?.error?.details?.latest,
+            contentStr
+          );
         } else if (err.response?.status === 422) {
-          push('error', 'Encounter Error', err.response.data?.message || 'Failed to save');
+          const message = err.response?.data?.error?.message || err.response?.data?.message || 'Failed to save.';
+          setSaveState('error');
+          setSaveError(message);
+          persistRecoverableDraft(contentStr, 'save_failed');
         } else {
-          console.error("Draft save failed", err);
+          const message = err.response?.data?.error?.message || err.response?.data?.message || 'Autosave failed. Your local draft is still in this browser.';
+          setSaveState('error');
+          setSaveError(message);
+          persistRecoverableDraft(contentStr, 'save_failed');
         }
       }
     };
 
     saveDraft();
-  }, [debouncedState, isInitialized, isNoteLoading, isPatientLoading, patientId, push, signed]);
+  }, [debouncedState, conflictState, isInitialized, isNoteLoading, isPatientLoading, patientId, saveState, signed]);
 
   const signMutation = useMutation({
     mutationFn: async () => {
       if (!noteId) throw new Error("No note ID found");
-      const saveResult = await clinicalApi.saveDraftNote(noteId, JSON.stringify(buildDraftPayload()), version);
+      const saveResult = await clinicalApi.saveDraftNote(noteId, serializeDraftPayload(), version);
       setVersion(saveResult.newVersion);
       return await clinicalApi.finalizeNote(noteId, saveResult.newVersion);
     },
     onSuccess: () => {
       setSigned(true);
+      clearRecoverableDraft();
+      setConflictState(null);
+      setLastSavedAt(new Date().toISOString());
+      setSaveState('saved');
       queryClient.invalidateQueries({ queryKey: ['patientTimeline', patientId] });
       push('success', 'Note Finalized', 'The clinical note has been signed and safely transmitted to the ledger.');
       setTimeout(() => {
@@ -202,7 +386,19 @@ export const ClinicalNoteEditor = () => {
       }, 2000);
     },
     onError: (error: any) => {
-      push('error', 'Transmission Failed', error.response?.data?.message || 'Could not commit note to backend. Please retry.');
+      if (error.response?.status === 409) {
+        resolveConflictFromLatest(
+          error.response?.data?.error?.details?.latest,
+          serializeDraftPayload()
+        );
+        return;
+      }
+
+      const message = error.response?.data?.error?.message || error.response?.data?.message || 'Could not commit note to backend. Please retry.';
+      setSaveState('error');
+      setSaveError(message);
+      persistRecoverableDraft(serializeDraftPayload(), 'save_failed');
+      push('error', 'Transmission Failed', message);
     }
   });
 
@@ -215,6 +411,62 @@ export const ClinicalNoteEditor = () => {
   };
 
   const handleRemoveDiagnosis = (index: number) => setDiagnoses(prev => prev.filter((_, i) => i !== index));
+
+  const handleCopyLocalDraft = async () => {
+    if (!conflictState?.localDraft) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(conflictState.localDraft);
+      push('success', 'Draft Copied', 'Your unsaved local draft has been copied to the clipboard.');
+    } catch {
+      push('error', 'Copy Failed', 'Clipboard access was unavailable. The local draft is still preserved in this browser.');
+    }
+  };
+
+  const handleLoadServerVersion = () => {
+    if (!conflictState) {
+      return;
+    }
+
+    applyDraftPayload(parseDraftContent(conflictState.serverDraft));
+    lastSavedDraftRef.current = conflictState.serverDraft;
+    setConflictState((current) => current ? { ...current, localDraftApplied: false } : current);
+    setSaveState('conflict');
+  };
+
+  const handleReapplyLocalDraft = () => {
+    if (!conflictState) {
+      return;
+    }
+
+    applyDraftPayload(parseDraftContent(conflictState.localDraft));
+    setConflictState((current) => current ? { ...current, localDraftApplied: true } : current);
+    setSaveState('idle');
+    setSaveError(null);
+  };
+
+  const formattedSavedAt = formatSaveTimestamp(lastSavedAt);
+  const saveStatusLabel = saveState === 'saving'
+    ? 'Saving...'
+    : saveState === 'saved'
+      ? `Saved at ${formattedSavedAt || 'just now'}`
+      : saveState === 'conflict'
+        ? 'Conflict requires review'
+        : saveState === 'error'
+          ? 'Save failed'
+          : 'Draft not yet saved';
+
+  const saveStatusClass = saveState === 'saved'
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    : saveState === 'saving'
+      ? 'border-primary/20 bg-primary/5 text-primary'
+      : saveState === 'conflict'
+        ? 'border-amber-200 bg-amber-50 text-amber-700'
+        : saveState === 'error'
+          ? 'border-error/20 bg-error/10 text-error'
+          : 'border-outline/40 bg-surface-container-low text-on-surface-variant';
 
   if (isPatientLoading || (!isInitialized && isNoteLoading)) {
     return (
@@ -248,8 +500,69 @@ export const ClinicalNoteEditor = () => {
             {consultationId === 'new' && !noteId ? 'New Encounter' : `Note #${noteId}`}
           </span>
         </div>
-        <StatusChip variant={signed ? 'success' : 'error'} label={signed ? 'Signed & Locked' : 'Unsigned Draft'} />
+        <div className="flex items-center gap-3">
+          <div className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${saveStatusClass}`}>
+            {saveStatusLabel}
+          </div>
+          <StatusChip variant={signed ? 'success' : 'error'} label={signed ? 'Signed & Locked' : 'Unsigned Draft'} />
+        </div>
       </div>
+
+      {conflictState && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="font-bold">Another session updated this note.</p>
+              <p className="mt-1 text-xs text-amber-800">
+                {conflictState.recoveredFromBrowser
+                  ? 'A recoverable local draft from this browser was restored after refresh.'
+                  : 'The latest server version is loaded below so you can safely review before saving again.'}
+              </p>
+              {conflictState.updatedAt && (
+                <p className="mt-1 text-xs text-amber-800">
+                  Latest server save: {new Date(conflictState.updatedAt).toLocaleString('en-IN')}
+                </p>
+              )}
+              <p className="mt-2 text-xs text-amber-800">
+                {conflictState.localDraftApplied
+                  ? 'Your local draft has been re-applied to the editor. Review it, then wait for a fresh save confirmation.'
+                  : 'Your unsaved local draft is preserved here and can be copied or re-applied.'}
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleCopyLocalDraft}
+                className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100"
+              >
+                Copy Local Draft
+              </button>
+              <button
+                type="button"
+                onClick={handleLoadServerVersion}
+                className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100"
+              >
+                Load Server Version
+              </button>
+              <button
+                type="button"
+                onClick={handleReapplyLocalDraft}
+                className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white hover:bg-amber-800"
+              >
+                Reapply Local Draft
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {saveState === 'error' && saveError && !conflictState && (
+        <div className="rounded-xl border border-error/20 bg-error/10 p-4 text-sm text-error">
+          <p className="font-bold">Autosave failed</p>
+          <p className="mt-1 text-xs">{saveError}</p>
+          <p className="mt-2 text-xs">Your local draft is still in this browser. Keep this tab open until the save state returns to “Saved”.</p>
+        </div>
+      )}
 
       <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 flex items-center gap-6 flex-wrap">
         <div className="flex items-center gap-3">

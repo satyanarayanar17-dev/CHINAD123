@@ -15,6 +15,25 @@ const {
 
 const router = express.Router();
 
+function buildStaleNoteError(note, message = 'Conflict — another session updated this note.') {
+  return {
+    status: 409,
+    code: 'STALE_STATE',
+    message,
+    details: {
+      latest: note
+        ? {
+            id: note.id,
+            draft_content: note.draft_content || '',
+            status: note.status,
+            updated_at: note.updated_at || note.created_at || null,
+            __v: note.__v
+          }
+        : null
+    }
+  };
+}
+
 async function loadNoteWithContext(noteId) {
   const note = await get(
     `SELECT cn.*, e.patient_id, e.phase AS encounter_phase, e.lifecycle_status, e.is_discharged, p.id AS linked_patient_record_id
@@ -110,13 +129,14 @@ router.put('/:noteId', requireAuth, requireRole(['DOCTOR']), async (req, res, ne
     if (error) return next(error);
     if (!note) return next({ status: 404, code: 'NOT_FOUND' });
     if (note.status === 'FINALIZED') return next({ status: 422, code: 'INVALID_STATE', message: 'Cannot edit a finalized note.' });
-    if (note.__v !== version) return next({ status: 409, code: 'STALE_STATE', message: 'Conflict — another session updated this note.' });
+    if (note.__v !== version) return next(buildStaleNoteError(note));
     const updateResult = await run(
       `UPDATE clinical_notes SET draft_content=?, updated_at=CURRENT_TIMESTAMP, __v=__v+1 WHERE id=? AND __v=?`,
       [draft_content, noteId, version]
     );
     if (updateResult.changes === 0) {
-      return next({ status: 409, code: 'STALE_STATE', message: 'Conflict — another session updated this note.' });
+      const latest = await loadNoteWithContext(noteId);
+      return next(buildStaleNoteError(latest.note));
     }
     await writeAuditDirect({
       correlation_id: req.correlationId,
@@ -138,14 +158,15 @@ router.post('/:noteId/finalize', requireAuth, requireRole(['DOCTOR']), async (re
     if (error) return next(error);
     if (!note) return next({ status: 404, code: 'NOT_FOUND' });
     if (note.status === 'FINALIZED') return next({ status: 422, code: 'INVALID_STATE', message: 'Already finalized.' });
-    if (note.__v !== version) return next({ status: 409, code: 'STALE_STATE', message: 'Note modified. Review before finalizing.' });
+    if (note.__v !== version) return next(buildStaleNoteError(note, 'Note modified. Review before finalizing.'));
 
     const finalizeResult = await run(
       `UPDATE clinical_notes SET status='FINALIZED', updated_at=CURRENT_TIMESTAMP, __v=__v+1 WHERE id=? AND __v=?`,
       [noteId, version]
     );
     if (finalizeResult.changes === 0) {
-      return next({ status: 409, code: 'STALE_STATE', message: 'Note modified. Review before finalizing.' });
+      const latest = await loadNoteWithContext(noteId);
+      return next(buildStaleNoteError(latest.note, 'Note modified. Review before finalizing.'));
     }
 
     await writeAuditDirect({

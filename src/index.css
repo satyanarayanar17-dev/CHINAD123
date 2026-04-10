@@ -47,3 +47,32 @@ body {
   color: var(--color-on-surface);
   font-family: var(--font-body);
 }
+
+@media print {
+  body.print-activation-slip *,
+  body.print-prescription * {
+    visibility: hidden !important;
+  }
+
+  body.print-activation-slip .print-surface--activation,
+  body.print-activation-slip .print-surface--activation *,
+  body.print-prescription .print-surface--prescription,
+  body.print-prescription .print-surface--prescription * {
+    visibility: visible !important;
+  }
+
+  body.print-activation-slip .print-surface--activation,
+  body.print-prescription .print-surface--prescription {
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    padding: 24px;
+    background: white;
+  }
+
+  body.print-activation-slip,
+  body.print-prescription {
+    background: white;
+  }
+}

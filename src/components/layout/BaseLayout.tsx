@@ -121,7 +121,7 @@ export const BaseLayout = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={18} />
               <input
                 type="text"
-                placeholder="Search patient registry..."
+                placeholder="Search patient registry by name, phone, or UHID..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -155,7 +155,7 @@ export const BaseLayout = () => {
                         >
                           <div>
                             <span className="font-bold text-sm block text-on-surface group-hover:text-primary transition-colors">{p.name}</span>
-                            <span className="text-[10px] text-on-surface-variant font-medium">{p.mrn} · {p.age}Y · {p.gender}</span>
+                            <span className="text-[10px] text-on-surface-variant font-medium">{p.phone || p.mrn} · {p.age}Y · {p.gender}</span>
                           </div>
                           <ChevronRight size={14} className="text-on-surface-variant group-hover:text-primary opacity-0 group-hover:opacity-100 transition-all mr-1" />
                         </button>

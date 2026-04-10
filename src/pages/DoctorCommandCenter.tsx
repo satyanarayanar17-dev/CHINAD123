@@ -37,19 +37,13 @@ export const DoctorCommandCenter = () => {
     openChart(slot.patient.id);
   };
 
-  const handleExport = () => {
-    push('error', 'Export Unavailable', 'The PDF export module is currently disconnected from the reporting backend.');
-  };
-
-  const handleAdjustSlot = () => {
-    push('warning', 'Adjustment Offline', 'Schedule adjustment requires backend integration. Contact admin.');
-  };
-
   const filteredQueue = filter === 'All' 
     ? queue 
     : queue.filter(slot => slot.specialty === filter);
   const activeConsultation = queue.find((slot) => slot.lifecycleStatus === 'IN_CONSULTATION') || null;
   const nextWaitingPatient = queue.find((slot) => slot.lifecycleStatus === 'AWAITING' || slot.lifecycleStatus === 'RECEPTION');
+  const waitingCount = queue.filter((slot) => slot.lifecycleStatus === 'AWAITING' || slot.lifecycleStatus === 'RECEPTION').length;
+  const dischargedCount = queue.filter((slot) => slot.lifecycleStatus === 'DISCHARGED').length;
 
   return (
     <div className="space-y-6 relative">
@@ -116,21 +110,29 @@ export const DoctorCommandCenter = () => {
             </Card>
           </ErrorBoundary>
 
-          <ErrorBoundary moduleName="Schedule Assistant">
+          <ErrorBoundary moduleName="Queue Snapshot">
             <Card className="bg-primary/5 border-primary/20">
-            <CardContent>
-              <h3 className="text-lg font-bold mb-2">Smart Prediction</h3>
-              <p className="text-sm mb-4">
-                Based on current patient flow, you are likely to finish morning rounds 15 minutes ahead of schedule.
-              </p>
-              <button 
-                onClick={handleAdjustSlot}
-                className="bg-white text-primary text-xs font-bold py-2.5 px-5 rounded-lg shadow-sm border border-outline/30 hover:bg-surface-container transition-colors"
-              >
-                Adjust Afternoon Slot
-              </button>
-            </CardContent>
-          </Card>
+              <CardContent className="space-y-4">
+                <h3 className="text-lg font-bold">Queue Snapshot</h3>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="rounded-xl border border-outline/20 bg-white p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Waiting</p>
+                    <p className="mt-2 text-2xl font-bold text-on-surface">{waitingCount}</p>
+                  </div>
+                  <div className="rounded-xl border border-outline/20 bg-white p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">In Consult</p>
+                    <p className="mt-2 text-2xl font-bold text-on-surface">{activeConsultation ? 1 : 0}</p>
+                  </div>
+                  <div className="rounded-xl border border-outline/20 bg-white p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Completed</p>
+                    <p className="mt-2 text-2xl font-bold text-on-surface">{dischargedCount}</p>
+                  </div>
+                </div>
+                <p className="text-xs text-on-surface-variant">
+                  This panel reflects the current live queue only. No predictive or disconnected actions are shown.
+                </p>
+              </CardContent>
+            </Card>
           </ErrorBoundary>
         </div>
 
@@ -166,12 +168,6 @@ export const DoctorCommandCenter = () => {
                   </div>
                 )}
               </div>
-              <button 
-                onClick={handleExport}
-                className="text-xs font-semibold px-4 py-1.5 bg-white border border-outline rounded-full text-on-surface-variant hover:bg-surface-container transition-colors"
-              >
-                Export
-              </button>
             </div>
           </div>
 

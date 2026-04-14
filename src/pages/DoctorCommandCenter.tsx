@@ -5,7 +5,7 @@ import { StatusChip } from '../components/ui/StatusChip';
 import { AlertTriangle, ClipboardList, Activity, ActivitySquare, ChevronDown } from 'lucide-react';
 import { useLiveQueue } from '../hooks/queries/useLiveQueue';
 import { clinicalApi } from '../api/clinical';
-import type { AppointmentSlot } from '../store/mockData';
+import type { AppointmentSlot } from '../types/clinical';
 import { useToast, ToastContainer } from '../components/ui/Toast';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 

@@ -10,7 +10,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useToast, ToastContainer } from '../components/ui/Toast';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 import { useAuth } from '../hooks/useAuth';
-import type { TimelineEntry } from '../store/mockData';
+import type { TimelineEntry } from '../types/clinical';
 
 const TIMELINE_META: Record<TimelineEntry['type'], { label: string; accent: string }> = {
   encounter: { label: 'Encounter Opened', accent: 'text-primary' },

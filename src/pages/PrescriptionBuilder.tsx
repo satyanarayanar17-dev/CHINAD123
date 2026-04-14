@@ -485,19 +485,6 @@ export const PrescriptionBuilder = () => {
             </CardContent>
           </Card>
 
-          {patient.activeMeds?.length > 0 && (
-            <div className="bg-error/10 border border-error/30 rounded-xl p-4 flex gap-3">
-              <AlertTriangle className="text-error shrink-0 mt-0.5" size={20} />
-              <div>
-                <span className="text-error font-bold text-xs uppercase tracking-widest block mb-1">Drug Interaction Warning</span>
-                <p className="text-sm text-error/90 font-medium">
-                  Potential moderate interaction between <strong>Gliclazide</strong> and <strong>{patient.activeMeds[0].name.split(' ')[0]}</strong>.
-                  Increased risk of hypoglycemia. Monitor closely.
-                </p>
-              </div>
-            </div>
-          )}
-
           <div className="p-3 bg-surface-container rounded-xl border border-outline/30 text-xs text-on-surface-variant space-y-1">
             <div className="font-bold text-on-surface">{patient.name}</div>
             <div>{patient.age}Y · {patient.gender} · {patient.bloodGroup}</div>

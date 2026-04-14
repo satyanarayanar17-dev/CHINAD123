@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Notification } from '../store/mockData';
+import type { Notification } from '../types/clinical';
 
 /**
  * Notifications API — DB-backed as of Phase 2.
@@ -23,12 +23,5 @@ export const notificationsApi = {
    */
   markAllRead: async (): Promise<void> => {
     await api.post('/notifications/read-all');
-  },
-
-  /**
-   * Legacy batch sync — kept for backward compatibility.
-   */
-  syncNotifications: async (notifications: Notification[]): Promise<void> => {
-    await api.put('/notifications', notifications);
   }
 };

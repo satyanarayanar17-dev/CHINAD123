@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Phone, Mail, MapPin, AlertCircle, Clock, Building2, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -21,9 +21,6 @@ const CONTACTS = [
 ];
 
 export const Contact = () => {
-  const [form, setForm] = useState({ name:'', phone:'', email:'', message:'' });
-  const [sent, setSent] = useState(false);
-
   return (
     <div className="w-full max-w-6xl mx-auto px-4 py-16">
       <div className="text-center mb-14">
@@ -114,41 +111,20 @@ export const Contact = () => {
           </div>
 
           <div className="bg-white rounded-2xl border border-outline/30 shadow-sm p-6">
-            <h3 className="font-extrabold text-on-surface text-lg mb-1">Send an Enquiry</h3>
-            <p className="text-sm text-on-surface-variant font-medium mb-5">Our patient services team will respond within one working day.</p>
-            {sent ? (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 text-center">
-                <p className="font-bold text-emerald-800 mb-1">Enquiry Received</p>
-                <p className="text-sm text-emerald-700">Thank you. Our team will contact you within one working day.</p>
+            <h3 className="font-extrabold text-on-surface text-lg mb-1">Enquiries & Appointments</h3>
+            <p className="text-sm text-on-surface-variant font-medium mb-5">Contact our patient services team directly.</p>
+            <div className="space-y-4">
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
+                <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2">By Phone</p>
+                <p className="text-sm font-bold text-on-surface">+91 44 4741 1000</p>
+                <p className="text-xs text-on-surface-variant mt-1">Mon – Sat, 8:00 AM – 6:00 PM</p>
               </div>
-            ) : (
-              <form onSubmit={e => { e.preventDefault(); setSent(true); }} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Full Name</label>
-                    <input required value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}
-                      className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all" placeholder="Your name"/>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Phone</label>
-                    <input required value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))}
-                      className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all" placeholder="+91 XXXXX XXXXX"/>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Email</label>
-                  <input type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))}
-                    className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all" placeholder="your@email.com"/>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Message / Department</label>
-                  <textarea required rows={3} value={form.message} onChange={e=>setForm(f=>({...f,message:e.target.value}))}
-                    className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all resize-none"
-                    placeholder="e.g. Appointment with Cardiology, query about lab reports…"/>
-                </div>
-                <button type="submit" className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:brightness-110 transition-all">Send Enquiry</button>
-              </form>
-            )}
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
+                <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2">By Email</p>
+                <p className="text-sm font-bold text-on-surface">patientservices@chettinadhealthcity.com</p>
+                <p className="text-xs text-on-surface-variant mt-1">Responses within one working day</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

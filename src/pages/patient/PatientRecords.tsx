@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Download, Eye, Search, Filter, CheckCircle, Clock } from 'lucide-react';
+import { FileText, CheckCircle, Clock } from 'lucide-react';
 import { useMyRecords } from '../../hooks/queries/usePatientPortal';
 
 export const PatientRecords = () => {
@@ -13,19 +13,6 @@ export const PatientRecords = () => {
         <div>
           <h1 className="text-2xl font-extrabold text-on-surface">Clinical Records</h1>
           <p className="text-sm text-on-surface-variant">View and download your official laboratory and imaging reports</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-2.5 text-on-surface-variant" />
-            <input 
-              type="text" 
-              placeholder="Search reports..." 
-              className="pl-9 pr-4 py-2 text-sm border border-outline rounded-xl outline-none focus:border-primary transition-all bg-white"
-            />
-          </div>
-          <button className="p-2 border border-outline rounded-xl hover:bg-gray-50 text-on-surface-variant">
-            <Filter size={18} />
-          </button>
         </div>
       </div>
 
@@ -69,16 +56,6 @@ export const PatientRecords = () => {
                   </div>
                 )}
 
-                {report.status === 'READY' && (
-                  <div className="mt-5 flex gap-3">
-                    <button className="flex-1 flex items-center justify-center gap-2 bg-primary text-white text-xs font-bold py-2.5 rounded-lg hover:brightness-110 transition-all">
-                      <Eye size={14} /> View Report
-                    </button>
-                    <button className="flex-1 flex items-center justify-center gap-2 border border-outline text-on-surface text-xs font-bold py-2.5 rounded-lg hover:bg-surface-container transition-all">
-                      <Download size={14} /> Download PDF
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           ))}

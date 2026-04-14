@@ -1,7 +1,7 @@
 import React from 'react';
 import { X, AlertTriangle, FlaskConical, Calendar, CheckCircle } from 'lucide-react';
 import { useNotifications } from '../../hooks/queries/useNotifications';
-import type { Notification } from '../../store/mockData';
+import type { Notification } from '../../types/clinical';
 
 const iconMap = {
   critical: <AlertTriangle size={16} className="text-error" />,

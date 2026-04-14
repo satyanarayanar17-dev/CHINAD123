@@ -5,7 +5,7 @@ import { Calendar, CheckCircle, Clock, Search, Filter, ChevronDown, User, AlertC
 import { useLiveQueue } from '../hooks/queries/useLiveQueue';
 import { useNavigate } from 'react-router-dom';
 import { useToast, ToastContainer } from '../components/ui/Toast';
-import type { AppointmentSlot } from '../store/mockData';
+import type { AppointmentSlot } from '../types/clinical';
 
 const SPECIALTIES = ['All', 'Cardiology', 'General Medicine', 'Orthopedics'];
 const FALLBACK_SLOT_STATUS = { cls: 'text-gray-500', border: 'border-l-gray-300' };

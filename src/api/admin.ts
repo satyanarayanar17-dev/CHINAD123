@@ -66,10 +66,5 @@ export const adminApi = {
   createPatient: async (payload: PatientRegistrationPayload): Promise<PatientRegistrationResponse> => {
     const res = await api.post('/patients', payload);
     return res.data;
-  },
-
-  generatePatientActivation: async (patientId: string): Promise<ActivationResponse> => {
-    const res = await api.post('/activation/generate', { patient_id: patientId });
-    return res.data;
   }
 };

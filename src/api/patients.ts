@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Patient, TimelineEntry } from '../store/mockData';
+import type { Patient, TimelineEntry } from '../types/clinical';
 import { normalizePatient, normalizeTimelineEntry } from './contracts';
 
 /**

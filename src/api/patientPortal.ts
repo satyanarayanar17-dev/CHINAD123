@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { PatientAppointment, Prescription, LabReport } from '../store/mockData';
+import type { PatientAppointment, Prescription, LabReport } from '../types/clinical';
 import { normalizeLabReport, normalizePatientAppointment, normalizePrescription } from './contracts';
 
 /**

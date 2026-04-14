@@ -2,7 +2,7 @@ import React from 'react'
 import { Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { getHomeRouteForSession, isRouteAllowedForSession, isSessionBoundaryValid } from './auth/roleBoundary'
+import { isRouteAllowedForSession, isSessionBoundaryValid } from './auth/roleBoundary'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -85,16 +85,6 @@ const RequireRole = ({ allowed }: { allowed: string[] }) => {
 
 const StaffGuard = () => <RequireRole allowed={['doctor', 'nurse', 'admin']} />
 const PatientGuard = () => <RequireRole allowed={['patient']} />
-
-// ── Root Redirect ────────────────────────────────────────────────────────────
-
-const RootRedirect = () => {
-  const { role, accountType, status } = useAuth()
-  if (status === 'bootstrapping') return <div className="min-h-screen bg-surface-container flex items-center justify-center text-primary font-bold">Loading session...</div>;
-  if (!role) return <Navigate to="/login" replace />
-  if (!isSessionBoundaryValid(role, accountType)) return <SessionResetRedirect to="/login" />
-  return <Navigate to={getHomeRouteForSession(role, accountType)} replace />
-}
 
 function App() {
   return (

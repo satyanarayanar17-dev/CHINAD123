@@ -5,7 +5,7 @@ import type {
   PatientAppointment,
   Prescription,
   TimelineEntry,
-} from '../store/mockData';
+} from '../types/clinical';
 
 type UnknownRecord = Record<string, unknown>;
 

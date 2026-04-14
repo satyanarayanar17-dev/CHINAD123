@@ -25,6 +25,8 @@ const ACCESS_TOKEN_TTL = '15m';
 const LOCKOUT_THRESHOLD = 5;
 const LOCKOUT_MINUTES = 15;
 const SSE_TOKEN_TTL = '60s';
+const PASSWORD_MIN_LENGTH = 8;
+const BCRYPT_COST = 10;
 
 const loginRateLimit = createRateLimiter({
   max: LOGIN_MAX_ATTEMPTS,
@@ -58,6 +60,10 @@ function signAccessToken({ actorId, role, accountType }) {
     JWT_SECRET,
     { expiresIn: ACCESS_TOKEN_TTL }
   );
+}
+
+function serializeMustChangePassword(value) {
+  return value === 1 || value === true;
 }
 
 async function writeBoundaryMismatchAudit({ req, userRow, username, attemptedAccountType, endpoint }) {
@@ -328,6 +334,7 @@ async function handleLogin(req, res, next, accountType, endpoint) {
       name,
       role: role.toLowerCase(),
       account_type: resolvedAccountType.toLowerCase(),
+      must_change_password: serializeMustChangePassword(userRow.must_change_password),
       _meta: {
         mode: isPilotMode ? 'PILOT_CONTROLLED' : 'RESTRICTED_DEPLOYMENT',
         safety: isPilotMode ? 'non-production' : 'hardened'
@@ -498,8 +505,75 @@ router.get('/me', requireAuth, requireRole(['PATIENT', 'DOCTOR', 'NURSE', 'ADMIN
       id: userRow.id,
       role: userRow.role.toLowerCase(),
       account_type: expectedAccountType.toLowerCase(),
-      name: userRow.name
+      name: userRow.name,
+      must_change_password: serializeMustChangePassword(userRow.must_change_password)
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/change-password', requireAuth, async (req, res, next) => {
+  const { currentPassword, newPassword } = req.body || {};
+
+  if (!currentPassword || !newPassword) {
+    return next({
+      status: 400,
+      code: 'MISSING_FIELDS',
+      message: 'currentPassword and newPassword are required.'
+    });
+  }
+
+  if (newPassword.length < PASSWORD_MIN_LENGTH) {
+    return next({
+      status: 400,
+      code: 'WEAK_PASSWORD',
+      message: `New password must be at least ${PASSWORD_MIN_LENGTH} characters.`
+    });
+  }
+
+  try {
+    const userRow = await get(`SELECT * FROM users WHERE id = ?`, [req.user.id]);
+    if (!userRow || userRow.is_active === 0) {
+      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Identity not found or inactive.' });
+    }
+
+    if (!userRow.password_hash) {
+      return res.status(401).json({
+        error: 'INVALID_CREDENTIALS',
+        message: 'Current password is incorrect.'
+      });
+    }
+
+    const isValidPassword = await bcrypt.compare(currentPassword, userRow.password_hash);
+    if (!isValidPassword) {
+      return res.status(401).json({
+        error: 'INVALID_CREDENTIALS',
+        message: 'Current password is incorrect.'
+      });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_COST);
+    await run(
+      `UPDATE users
+       SET password_hash = ?, must_change_password = 0
+       WHERE id = ?`,
+      [newHash, req.user.id]
+    );
+
+    await writeAuditDirect({
+      correlation_id: req.correlationId,
+      actor_id: req.user.id,
+      patient_id: userRow.patient_id || null,
+      action: `SYS_AUTH_PASSWORD_CHANGE:${userRow.role}`,
+      new_state: JSON.stringify({
+        must_change_password: false,
+        outcome: 'success'
+      })
+    });
+
+    setNoStore(res);
+    return res.json({ success: true, must_change_password: false });
   } catch (err) {
     next(err);
   }

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { isRouteAllowedForSession, isSessionBoundaryValid } from './auth/roleBoundary'
+import { shouldForcePasswordChange } from './auth/passwordChangeGate'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,6 +48,7 @@ import { PatientLayout } from './components/layout/PatientLayout'
 // Auth / Login / External
 import { Login } from './pages/Login'
 import { PatientActivation } from './pages/patient/PatientActivation'
+import { ChangePassword } from './pages/ChangePassword'
 import { PublicLayout } from './components/layout/PublicLayout'
 import { Home } from './pages/public/Home'
 import { About } from './pages/public/about'
@@ -87,9 +89,15 @@ const StaffGuard = () => <RequireRole allowed={['doctor', 'nurse', 'admin']} />
 const PatientGuard = () => <RequireRole allowed={['patient']} />
 
 function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
+  const AuthenticatedApp = () => {
+    const { status, mustChangePassword } = useAuth()
+
+    if (shouldForcePasswordChange(status, mustChangePassword)) {
+      return <ChangePassword />
+    }
+
+    return (
+      <>
         <SessionBoundaryWatcher />
         <Routes>
 
@@ -167,6 +175,14 @@ function App() {
         } />
 
       </Routes>
+      </>
+    )
+  }
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <AuthenticatedApp />
       </AuthProvider>
     </QueryClientProvider>
   )

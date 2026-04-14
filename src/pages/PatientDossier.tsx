@@ -62,7 +62,7 @@ export const PatientDossier = () => {
       push('warning', 'Override Active', 'Emergency access granted. Your activity is being monitored and audited.');
     },
     onError: (error: any) => {
-      push('error', 'Override Prohibited', error.response?.data?.message || 'Failed to authorize break-glass override.');
+      push('error', 'Override Prohibited', error.response?.data?.message || 'Failed to authorize emergency override.');
     }
   });
 
@@ -149,10 +149,15 @@ export const PatientDossier = () => {
 
           <button
             onClick={() => setBreakGlassOpen(true)}
-            className="w-full bg-error text-white py-3 rounded-xl text-xs font-black uppercase tracking-[0.1em] shadow-lg shadow-error/20 hover:bg-red-700 transition-all flex items-center justify-center gap-2"
+            className="w-full bg-error text-white py-3 rounded-xl text-xs font-black uppercase tracking-[0.1em] shadow-lg shadow-error/20 hover:bg-red-700 transition-all flex flex-col items-center justify-center gap-1"
           >
-            <LockOpen size={18} />
-            Break-Glass Emergency
+            <span className="flex items-center justify-center gap-2">
+              <LockOpen size={18} />
+              Emergency Override Access
+            </span>
+            <span className="text-[10px] font-semibold tracking-normal normal-case text-white/85">
+              All access will be audited
+            </span>
           </button>
           </ErrorBoundary>
 
@@ -321,7 +326,7 @@ export const PatientDossier = () => {
               <AlertTriangle size={48} />
             </div>
             <h3 className="text-center text-xl font-black uppercase tracking-tight text-error mb-2">Emergency Override</h3>
-            <p className="text-center font-bold text-on-surface mb-6">Break-Glass Protocol — {patient.name}</p>
+            <p className="text-center font-bold text-on-surface mb-6">Emergency Override Protocol — {patient.name}</p>
 
             <div className="bg-red-50 p-4 rounded-lg border border-error/20 mb-6 text-sm text-error/90 font-medium">
               All activities during emergency access are logged in the permanent audit trail and flagged for compliance review. Unauthorized use is subject to hospital policy.

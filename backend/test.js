@@ -131,6 +131,16 @@ async function runVerification() {
   assert.ok(refreshTokensTable, 'refresh_tokens table must exist.');
   pass('refresh_tokens table exists');
 
+  const mustChangePasswordColumn = dbDialect === 'postgres'
+    ? await get(
+        `SELECT column_name
+         FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'must_change_password'`
+      )
+    : await get(`SELECT name FROM pragma_table_info('users') WHERE name = 'must_change_password'`);
+  assert.ok(mustChangePasswordColumn, 'users.must_change_password must exist after migrations.');
+  pass('users.must_change_password migration applied');
+
   const revokedTokensTable = await get(
     `SELECT name FROM sqlite_master WHERE type='table' AND name='revoked_tokens'`
   );
@@ -217,6 +227,7 @@ async function runVerification() {
   assert.strictEqual(meRes.body.id, 'doc1_qa', '/auth/me must return the correct user.');
   assert.strictEqual(meRes.body.role, 'doctor', '/auth/me must preserve the doctor role.');
   assert.strictEqual(meRes.body.account_type, 'staff', '/auth/me must preserve the staff account type.');
+  assert.strictEqual(meRes.body.must_change_password, false, '/auth/me must expose must_change_password=false for seeded staff.');
   pass('/auth/me succeeds with refreshed access token');
 
   const patientLogin = await loginPatient(SEEDED_PATIENT_PHONES.pat1, SEEDED_PASSWORD, patientAgent);
@@ -234,6 +245,7 @@ async function runVerification() {
   assert.strictEqual(patientMeRes.status, 200, 'Patient /auth/me must succeed with refreshed bearer token.');
   assert.strictEqual(patientMeRes.body.role, 'patient', 'Patient /auth/me must preserve the patient role.');
   assert.strictEqual(patientMeRes.body.account_type, 'patient', 'Patient /auth/me must preserve the patient account type.');
+  assert.strictEqual(patientMeRes.body.must_change_password, false, 'Patient /auth/me must expose must_change_password=false for seeded patients.');
   pass('Patient refresh preserves patient role and account type');
 
   const sseAccessTokenRes = await request(app)
@@ -464,6 +476,96 @@ async function runVerification() {
   assert.ok(createUserAudit, 'Admin user creation must write audit.');
   assert.ok(createUserAudit.new_state, 'Admin user creation audit must include context.');
   pass('Admin user creation writes contextual audit record');
+
+  const resetPasswordRes = await request(app)
+    .post('/api/v1/admin/users/doc3_qa/reset-password')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({});
+  assert.strictEqual(resetPasswordRes.status, 200, 'Admin password reset must succeed.');
+  assert.strictEqual(resetPasswordRes.body.reset, true, 'Password reset must confirm success.');
+  assert.strictEqual(resetPasswordRes.body.must_change_password, true, 'Password reset must mark must_change_password.');
+  assert.ok(resetPasswordRes.body.temporaryPassword, 'Password reset must return a generated temporary password.');
+  assert.ok(resetPasswordRes.body.temporaryPassword.length >= 12, 'Generated temporary password must be non-trivial.');
+  pass('Reset-password returns a generated temporary password once');
+
+  const resetUserRow = await get(
+    `SELECT must_change_password, password_hash
+     FROM users
+     WHERE id = ?`,
+    ['doc3_qa']
+  );
+  assert.strictEqual(resetUserRow.must_change_password, 1, 'Reset user must be flagged for password change in the database.');
+  assert.ok(resetUserRow.password_hash, 'Reset user must have a stored password hash.');
+  pass('Reset-password persists must_change_password in the database');
+
+  const oldPasswordLoginAfterReset = await loginStaff('doc3_qa', 'Password123!');
+  assert.strictEqual(oldPasswordLoginAfterReset.status, 401, 'Old password must stop working immediately after admin reset.');
+  pass('Old password is invalidated by admin reset');
+
+  const tempPasswordLogin = await loginStaff('doc3_qa', resetPasswordRes.body.temporaryPassword);
+  assert.strictEqual(tempPasswordLogin.status, 200, 'Temporary password login must succeed.');
+  assert.strictEqual(tempPasswordLogin.body.must_change_password, true, 'Login response must expose must_change_password after admin reset.');
+  pass('Login response exposes must_change_password for reset users');
+
+  const tempPasswordToken = tempPasswordLogin.body.access_token;
+  const tempPasswordMe = await request(app)
+    .get('/api/v1/auth/me')
+    .set('Authorization', `Bearer ${tempPasswordToken}`);
+  assert.strictEqual(tempPasswordMe.status, 200, '/auth/me must work for a reset user.');
+  assert.strictEqual(tempPasswordMe.body.must_change_password, true, '/auth/me must expose must_change_password=true after reset.');
+  pass('/auth/me exposes must_change_password for reset users');
+
+  const passwordChangeRes = await request(app)
+    .post('/api/v1/auth/change-password')
+    .set('Authorization', `Bearer ${tempPasswordToken}`)
+    .send({
+      currentPassword: resetPasswordRes.body.temporaryPassword,
+      newPassword: 'NewPassword123!'
+    });
+  assert.strictEqual(passwordChangeRes.status, 200, 'Authenticated password change must succeed with the current password.');
+  assert.strictEqual(passwordChangeRes.body.success, true, 'Password change must return success JSON.');
+  assert.strictEqual(passwordChangeRes.body.must_change_password, false, 'Password change must clear must_change_password in the response.');
+  pass('Change-password clears must_change_password');
+
+  const changedPasswordMe = await request(app)
+    .get('/api/v1/auth/me')
+    .set('Authorization', `Bearer ${tempPasswordToken}`);
+  assert.strictEqual(changedPasswordMe.status, 200, '/auth/me must continue working after password change.');
+  assert.strictEqual(changedPasswordMe.body.must_change_password, false, '/auth/me must show cleared must_change_password after password change.');
+  pass('/auth/me reflects cleared must_change_password after password change');
+
+  const changedUserRow = await get(
+    `SELECT must_change_password
+     FROM users
+     WHERE id = ?`,
+    ['doc3_qa']
+  );
+  assert.strictEqual(changedUserRow.must_change_password, 0, 'Password change must clear the database flag.');
+  pass('Database flag is cleared after password change');
+
+  const loginWithNewPassword = await loginStaff('doc3_qa', 'NewPassword123!');
+  assert.strictEqual(loginWithNewPassword.status, 200, 'User must be able to log in with the new password.');
+  assert.strictEqual(loginWithNewPassword.body.must_change_password, false, 'must_change_password should stay cleared on subsequent logins.');
+  pass('User can log in normally after changing the temporary password');
+
+  const resetAudit = await get(
+    `SELECT action
+     FROM audit_logs
+     WHERE action LIKE 'ADMIN_PASS_RESET:doc3_qa:%'
+     ORDER BY id DESC
+     LIMIT 1`
+  );
+  assert.ok(resetAudit, 'Reset-password must preserve audit logging.');
+
+  const changePasswordAudit = await get(
+    `SELECT action
+     FROM audit_logs
+     WHERE actor_id = 'doc3_qa' AND action = 'SYS_AUTH_PASSWORD_CHANGE:DOCTOR'
+     ORDER BY id DESC
+     LIMIT 1`
+  );
+  assert.ok(changePasswordAudit, 'Change-password must write an audit record.');
+  pass('Password reset and password change both write audit records');
 
   const noteCreateRes = await request(app)
     .post('/api/v1/notes')

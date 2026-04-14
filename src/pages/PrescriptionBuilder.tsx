@@ -31,6 +31,7 @@ export const PrescriptionBuilder = () => {
   const [rxId, setRxId] = useState<string | null>(prescriptionId && prescriptionId !== 'new' ? prescriptionId : null);
   const [version, setVersion] = useState<number>(1);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [showAuthorizeConfirm, setShowAuthorizeConfirm] = useState(false);
 
   const [activeMeds, setActiveMeds] = useState<any[]>([]);
   const [newRx, setNewRx] = useState<NewMedication[]>([]);
@@ -241,7 +242,11 @@ export const PrescriptionBuilder = () => {
     }
   });
 
-  const handleAuthorize = () => authMutation.mutate();
+  const handleAuthorize = () => setShowAuthorizeConfirm(true);
+  const handleConfirmAuthorize = () => {
+    setShowAuthorizeConfirm(false);
+    authMutation.mutate();
+  };
 
   if (isPatientLoading || (!isInitialized && isRxLoading)) {
     return (
@@ -520,6 +525,34 @@ export const PrescriptionBuilder = () => {
           </ErrorBoundary>
         </div>
       </div>
+
+      {showAuthorizeConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/50 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-extrabold text-on-surface">Authorize Orders</h3>
+            <p className="mt-3 text-sm text-on-surface-variant">
+              This will permanently authorize these prescriptions and lab orders.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowAuthorizeConfirm(false)}
+                className="flex-1 rounded-xl border border-outline px-4 py-3 text-sm font-bold text-on-surface hover:bg-surface-container-low"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmAuthorize}
+                disabled={authMutation.isPending}
+                className="flex-1 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white hover:brightness-110 disabled:opacity-60"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <section className="print-surface print-surface--prescription hidden">
         <div className="mx-auto max-w-3xl rounded-2xl border border-slate-300 bg-white p-8 text-slate-900 shadow-none">

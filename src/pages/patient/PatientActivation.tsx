@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, UserCheck, KeySquare, ArrowRight } from 'lucide-react';
 import { api } from '../../api/client';
 
+const EXPIRED_ACTIVATION_ERROR_PATTERN = /(expired|token expired|otp expired|code expired|activation expired|invalid or expired)/i;
+
 export const PatientActivation = () => {
   const navigate = useNavigate();
   const [phone, setPhone] = useState('');
@@ -13,6 +15,21 @@ export const PatientActivation = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const getActivationErrorMessage = (err: any) => {
+    const errorCode = err.response?.data?.error?.code || err.response?.data?.code || err.response?.data?.error;
+    const errorMessage = err.response?.data?.message || err.response?.data?.error?.message || '';
+
+    if (
+      err.response?.status === 410 ||
+      (typeof errorCode === 'string' && EXPIRED_ACTIVATION_ERROR_PATTERN.test(errorCode)) ||
+      (typeof errorMessage === 'string' && EXPIRED_ACTIVATION_ERROR_PATTERN.test(errorMessage))
+    ) {
+      return 'Your activation code has expired. Please contact the registration desk at +91 44 4741 1000 for a new activation code.';
+    }
+
+    return err.response?.data?.message || 'Activation failed. Please check your details and try again.';
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +63,7 @@ export const PatientActivation = () => {
       setSuccess('Account activated successfully. You can now log in.');
       setTimeout(() => navigate('/login'), 3000);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Activation failed. Please check your details and try again.');
+      setError(getActivationErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -69,6 +86,17 @@ export const PatientActivation = () => {
           {success && <div className="p-3 bg-emerald-50 text-emerald-700 text-sm font-semibold rounded-lg border border-emerald-200 flex items-center gap-2"><ShieldCheck size={18} /> {success}</div>}
           <div className="rounded-xl border border-outline/20 bg-surface-container-low p-4 text-xs text-on-surface-variant">
             Enter the mobile number and one-time activation code issued during onboarding. Activation only succeeds when the patient identity, active encounter, and unused code all match.
+          </div>
+
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm text-on-surface">
+            <p className="font-bold text-primary">Having trouble?</p>
+            <p className="mt-1 text-on-surface-variant">
+              If your activation code has expired or you haven't received one, please contact the registration desk:
+              {' '}
+              <a href="tel:+914447411000" className="font-bold text-primary hover:underline">
+                +91 44 4741 1000
+              </a>
+            </p>
           </div>
 
           <div>

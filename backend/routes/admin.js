@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { requireAuth, requireRole, clearRevocationCache } = require('../middleware/auth');
 const { get, all, run } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
@@ -8,6 +9,14 @@ const router = express.Router();
 
 const PASSWORD_MIN_LENGTH = 8;
 const BCRYPT_COST = 10;
+const TEMP_PASSWORD_LENGTH = 18;
+
+function generateTemporaryPassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*+-_=';
+  const bytes = crypto.randomBytes(TEMP_PASSWORD_LENGTH);
+
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+}
 
 /**
  * GET /api/admin/users
@@ -155,15 +164,9 @@ router.patch('/users/:userId/enable', requireAuth, requireRole(['ADMIN']), async
 /**
  * POST /api/admin/users/:userId/reset-password
  * Admin-driven password reset. Replaces password hash immediately.
- * Body: { newPassword }
  */
 router.post('/users/:userId/reset-password', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
   const { userId } = req.params;
-  const { newPassword } = req.body;
-
-  if (!newPassword || newPassword.length < PASSWORD_MIN_LENGTH) {
-    return next({ status: 400, code: 'WEAK_PASSWORD', message: `New password must be at least ${PASSWORD_MIN_LENGTH} characters.` });
-  }
 
   try {
     const user = await get(`SELECT id FROM users WHERE id = ?`, [userId]);
@@ -171,8 +174,14 @@ router.post('/users/:userId/reset-password', requireAuth, requireRole(['ADMIN'])
       return next({ status: 404, code: 'NOT_FOUND', message: 'User not found.' });
     }
 
-    const newHash = await bcrypt.hash(newPassword, BCRYPT_COST);
-    await run(`UPDATE users SET password_hash = ? WHERE id = ?`, [newHash, userId]);
+    const temporaryPassword = generateTemporaryPassword();
+    const newHash = await bcrypt.hash(temporaryPassword, BCRYPT_COST);
+    await run(
+      `UPDATE users
+       SET password_hash = ?, must_change_password = 1
+       WHERE id = ?`,
+      [newHash, userId]
+    );
 
     await writeAuditDirect({
       correlation_id: req.correlationId,
@@ -180,7 +189,13 @@ router.post('/users/:userId/reset-password', requireAuth, requireRole(['ADMIN'])
       action: `ADMIN_PASS_RESET:${userId}:by:${req.user.id}`
     });
 
-    res.json({ userId, reset: true, message: 'Password has been reset. User must be notified out-of-band.' });
+    res.json({
+      userId,
+      reset: true,
+      temporaryPassword,
+      must_change_password: true,
+      message: 'Temporary password generated. Share it securely with the staff member.'
+    });
   } catch (err) {
     next(err);
   }

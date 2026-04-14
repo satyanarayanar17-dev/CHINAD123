@@ -98,6 +98,7 @@ export const ClinicalNoteEditor = () => {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [conflictState, setConflictState] = useState<ConflictState | null>(null);
+  const [showSignConfirm, setShowSignConfirm] = useState(false);
 
   const [soap, setSoap] = useState<any>({ S: '', O: '', A: '', P: '' });
   const [diagnoses, setDiagnoses] = useState<Diagnosis[]>([]);
@@ -416,7 +417,11 @@ export const ClinicalNoteEditor = () => {
     }
   });
 
-  const handleSign = () => signMutation.mutate();
+  const handleSign = () => setShowSignConfirm(true);
+  const handleConfirmSign = () => {
+    setShowSignConfirm(false);
+    signMutation.mutate();
+  };
   const handleImportLabs = () => push('error', 'LIS Offline', 'Laboratory Information System (LIS) integration is pending.');
 
   const handleAddDiagnosis = (name: string) => {
@@ -806,6 +811,34 @@ export const ClinicalNoteEditor = () => {
           </ErrorBoundary>
         </div>
       </div>
+
+      {showSignConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/50 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-extrabold text-on-surface">Finalize Clinical Note</h3>
+            <p className="mt-3 text-sm text-on-surface-variant">
+              Are you sure? This will permanently lock this clinical note.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSignConfirm(false)}
+                className="flex-1 rounded-xl border border-outline px-4 py-3 text-sm font-bold text-on-surface hover:bg-surface-container-low"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSign}
+                disabled={signMutation.isPending}
+                className="flex-1 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white hover:brightness-110 disabled:opacity-60"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

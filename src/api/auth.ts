@@ -14,6 +14,7 @@ export interface AuthResponse {
   account_type: AccountType;
   userId: string;
   name?: string;
+  must_change_password: boolean;
 }
 
 export interface SessionResponse {
@@ -21,6 +22,12 @@ export interface SessionResponse {
   role: Role;
   account_type: AccountType;
   name: string;
+  must_change_password: boolean;
+}
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
 }
 
 type CredentialPayload = Omit<LoginPayload, 'accountType'>;
@@ -49,6 +56,11 @@ export const authApi = {
 
   refresh: async (): Promise<Pick<AuthResponse, 'access_token' | 'token_type' | 'role' | 'account_type'>> => {
     const response = await api.post<Pick<AuthResponse, 'access_token' | 'token_type' | 'role' | 'account_type'>>('/auth/refresh', {});
+    return response.data;
+  },
+
+  changePassword: async (payload: ChangePasswordPayload): Promise<{ success: boolean; must_change_password: boolean }> => {
+    const response = await api.post<{ success: boolean; must_change_password: boolean }>('/auth/change-password', payload);
     return response.data;
   },
 

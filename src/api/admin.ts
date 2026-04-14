@@ -37,6 +37,14 @@ export interface ActivationResponse {
   delivery_mode?: string;
 }
 
+export interface ResetPasswordResponse {
+  userId: string;
+  reset: boolean;
+  temporaryPassword: string;
+  must_change_password: boolean;
+  message: string;
+}
+
 export const adminApi = {
   getUsers: async (): Promise<User[]> => {
     const res = await api.get('/admin/users');
@@ -58,8 +66,8 @@ export const adminApi = {
     return res.data;
   },
 
-  resetPassword: async (userId: string, newPassword: string) => {
-    const res = await api.post(`/admin/users/${userId}/reset-password`, { newPassword });
+  resetPassword: async (userId: string): Promise<ResetPasswordResponse> => {
+    const res = await api.post<ResetPasswordResponse>(`/admin/users/${userId}/reset-password`, {});
     return res.data;
   },
 

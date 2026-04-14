@@ -3,7 +3,7 @@ import { Card, CardHeader, CardContent } from '../../components/ui/Card';
 import { Shield, UserPlus, ZapOff, CheckCircle, Key, X } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import { adminApi } from '../../api/admin';
-import type { User } from '../../api/admin';
+import type { ResetPasswordResponse, User } from '../../api/admin';
 
 type ModalMode = null | 'create' | 'reset-password';
 
@@ -21,6 +21,7 @@ export const UserManagement = () => {
   const [formPassword, setFormPassword] = useState('');
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [resetPasswordResult, setResetPasswordResult] = useState<ResetPasswordResponse | null>(null);
 
   const resetForm = () => {
     setFormId('');
@@ -30,6 +31,7 @@ export const UserManagement = () => {
     setFormError('');
     setTargetUser(null);
     setSubmitting(false);
+    setResetPasswordResult(null);
   };
 
   const closeModal = () => {
@@ -76,14 +78,12 @@ export const UserManagement = () => {
 
   const handleResetPasswordSubmit = async () => {
     if (!targetUser) return;
-    const pwError = validatePassword(formPassword);
-    if (pwError) { setFormError(pwError); return; }
 
     setSubmitting(true);
     try {
-      await adminApi.resetPassword(targetUser.id, formPassword);
-      push('success', 'Password Reset', `Password for ${targetUser.name} has been updated.`);
-      closeModal();
+      const result = await adminApi.resetPassword(targetUser.id);
+      setResetPasswordResult(result);
+      push('success', 'Password Reset', `Temporary password generated for ${targetUser.name}.`);
     } catch (err: any) {
       setFormError(err.response?.data?.error?.message || err.message);
     } finally {
@@ -115,6 +115,19 @@ export const UserManagement = () => {
     resetForm();
     setTargetUser(user);
     setModal('reset-password');
+  };
+
+  const handleCopyTemporaryPassword = async () => {
+    if (!resetPasswordResult?.temporaryPassword) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(resetPasswordResult.temporaryPassword);
+      push('success', 'Copied', 'Temporary password copied to clipboard.');
+    } catch {
+      push('error', 'Copy Failed', 'Clipboard access was unavailable. Please copy the temporary password manually.');
+    }
   };
 
   return (
@@ -158,7 +171,7 @@ export const UserManagement = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => openResetPassword(user)}
-                  title="Reset Password"
+                  title="Generate & Reset Password"
                   className="p-1.5 bg-outline/10 text-on-surface hover:text-primary rounded"
                 >
                   <Key size={14} />
@@ -220,21 +233,70 @@ export const UserManagement = () => {
               </>
             )}
 
-            <div>
-              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
-                {modal === 'create' ? 'Password' : 'New Password'}
-              </label>
-              <input type="password" value={formPassword} onChange={e => { setFormPassword(e.target.value); setFormError(''); }}
-                placeholder="Min 8 chars, at least 1 number" className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all" />
-            </div>
+            {modal === 'create' ? (
+              <>
+                <div>
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
+                    Password
+                  </label>
+                  <input type="password" value={formPassword} onChange={e => { setFormPassword(e.target.value); setFormError(''); }}
+                    placeholder="Min 8 chars, at least 1 number" className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all" />
+                </div>
 
-            <button
-              onClick={modal === 'create' ? handleCreateUserSubmit : handleResetPasswordSubmit}
-              disabled={submitting}
-              className="w-full bg-primary text-white font-bold py-3 rounded-xl text-sm hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {submitting ? 'Processing...' : modal === 'create' ? 'Create Account' : 'Reset Password'}
-            </button>
+                <button
+                  onClick={handleCreateUserSubmit}
+                  disabled={submitting}
+                  className="w-full bg-primary text-white font-bold py-3 rounded-xl text-sm hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Processing...' : 'Create Account'}
+                </button>
+              </>
+            ) : (
+              <div className="space-y-4">
+                {!resetPasswordResult ? (
+                  <>
+                    <div className="rounded-xl border border-outline/20 bg-surface-container-low p-4 text-sm text-on-surface-variant">
+                      Generate a one-time temporary password for <span className="font-bold text-on-surface">{targetUser?.name}</span>.
+                    </div>
+                    <button
+                      onClick={handleResetPasswordSubmit}
+                      disabled={submitting}
+                      className="w-full bg-primary text-white font-bold py-3 rounded-xl text-sm hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {submitting ? 'Processing...' : 'Generate & Reset Password'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                      <p className="text-xs font-bold uppercase tracking-wider text-primary">Temporary Password</p>
+                      <p className="mt-2 rounded-lg border border-outline/30 bg-white px-3 py-3 font-mono text-sm font-bold text-on-surface break-all">
+                        {resetPasswordResult.temporaryPassword}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleCopyTemporaryPassword}
+                        className="mt-3 text-xs font-bold text-primary hover:underline"
+                      >
+                        Copy to clipboard
+                      </button>
+                    </div>
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                      Copy this temporary password and share it securely with the staff member.
+                    </div>
+                    <div className="rounded-xl border border-outline/20 bg-surface-container-low p-4 text-sm text-on-surface-variant">
+                      The user will be required to change password on next login.
+                    </div>
+                    <button
+                      onClick={closeModal}
+                      className="w-full bg-primary text-white font-bold py-3 rounded-xl text-sm hover:brightness-110 transition-all"
+                    >
+                      Done
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

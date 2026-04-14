@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '../components/ui/Card';
 import { StatusChip } from '../components/ui/StatusChip';
-import { AlertTriangle, ClipboardList, Activity, ActivitySquare, ChevronDown } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Activity, ActivitySquare, ChevronDown, RefreshCw } from 'lucide-react';
 import { useLiveQueue } from '../hooks/queries/useLiveQueue';
 import { clinicalApi } from '../api/clinical';
 import type { AppointmentSlot } from '../types/clinical';
@@ -147,6 +147,14 @@ export const DoctorCommandCenter = () => {
               </span>
             </h2>
             <div className="flex gap-2 relative">
+              <button
+                type="button"
+                onClick={() => { void refetchQueue(); }}
+                title="Force refresh queue"
+                className="rounded-full border border-outline bg-white p-2 text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors"
+              >
+                <RefreshCw size={14} />
+              </button>
               <div className="relative">
                 <button 
                   onClick={() => setShowFilter(!showFilter)}

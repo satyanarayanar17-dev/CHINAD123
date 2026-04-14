@@ -4,7 +4,7 @@ import { notificationsApi } from '../../api/notifications';
 import { buildSseUrl } from '../../api/config';
 import { authApi } from '../../api/auth';
 import { useAuth } from '../useAuth';
-import type { Notification } from '../../store/mockData';
+import type { Notification } from '../../types/clinical';
 
 const NOTIFICATIONS_KEY = ['notifications'];
 

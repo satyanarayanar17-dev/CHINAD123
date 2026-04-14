@@ -4,6 +4,10 @@ import { API_BASE_URL, buildApiUrl } from './config';
 
 let accessToken: string | null = null;
 
+// Deduplicates concurrent token refresh attempts.
+// Multiple 401s share a single in-flight refresh promise.
+let refreshPromise: Promise<string> | null = null;
+
 export function getAccessToken() {
   return accessToken;
 }
@@ -134,33 +138,30 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        /**
-         * Use a clean axios instance to avoid internal interceptor conflicts.
-         * withCredentials ensured for HttpOnly cookie refreshes if backend supports it.
-         */
-        const refreshResponse = await axios.post(
-          buildApiUrl('/auth/refresh'),
-          {},
-          { withCredentials: true }
-        );
-
-        const newToken = refreshResponse.data?.access_token;
-
-        if (newToken) {
-          setAccessToken(newToken);
-
-          if (!originalRequest.headers) {
-            originalRequest.headers = {};
-          }
-
-          originalRequest.headers.Authorization = `Bearer ${newToken}`;
-
-          // Re-issue the fixed request
-          return api(originalRequest);
+        // Deduplicate: if a refresh is already in flight, reuse it.
+        if (!refreshPromise) {
+          refreshPromise = axios.post(
+            buildApiUrl('/auth/refresh'),
+            {},
+            { withCredentials: true }
+          ).then(res => {
+            const token = res.data?.access_token;
+            if (!token) throw new Error('NO_TOKEN_RETURNED');
+            return token;
+          }).finally(() => {
+            refreshPromise = null;
+          });
         }
 
-        // No token returned? Treat as failure.
-        throw new Error('NO_TOKEN_RETURNED');
+        const newToken = await refreshPromise;
+        setAccessToken(newToken);
+
+        if (!originalRequest.headers) {
+          originalRequest.headers = {};
+        }
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+
+        return api(originalRequest);
 
       } catch (refreshError) {
         // Hard boot on refresh failure

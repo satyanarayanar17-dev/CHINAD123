@@ -34,7 +34,23 @@ export const NurseTriage = () => {
     ? `${registryPatient.name} presented with primary complaints. Pre-existing conditions: ${registryPatient.riskFlags.join(', ') || 'None'}.`
     : '');
 
+  const hasHydratedFromPatient = React.useRef(false);
   const { data: draft, isLoading: isDraftLoading } = useDraft<any>(draftKey);
+
+  // Sync vitals from patient data once it loads (initial state race fix).
+  // Guard with hasHydratedFromPatient so user edits are not overwritten.
+  useEffect(() => {
+    if (registryPatient && !hasHydratedFromPatient.current && !isDraftLoading) {
+      hasHydratedFromPatient.current = true;
+      setWeight(82);
+      setSystolic(Number(registryPatient.vitals.bp.split('/')[0]) || 120);
+      setDiastolic(Number(registryPatient.vitals.bp.split('/')[1]) || 80);
+      setHr(registryPatient.vitals.hr || 72);
+      setTemp(registryPatient.vitals.temp || 37.0);
+      setSpo2(registryPatient.vitals.spo2 || 99);
+      setComplaint(`${registryPatient.name} presented with primary complaints. Pre-existing conditions: ${registryPatient.riskFlags.join(', ') || 'None'}.`);
+    }
+  }, [registryPatient, isDraftLoading]);
 
   useEffect(() => {
     if (draft && !isDraftLoading) {
@@ -101,7 +117,8 @@ export const NurseTriage = () => {
           patient: registryPatient,
           type: 'Nurse Triage Priority',
           specialty: 'General Medicine',
-          lifecycleStatus: 'RECEPTION'
+          lifecycleStatus: 'RECEPTION',
+          __v: 0
         };
         addSlot(newSlot as any);
       }

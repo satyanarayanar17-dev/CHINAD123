@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AppointmentSlot } from '../store/mockData';
+import type { AppointmentSlot } from '../types/clinical';
 import { normalizeQueueSlot } from './contracts';
 
 export class QueueConflictError extends Error {

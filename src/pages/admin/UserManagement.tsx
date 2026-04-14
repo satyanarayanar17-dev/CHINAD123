@@ -1,14 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardContent } from '../../components/ui/Card';
-import { Shield, UserPlus, ZapOff, CheckCircle, Key } from 'lucide-react';
+import { Shield, UserPlus, ZapOff, CheckCircle, Key, X } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import { adminApi } from '../../api/admin';
 import type { User } from '../../api/admin';
+
+type ModalMode = null | 'create' | 'reset-password';
 
 export const UserManagement = () => {
   const { push } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [modal, setModal] = useState<ModalMode>(null);
+  const [targetUser, setTargetUser] = useState<User | null>(null);
+
+  // Form fields
+  const [formId, setFormId] = useState('');
+  const [formName, setFormName] = useState('');
+  const [formRole, setFormRole] = useState('');
+  const [formPassword, setFormPassword] = useState('');
+  const [formError, setFormError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const resetForm = () => {
+    setFormId('');
+    setFormName('');
+    setFormRole('');
+    setFormPassword('');
+    setFormError('');
+    setTargetUser(null);
+    setSubmitting(false);
+  };
+
+  const closeModal = () => {
+    setModal(null);
+    resetForm();
+  };
 
   const fetchUsers = async () => {
     try {
@@ -41,40 +68,57 @@ export const UserManagement = () => {
     }
   };
 
-  const handleResetPassword = async (user: User) => {
-    const newPass = prompt(`Enter new password for ${user.name} (min 8 chars):`);
-    if (!newPass) return;
+  const validatePassword = (pw: string): string | null => {
+    if (pw.length < 8) return 'Password must be at least 8 characters.';
+    if (!/\d/.test(pw)) return 'Password must contain at least 1 number.';
+    return null;
+  };
+
+  const handleResetPasswordSubmit = async () => {
+    if (!targetUser) return;
+    const pwError = validatePassword(formPassword);
+    if (pwError) { setFormError(pwError); return; }
+
+    setSubmitting(true);
     try {
-      await adminApi.resetPassword(user.id, newPass);
-      push('success', 'Password Reset', `Password for ${user.name} has been updated.`);
+      await adminApi.resetPassword(targetUser.id, formPassword);
+      push('success', 'Password Reset', `Password for ${targetUser.name} has been updated.`);
+      closeModal();
     } catch (err: any) {
-      push('error', 'Reset Failed', err.response?.data?.error?.message || err.message);
+      setFormError(err.response?.data?.error?.message || err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleCreateUser = async () => {
-    const id = prompt('Enter User ID (e.g., doc3_qa):');
-    if (!id) return;
-    const name = prompt('Enter Full Name:');
-    if (!name) return;
-    const role = prompt('Enter Role (NURSE, DOCTOR, ADMIN):')?.toUpperCase();
-    if (!role || !['NURSE', 'DOCTOR', 'ADMIN'].includes(role)) {
-      push('error', 'Invalid Role', 'Role must be NURSE, DOCTOR, or ADMIN');
-      return;
-    }
-    const password = prompt('Enter Password (min 8 chars):');
-    if (!password) return;
+  const handleCreateUserSubmit = async () => {
+    if (!formId.trim()) { setFormError('User ID is required.'); return; }
+    if (!formName.trim()) { setFormError('Full name is required.'); return; }
+    if (!formRole || !['NURSE', 'DOCTOR', 'ADMIN'].includes(formRole)) { setFormError('Role must be NURSE, DOCTOR, or ADMIN.'); return; }
+    const pwError = validatePassword(formPassword);
+    if (pwError) { setFormError(pwError); return; }
 
+    setSubmitting(true);
     try {
-      await adminApi.createUser({ id, name, role, password });
-      push('success', 'User Created', `${name} has been provisioned.`);
+      await adminApi.createUser({ id: formId.trim(), name: formName.trim(), role: formRole, password: formPassword });
+      push('success', 'User Created', `${formName.trim()} has been provisioned.`);
+      closeModal();
       fetchUsers();
     } catch (err: any) {
-      push('error', 'Creation Failed', err.response?.data?.error?.message || err.message);
+      setFormError(err.response?.data?.error?.message || err.message);
+    } finally {
+      setSubmitting(false);
     }
+  };
+
+  const openResetPassword = (user: User) => {
+    resetForm();
+    setTargetUser(user);
+    setModal('reset-password');
   };
 
   return (
+    <>
     <Card>
       <CardHeader>
         <div className="flex justify-between items-center w-full">
@@ -83,7 +127,7 @@ export const UserManagement = () => {
             <span>Staff Directory & Access</span>
           </div>
           <button
-            onClick={handleCreateUser}
+            onClick={() => { resetForm(); setModal('create'); }}
             className="flex items-center gap-1 text-[10px] uppercase font-bold bg-primary text-white px-2 py-1 rounded hover:bg-primary-dark transition"
           >
             <UserPlus size={12} />
@@ -113,7 +157,7 @@ export const UserManagement = () => {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => handleResetPassword(user)}
+                  onClick={() => openResetPassword(user)}
                   title="Reset Password"
                   className="p-1.5 bg-outline/10 text-on-surface hover:text-primary rounded"
                 >
@@ -132,5 +176,69 @@ export const UserManagement = () => {
         )}
       </CardContent>
     </Card>
+
+    {/* Modal overlay */}
+    {modal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+        <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-extrabold text-on-surface">
+              {modal === 'create' ? 'Create Staff Account' : `Reset Password — ${targetUser?.name}`}
+            </h2>
+            <button onClick={closeModal} className="text-on-surface-variant hover:text-on-surface transition-colors">
+              <X size={20} />
+            </button>
+          </div>
+
+          {formError && (
+            <div className="mb-4 p-3 bg-error/10 border border-error/30 rounded-xl text-sm text-error font-medium">{formError}</div>
+          )}
+
+          <div className="space-y-4">
+            {modal === 'create' && (
+              <>
+                <div>
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">User ID</label>
+                  <input value={formId} onChange={e => { setFormId(e.target.value); setFormError(''); }}
+                    placeholder="e.g. doc3_qa" className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Full Name</label>
+                  <input value={formName} onChange={e => { setFormName(e.target.value); setFormError(''); }}
+                    placeholder="Dr. Full Name" className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Role</label>
+                  <select value={formRole} onChange={e => { setFormRole(e.target.value); setFormError(''); }}
+                    className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all bg-white">
+                    <option value="">Select role…</option>
+                    <option value="DOCTOR">Doctor</option>
+                    <option value="NURSE">Nurse</option>
+                    <option value="ADMIN">Admin</option>
+                  </select>
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
+                {modal === 'create' ? 'Password' : 'New Password'}
+              </label>
+              <input type="password" value={formPassword} onChange={e => { setFormPassword(e.target.value); setFormError(''); }}
+                placeholder="Min 8 chars, at least 1 number" className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all" />
+            </div>
+
+            <button
+              onClick={modal === 'create' ? handleCreateUserSubmit : handleResetPasswordSubmit}
+              disabled={submitting}
+              className="w-full bg-primary text-white font-bold py-3 rounded-xl text-sm hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? 'Processing...' : modal === 'create' ? 'Create Account' : 'Reset Password'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };

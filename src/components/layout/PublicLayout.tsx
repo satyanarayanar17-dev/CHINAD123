@@ -140,9 +140,6 @@ export const PublicLayout = () => {
               <h3 className="font-bold text-on-surface mb-6 uppercase tracking-wider text-xs">Institutional</h3>
               <ul className="space-y-4 text-sm font-medium text-on-surface-variant">
                 <li><Link to="/about" className="hover:text-primary transition-colors">About Us</Link></li>
-                <li><Link to="#" className="hover:text-primary transition-colors">Digital Governance (Phase 2)</Link></li>
-                <li><Link to="#" className="hover:text-primary transition-colors">Terms of Service</Link></li>
-                <li><Link to="#" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
               </ul>
             </div>
 

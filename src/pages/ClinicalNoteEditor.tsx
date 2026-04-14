@@ -109,6 +109,8 @@ export const ClinicalNoteEditor = () => {
   const versionRef = useRef<number>(version);
   const lastSavedDraftRef = useRef<string | null>(null);
   const recoveryDraftStorageKeyRef = useRef<string>('');
+  const isSaveInFlightRef = useRef(false);
+  const pendingSaveContentRef = useRef<string | null>(null);
 
   // Load existing note from backend if noteId exists
   const { data: existingNote, isLoading: isNoteLoading } = useQuery({
@@ -307,63 +309,75 @@ export const ClinicalNoteEditor = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [soap, diagnoses, followUp, followUpDate, followUpInstructions, isInitialized, saveState, signed]);
 
+  // Serialized auto-save: only one save request in flight at a time.
+  // If a new save is needed while one is in-flight, it is queued and
+  // fires after the current one resolves, using the latest version.
+  const executeSave = async (contentStr: string) => {
+    if (isSaveInFlightRef.current) {
+      pendingSaveContentRef.current = contentStr;
+      return;
+    }
+
+    isSaveInFlightRef.current = true;
+    setSaveState('saving');
+    setSaveError(null);
+
+    try {
+      if (!noteIdRef.current) {
+        const res = await clinicalApi.createNote(patientId!, contentStr);
+        noteIdRef.current = res.noteId;
+        versionRef.current = res.newVersion;
+        lastSavedDraftRef.current = contentStr;
+        setNoteId(res.noteId);
+        setVersion(res.newVersion);
+        recoveryDraftStorageKeyRef.current = `cc-note-recovery:${patientId}:${res.noteId}`;
+        window.history.replaceState(null, '', `/clinical/patient/${patientId}/note/${res.noteId}`);
+      } else {
+        const res = await clinicalApi.saveDraftNote(noteIdRef.current, contentStr, versionRef.current);
+        versionRef.current = res.newVersion;
+        lastSavedDraftRef.current = contentStr;
+        setVersion(res.newVersion);
+      }
+      clearRecoverableDraft();
+      setConflictState(null);
+      setLastSavedAt(new Date().toISOString());
+      setSaveState('saved');
+    } catch (err: any) {
+      if (err.response?.status === 409) {
+        resolveConflictFromLatest(
+          err.response?.data?.error?.details?.latest,
+          contentStr
+        );
+      } else {
+        const message = err.response?.data?.error?.message || err.response?.data?.message || 'Autosave failed. Your local draft is still in this browser.';
+        setSaveState('error');
+        setSaveError(message);
+        persistRecoverableDraft(contentStr, 'save_failed');
+      }
+    } finally {
+      isSaveInFlightRef.current = false;
+      // Drain queued save if one arrived while this save was in flight.
+      const queued = pendingSaveContentRef.current;
+      if (queued) {
+        pendingSaveContentRef.current = null;
+        executeSave(queued);
+      }
+    }
+  };
+
   // Auto-save draft
   useEffect(() => {
     if (!isInitialized || signed || isNoteLoading || isPatientLoading || conflictState) return;
 
-    const saveDraft = async () => {
-      const contentStr = serializeDraftPayload(debouncedState);
-      if (noteIdRef.current && lastSavedDraftRef.current === contentStr) {
-        if (saveState === 'saving') {
-          setSaveState('saved');
-        }
-        return;
-      }
-
-      setSaveState('saving');
-      setSaveError(null);
-
-      try {
-        if (!noteIdRef.current) {
-          const res = await clinicalApi.createNote(patientId!, contentStr);
-          noteIdRef.current = res.noteId;
-          versionRef.current = res.newVersion;
-          lastSavedDraftRef.current = contentStr;
-          setNoteId(res.noteId);
-          setVersion(res.newVersion);
-          recoveryDraftStorageKeyRef.current = `cc-note-recovery:${patientId}:${res.noteId}`;
-          window.history.replaceState(null, '', `/clinical/patient/${patientId}/note/${res.noteId}`);
-        } else {
-          const res = await clinicalApi.saveDraftNote(noteIdRef.current, contentStr, versionRef.current);
-          versionRef.current = res.newVersion;
-          lastSavedDraftRef.current = contentStr;
-          setVersion(res.newVersion);
-        }
-        clearRecoverableDraft();
-        setConflictState(null);
-        setLastSavedAt(new Date().toISOString());
+    const contentStr = serializeDraftPayload(debouncedState);
+    if (noteIdRef.current && lastSavedDraftRef.current === contentStr) {
+      if (saveState === 'saving') {
         setSaveState('saved');
-      } catch (err: any) {
-        if (err.response?.status === 409) {
-          resolveConflictFromLatest(
-            err.response?.data?.error?.details?.latest,
-            contentStr
-          );
-        } else if (err.response?.status === 422) {
-          const message = err.response?.data?.error?.message || err.response?.data?.message || 'Failed to save.';
-          setSaveState('error');
-          setSaveError(message);
-          persistRecoverableDraft(contentStr, 'save_failed');
-        } else {
-          const message = err.response?.data?.error?.message || err.response?.data?.message || 'Autosave failed. Your local draft is still in this browser.';
-          setSaveState('error');
-          setSaveError(message);
-          persistRecoverableDraft(contentStr, 'save_failed');
-        }
       }
-    };
+      return;
+    }
 
-    saveDraft();
+    executeSave(contentStr);
   }, [debouncedState, conflictState, isInitialized, isNoteLoading, isPatientLoading, patientId, saveState, signed]);
 
   const signMutation = useMutation({

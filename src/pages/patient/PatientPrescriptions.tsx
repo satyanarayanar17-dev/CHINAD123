@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pill, Clock, AlertCircle, Bell, BellOff, Download, ChevronRight } from 'lucide-react';
+import { Pill, Clock } from 'lucide-react';
 import { useMyPrescriptions } from '../../hooks/queries/usePatientPortal';
 
 export const PatientPrescriptions = () => {
@@ -14,9 +14,6 @@ export const PatientPrescriptions = () => {
           <h1 className="text-2xl font-extrabold text-on-surface">Prescriptions</h1>
           <p className="text-sm text-on-surface-variant">Active medications and refill tracking</p>
         </div>
-        <button className="flex items-center gap-2 text-primary font-bold text-sm bg-primary/5 px-4 py-2 rounded-xl hover:bg-primary/10 transition-colors">
-          <Download size={16} /> Export Rx History
-        </button>
       </div>
 
       {prescriptions.length > 0 ? (
@@ -33,9 +30,6 @@ export const PatientPrescriptions = () => {
                     <p className="text-xs text-on-surface-variant font-medium">{med.prescribedBy}</p>
                   </div>
                 </div>
-                <button className="p-2 text-on-surface-variant hover:bg-gray-100 rounded-lg transition-colors">
-                  {med.reminderEnabled ? <Bell size={18} className="text-primary" /> : <BellOff size={18} />}
-                </button>
               </div>
 
               <div className="bg-gray-50 rounded-xl p-4 flex items-center justify-between mb-4">
@@ -52,13 +46,10 @@ export const PatientPrescriptions = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-xs font-semibold text-on-surface-variant border-t border-gray-50 pt-4">
+              <div className="flex items-center text-xs font-semibold text-on-surface-variant border-t border-gray-50 pt-4">
                 <span className="flex items-center gap-1.5">
                   <Clock size={14} /> Next Refill: {med.refillDate}
                 </span>
-                <button className="text-primary hover:underline flex items-center gap-1">
-                  Details <ChevronRight size={14} />
-                </button>
               </div>
             </div>
           ))}

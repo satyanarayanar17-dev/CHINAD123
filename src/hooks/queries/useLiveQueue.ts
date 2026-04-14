@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queueApi, QueueConflictError } from '../../api/queue';
-import type { AppointmentSlot } from '../../store/mockData';
+import type { AppointmentSlot } from '../../types/clinical';
 
 const QUEUE_KEY = ['liveQueue'];
 

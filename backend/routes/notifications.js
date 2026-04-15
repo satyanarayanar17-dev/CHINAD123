@@ -13,12 +13,20 @@ const router = express.Router();
  * The SSE module is required lazily to avoid circular-dependency issues at
  * module load time (sse.js is loaded after notifications.js in server.js).
  */
-async function writeNotification({ type = 'info', title, body, patient_id = null, actor_id = null, target_role = null }) {
+async function writeNotification({
+  type = 'info',
+  title,
+  body,
+  patient_id = null,
+  actor_id = null,
+  target_role = null,
+  target_user_id = null
+}) {
   try {
     const result = await run(
-      `INSERT INTO notifications (type, title, body, patient_id, actor_id, target_role)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [type, title, body, patient_id, actor_id, target_role]
+      `INSERT INTO notifications (type, title, body, patient_id, actor_id, target_role, target_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [type, title, body, patient_id, actor_id, target_role, target_user_id]
     );
 
     // Build broadcast object.
@@ -35,7 +43,8 @@ async function writeNotification({ type = 'info', title, body, patient_id = null
       time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
       read: false,
       targetPatientId: patient_id,
-      targetRole: target_role
+      targetRole: target_role,
+      targetUserId: target_user_id
     };
 
     try {
@@ -59,12 +68,13 @@ router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (r
     const role = req.user?.role || null;
 
     const notifications = await all(
-      `SELECT id, type, title, body, patient_id, actor_id, read, created_at
+      `SELECT id, type, title, body, patient_id, actor_id, read, created_at, target_user_id
        FROM notifications
-       WHERE target_role IS NULL OR target_role = ?
+       WHERE (target_role IS NULL OR target_role = ?)
+         AND (target_user_id IS NULL OR target_user_id = ?)
        ORDER BY created_at DESC
        LIMIT 50`,
-      [role]
+      [role, req.user.id]
     );
 
     // Normalise: SQLite stores read as 0/1; Postgres returns boolean.
@@ -93,8 +103,10 @@ router.patch('/:id/read', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN'])
     const role = req.user?.role || null;
     await run(
       `UPDATE notifications SET read = 1
-       WHERE id = ? AND (target_role IS NULL OR target_role = ?)`,
-      [req.params.id, role]
+       WHERE id = ?
+         AND (target_role IS NULL OR target_role = ?)
+         AND (target_user_id IS NULL OR target_user_id = ?)`,
+      [req.params.id, role, req.user.id]
     );
     res.json({ id: req.params.id, read: true });
   } catch (err) {
@@ -111,8 +123,10 @@ router.post('/read-all', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']),
     const role = req.user?.role || null;
     await run(
       `UPDATE notifications SET read = 1
-       WHERE (target_role IS NULL OR target_role = ?) AND read = 0`,
-      [role]
+       WHERE (target_role IS NULL OR target_role = ?)
+         AND (target_user_id IS NULL OR target_user_id = ?)
+         AND read = 0`,
+      [role, req.user.id]
     );
     res.json({ message: 'All notifications marked as read.' });
   } catch (err) {
@@ -134,8 +148,10 @@ router.put('/', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (r
       if (notif.id && notif.read === true) {
         await run(
           `UPDATE notifications SET read = 1
-           WHERE id = ? AND (target_role IS NULL OR target_role = ?)`,
-          [notif.id, role]
+           WHERE id = ?
+             AND (target_role IS NULL OR target_role = ?)
+             AND (target_user_id IS NULL OR target_user_id = ?)`,
+          [notif.id, role, req.user.id]
         );
       }
     }

@@ -9,6 +9,7 @@ const {
 } = require('../lib/clinicalIntegrity');
 const {
   assertPatientRecord,
+  assertDoctorAssignment,
   loadPatientRecord,
   resolveSingleActiveEncounter
 } = require('../lib/careFlow');
@@ -36,7 +37,7 @@ function buildStaleNoteError(note, message = 'Conflict — another session updat
 
 async function loadNoteWithContext(noteId) {
   const note = await get(
-    `SELECT cn.*, e.patient_id, e.phase AS encounter_phase, e.lifecycle_status, e.is_discharged, p.id AS linked_patient_record_id
+    `SELECT cn.*, e.patient_id, e.phase AS encounter_phase, e.lifecycle_status, e.is_discharged, e.assigned_doctor_id, p.id AS linked_patient_record_id
      FROM clinical_notes cn
      LEFT JOIN encounters e ON cn.encounter_id = e.id
      LEFT JOIN patients p ON p.id = e.patient_id
@@ -88,6 +89,7 @@ router.get('/:noteId', requireAuth, requireRole(['DOCTOR']), async (req, res, ne
     const { note, error } = await loadNoteWithContext(req.params.noteId);
     if (error) return next(error);
     if (!note) return next({ status: 404, code: 'NOT_FOUND', message: 'Note not found.' });
+    assertDoctorAssignment(note, req.user.id);
     res.json(note);
   } catch (err) { next(err); }
 });
@@ -104,6 +106,7 @@ router.post('/', requireAuth, requireRole(['DOCTOR']), async (req, res, next) =>
       malformedMessage: 'Active encounter is malformed and cannot accept notes.',
       duplicateMessage: 'Multiple active encounters exist for this patient. Repair the data before writing notes.'
     });
+    assertDoctorAssignment(encounter, req.user.id);
     const noteId = `note-${Date.now()}`;
     await run(
       `INSERT INTO clinical_notes (id,encounter_id,draft_content,status,author_id,__v) VALUES (?,?,?,'DRAFT',?,1)`,
@@ -128,6 +131,7 @@ router.put('/:noteId', requireAuth, requireRole(['DOCTOR']), async (req, res, ne
     const { note, error } = await loadNoteWithContext(noteId);
     if (error) return next(error);
     if (!note) return next({ status: 404, code: 'NOT_FOUND' });
+    assertDoctorAssignment(note, req.user.id);
     if (note.status === 'FINALIZED') return next({ status: 422, code: 'INVALID_STATE', message: 'Cannot edit a finalized note.' });
     if (note.__v !== version) return next(buildStaleNoteError(note));
     const updateResult = await run(
@@ -157,6 +161,7 @@ router.post('/:noteId/finalize', requireAuth, requireRole(['DOCTOR']), async (re
     const { note, error } = await loadNoteWithContext(noteId);
     if (error) return next(error);
     if (!note) return next({ status: 404, code: 'NOT_FOUND' });
+    assertDoctorAssignment(note, req.user.id);
     if (note.status === 'FINALIZED') return next({ status: 422, code: 'INVALID_STATE', message: 'Already finalized.' });
     if (note.__v !== version) return next(buildStaleNoteError(note, 'Note modified. Review before finalizing.'));
 

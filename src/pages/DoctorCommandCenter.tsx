@@ -8,9 +8,11 @@ import { clinicalApi } from '../api/clinical';
 import type { AppointmentSlot } from '../types/clinical';
 import { useToast, ToastContainer } from '../components/ui/Toast';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
+import { useAuth } from '../hooks/useAuth';
 
 export const DoctorCommandCenter = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { toasts, push, dismiss } = useToast();
   const [showFilter, setShowFilter] = useState(false);
   const [filter, setFilter] = useState('All');
@@ -51,6 +53,7 @@ export const DoctorCommandCenter = () => {
       <div>
         <h3 className="text-primary font-semibold text-sm tracking-wider uppercase">Operational Command</h3>
         <h1 className="text-3xl font-bold tracking-tight text-on-surface">Doctor Command Center</h1>
+        <p className="mt-1 text-sm text-on-surface-variant">Showing only patients assigned to {user?.name || 'the signed-in doctor'}.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -73,6 +76,11 @@ export const DoctorCommandCenter = () => {
                     Patient: {activeConsultation.patient.name}
                   </p>
                   <p className="text-xs text-error font-medium">{activeConsultation.type} · {activeConsultation.specialty}</p>
+                  {activeConsultation.chiefComplaint && (
+                    <p className="mt-2 text-xs text-on-surface-variant">
+                      Chief complaint: {activeConsultation.chiefComplaint}
+                    </p>
+                  )}
                   <button
                     onClick={() => openChart(activeConsultation.patient.id)}
                     className="mt-3 text-xs font-bold text-primary hover:underline"
@@ -99,6 +107,11 @@ export const DoctorCommandCenter = () => {
                   <p className="text-xs text-primary font-medium flex items-center gap-1">
                     <Activity size={14} /> {nextWaitingPatient.type} · {nextWaitingPatient.specialty}
                   </p>
+                  {nextWaitingPatient.chiefComplaint && (
+                    <p className="mt-2 text-xs text-on-surface-variant">
+                      Chief complaint: {nextWaitingPatient.chiefComplaint}
+                    </p>
+                  )}
                   <button
                     onClick={() => handleStartConsultation(nextWaitingPatient)}
                     className="mt-3 text-xs font-bold text-primary hover:underline"
@@ -129,7 +142,7 @@ export const DoctorCommandCenter = () => {
                   </div>
                 </div>
                 <p className="text-xs text-on-surface-variant">
-                  This panel reflects the current live queue only. No predictive or disconnected actions are shown.
+                  This panel reflects the signed-in doctor's live assigned queue only. No predictive or disconnected actions are shown.
                 </p>
               </CardContent>
             </Card>
@@ -141,7 +154,7 @@ export const DoctorCommandCenter = () => {
           <ErrorBoundary moduleName="Live Appointment Queue">
             <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-on-surface">
-              Daily Appointment Queue
+              Assigned Doctor Queue
               <span className="ml-2 text-sm font-normal text-on-surface-variant">
                 ({queue.length} patients)
               </span>
@@ -254,6 +267,13 @@ const QueueRow = ({ slot, onOpen, onDischarge }: { slot: AppointmentSlot; onOpen
             <ActivitySquare size={13} /> {slot.specialty}
           </span>
         </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          {slot.triagePriority && <StatusChip variant={slot.triagePriority === 'IMMEDIATE' ? 'error' : slot.triagePriority === 'URGENT' ? 'tertiary' : slot.triagePriority === 'STANDARD' ? 'primary' : 'surface'} label={slot.triagePriority} />}
+          {slot.assignedDoctor && <span className="text-on-surface-variant">Assigned: {slot.assignedDoctor.name}</span>}
+        </div>
+        {slot.chiefComplaint && (
+          <p className="mt-2 text-sm text-on-surface-variant">{slot.chiefComplaint}</p>
+        )}
       </div>
 
       <div className="flex items-center gap-2 shrink-0">

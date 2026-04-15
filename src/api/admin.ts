@@ -9,7 +9,7 @@ export interface User {
 
 export interface PatientRegistrationPayload {
   name: string;
-  phone: string;
+  phone?: string;
   id?: string;
   dob: string;
   gender: string;
@@ -28,6 +28,13 @@ export interface PatientRegistrationResponse {
   encounterCreated: boolean;
   activation?: ActivationResponse | null;
   activationPath?: string | null;
+}
+
+export interface PatientUpdatePayload {
+  name?: string;
+  phone?: string | null;
+  dob?: string;
+  gender?: string;
 }
 
 export interface ActivationResponse {
@@ -73,6 +80,11 @@ export const adminApi = {
 
   createPatient: async (payload: PatientRegistrationPayload): Promise<PatientRegistrationResponse> => {
     const res = await api.post('/patients', payload);
+    return res.data;
+  },
+
+  updatePatient: async (patientId: string, payload: PatientUpdatePayload) => {
+    const res = await api.patch(`/patients/${patientId}`, payload);
     return res.data;
   }
 };

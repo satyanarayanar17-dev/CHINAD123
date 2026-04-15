@@ -43,6 +43,14 @@ export const clinicalApi = {
   },
 
   /**
+   * POST /prescriptions/:rxId/handover — operational nurse/admin handover acknowledgement.
+   */
+  markPrescriptionHandedOver: async (rxId: string, dispensing_note?: string): Promise<{ message: string; handed_over_by: string; dispensing_note?: string | null }> => {
+    const response = await api.post(`/prescriptions/${rxId}/handover`, { dispensing_note });
+    return response.data;
+  },
+
+  /**
    * POST /prescriptions — Create a new prescription draft for patient
    */
   createPrescription: async (patientId: string, rx_content?: string): Promise<{ rxId: string, newVersion: number }> => {

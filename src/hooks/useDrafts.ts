@@ -11,11 +11,12 @@ import { draftsApi, DraftConflictError } from '../api/drafts';
 let isAutosavePaused = false;
 
 // Safe async hydration hook
-export function useDraft<T>(key: string) {
+export function useDraft<T>(key: string, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['draft', key],
     queryFn: () => draftsApi.getDraft<T>(key),
     staleTime: Infinity, // Avoid re-fetching existing drafts while user is editing
+    enabled: options.enabled ?? true,
   });
 }
 

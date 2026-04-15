@@ -47,6 +47,7 @@ test('route access stays inside explicit role areas', () => {
   assert.equal(isRouteAllowedForSession('/clinical/command-center', 'doctor', 'staff'), true);
   assert.equal(isRouteAllowedForSession('/clinical/patient/pat-1/dossier', 'nurse', 'staff'), true);
   assert.equal(isRouteAllowedForSession('/clinical/patient/pat-1/note/new', 'nurse', 'staff'), false);
+  assert.equal(isRouteAllowedForSession('/operations/prescriptions/pat-1/rx-1', 'nurse', 'staff'), true);
   assert.equal(isRouteAllowedForSession('/admin/dashboard', 'doctor', 'staff'), false);
   assert.equal(isRouteAllowedForSession('/patient/dashboard', 'doctor', 'staff'), false);
   assert.equal(isRouteAllowedForSession('/clinical/command-center', 'patient', 'patient'), false);

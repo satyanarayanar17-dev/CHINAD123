@@ -54,7 +54,7 @@ async function listActiveEncountersForPatient(context, patientId) {
   }
 
   return context.all(
-    `SELECT id, patient_id, phase, lifecycle_status, is_discharged, __v, created_at
+    `SELECT id, patient_id, phase, lifecycle_status, is_discharged, assigned_doctor_id, __v, created_at
      FROM encounters
      WHERE patient_id = ? AND is_discharged = 0
      ORDER BY created_at DESC, id DESC`,
@@ -96,6 +96,29 @@ function assertEncounterRecord(encounter, options = {}) {
     phase: encounterState.phase,
     lifecycle_status: encounterState.lifecycleStatus
   };
+}
+
+function assertDoctorAssignment(encounter, doctorId, options = {}) {
+  const { missingMessage = 'This encounter has not been assigned to a doctor yet.' } = options;
+  const assignedDoctorId = normalizeIdentifier(encounter?.assigned_doctor_id);
+
+  if (!assignedDoctorId) {
+    throw {
+      status: 403,
+      code: 'ASSIGNED_DOCTOR_REQUIRED',
+      message: missingMessage
+    };
+  }
+
+  if (assignedDoctorId !== normalizeIdentifier(doctorId)) {
+    throw {
+      status: 403,
+      code: 'ASSIGNED_DOCTOR_MISMATCH',
+      message: 'This encounter is assigned to a different doctor.'
+    };
+  }
+
+  return encounter;
 }
 
 async function resolveSingleActiveEncounter(context, patientId, options = {}) {
@@ -176,6 +199,7 @@ module.exports = {
   assertPatientRecord,
   listActiveEncountersForPatient,
   assertEncounterRecord,
+  assertDoctorAssignment,
   resolveSingleActiveEncounter,
   ensureActiveEncounter
 };

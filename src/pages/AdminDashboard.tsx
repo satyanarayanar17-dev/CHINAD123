@@ -7,6 +7,7 @@ import { useLiveQueue } from '../hooks/queries/useLiveQueue';
 import type { AppointmentSlot } from '../types/clinical';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 import { PatientOnboarding } from './admin/PatientOnboarding';
+import { PatientManagement } from './admin/PatientManagement';
 import { UserManagement } from './admin/UserManagement';
 
 const formatDashboardDate = () => {
@@ -24,6 +25,9 @@ export const AdminDashboard = () => {
       <div>
         <h3 className="text-on-surface-variant font-semibold text-sm tracking-wider uppercase">Institutional Dashboard — {formatDashboardDate()}</h3>
         <h1 className="text-3xl font-bold tracking-tight text-on-surface">Staff Operations</h1>
+        <p className="mt-1 text-sm text-on-surface-variant">
+          Admin is acting as the temporary receptionist proxy in this pilot. No clinical authoring is performed here.
+        </p>
       </div>
 
       {/* Live Queue Stats */}
@@ -95,6 +99,10 @@ export const AdminDashboard = () => {
 
           <ErrorBoundary moduleName="Patient Onboarding">
             <PatientOnboarding />
+          </ErrorBoundary>
+
+          <ErrorBoundary moduleName="Patient Demographics">
+            <PatientManagement />
           </ErrorBoundary>
         </div>
 

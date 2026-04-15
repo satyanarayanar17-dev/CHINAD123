@@ -78,7 +78,7 @@ export const BaseLayout = () => {
             <p className="text-[10px] font-semibold text-on-surface-variant leading-relaxed">
               {canSearchPatients
                 ? 'Patient records, notes, and prescriptions open contextually from within each workflow.'
-                : 'Admin access is limited to onboarding, staffing, and pilot operations controls.'}
+                : 'Admin access is limited to staffing, patient onboarding, demographic corrections, and pilot operations controls.'}
             </p>
           </div>
           

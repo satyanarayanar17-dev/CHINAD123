@@ -448,6 +448,112 @@ async function runVerification() {
   assert.strictEqual(duplicatePhoneRes.body.error.code, 'PHONE_ALREADY_REGISTERED', 'Duplicate phone rejections must use a stable error code.');
   pass('Duplicate patient phone numbers are rejected safely');
 
+  const nurseIntakeRes = await request(app)
+    .post('/api/v1/patients')
+    .set('Authorization', `Bearer ${nurseToken}`)
+    .send({ name: 'Walk In Patient', dob: '1994-02-10', gender: 'Female' });
+  assert.strictEqual(nurseIntakeRes.status, 201, 'Nurse intake should be able to create a fresh patient without a phone number.');
+  assert.ok(nurseIntakeRes.body.patient?.id, 'Nurse intake must return a patient identifier.');
+  pass('Nurse fresh intake can create a patient record');
+
+  const missingDoctorHandoffRes = await request(app)
+    .post('/api/v1/queue/handoff')
+    .set('Authorization', `Bearer ${nurseToken}`)
+    .send({
+      patientId: nurseIntakeRes.body.patient.id,
+      chiefComplaint: 'Fever for two days',
+      triagePriority: 'URGENT',
+      vitals: {
+        height: 165,
+        weight: 62,
+        systolic: 128,
+        diastolic: 82,
+        hr: 96,
+        temp: 38,
+        spo2: 98
+      }
+    });
+  assert.strictEqual(missingDoctorHandoffRes.status, 400, 'Nurse handoff must reject missing doctor assignment.');
+  assert.strictEqual(
+    missingDoctorHandoffRes.body.error.code,
+    'DOCTOR_SELECTION_REQUIRED',
+    'Missing doctor assignment must use a stable validation code.'
+  );
+  pass('Nurse handoff requires doctor selection before push');
+
+  const handoffRes = await request(app)
+    .post('/api/v1/queue/handoff')
+    .set('Authorization', `Bearer ${nurseToken}`)
+    .send({
+      patientId: nurseIntakeRes.body.patient.id,
+      doctorId: 'doc1_qa',
+      chiefComplaint: 'Fever for two days',
+      triagePriority: 'URGENT',
+      handoffNotes: 'Family reports reduced oral intake since last night.',
+      vitals: {
+        height: 165,
+        weight: 62,
+        systolic: 128,
+        diastolic: 82,
+        hr: 96,
+        temp: 38,
+        spo2: 98
+      }
+    });
+  assert.strictEqual(handoffRes.status, 200, 'Nurse handoff with doctor assignment must succeed.');
+  assert.strictEqual(handoffRes.body.assignedDoctor.id, 'doc1_qa', 'Handoff response must echo the assigned doctor.');
+
+  const handedOffEncounter = await get(
+    `SELECT assigned_doctor_id, chief_complaint, triage_priority, handoff_notes, triage_vitals_json, triaged_by, phase, lifecycle_status
+     FROM encounters
+     WHERE patient_id = ? AND is_discharged = 0`,
+    [nurseIntakeRes.body.patient.id]
+  );
+  assert.strictEqual(handedOffEncounter.assigned_doctor_id, 'doc1_qa', 'Doctor assignment must persist on the active encounter.');
+  assert.strictEqual(handedOffEncounter.chief_complaint, 'Fever for two days', 'Chief complaint must persist on the encounter.');
+  assert.strictEqual(handedOffEncounter.triage_priority, 'URGENT', 'Triage priority must persist on the encounter.');
+  assert.strictEqual(handedOffEncounter.handoff_notes, 'Family reports reduced oral intake since last night.', 'Handoff notes must persist on the encounter.');
+  assert.strictEqual(handedOffEncounter.triaged_by, 'nurse_qa', 'Encounter must record the triaging nurse.');
+  assert.strictEqual(handedOffEncounter.phase, 'AWAITING', 'Handoff must move the encounter into the doctor waiting queue.');
+  assert.strictEqual(handedOffEncounter.lifecycle_status, 'AWAITING', 'Lifecycle status must match the waiting queue phase after handoff.');
+  assert.ok(handedOffEncounter.triage_vitals_json, 'Triage vitals must persist on the encounter.');
+  pass('Doctor assignment and triage payload persist on the encounter');
+
+  const doc1QueueRes = await request(app)
+    .get('/api/v1/queue')
+    .set('Authorization', `Bearer ${doctorToken}`);
+  assert.strictEqual(doc1QueueRes.status, 200, 'Assigned doctor queue must load successfully.');
+  assert.ok(
+    doc1QueueRes.body.some((slot) => slot.patient.id === nurseIntakeRes.body.patient.id && slot.assignedDoctor?.id === 'doc1_qa'),
+    'Assigned patient must appear in the chosen doctor queue with doctor metadata.'
+  );
+
+  const doctorTwoLogin = await loginStaff('doc2_qa', SEEDED_PASSWORD);
+  assert.strictEqual(doctorTwoLogin.status, 200, 'Second doctor login must succeed.');
+  const doctorTwoToken = doctorTwoLogin.body.access_token;
+
+  const doc2QueueRes = await request(app)
+    .get('/api/v1/queue')
+    .set('Authorization', `Bearer ${doctorTwoToken}`);
+  assert.strictEqual(doc2QueueRes.status, 200, 'Non-assigned doctor queue must still load successfully.');
+  assert.ok(
+    !doc2QueueRes.body.some((slot) => slot.patient.id === nurseIntakeRes.body.patient.id),
+    'Assigned patient must not leak into another doctor queue.'
+  );
+  pass('Assigned patient appears only in the selected doctor queue');
+
+  const wrongDoctorNoteRes = await request(app)
+    .post('/api/v1/notes')
+    .set('Authorization', `Bearer ${doctorTwoToken}`)
+    .send({ patientId: nurseIntakeRes.body.patient.id, draft_content: 'Cross-doctor attempt' });
+  assert.strictEqual(wrongDoctorNoteRes.status, 403, 'Non-assigned doctor must not be able to draft a note for the handed-off patient.');
+  assert.strictEqual(
+    wrongDoctorNoteRes.body.error.code,
+    'ASSIGNED_DOCTOR_MISMATCH',
+    'Wrong-doctor note attempts must fail with the doctor-assignment code.'
+  );
+  pass('Wrong doctor cannot mutate the assigned patient workflow');
+
   const activationAudit = await get(
     `SELECT action, patient_id, new_state
      FROM audit_logs
@@ -566,6 +672,137 @@ async function runVerification() {
   );
   assert.ok(changePasswordAudit, 'Change-password must write an audit record.');
   pass('Password reset and password change both write audit records');
+
+  const rxCreateRes = await request(app)
+    .post('/api/v1/prescriptions')
+    .set('Authorization', `Bearer ${doctorToken}`)
+    .send({
+      patientId: 'pat-2',
+      rx_content: JSON.stringify({
+        newRx: [
+          {
+            name: 'Amoxicillin 500mg',
+            strength: '500mg',
+            frequency: 'TDS',
+            route: 'Oral',
+            duration: 5
+          }
+        ],
+        selectedLabs: []
+      })
+    });
+  assert.strictEqual(rxCreateRes.status, 200, 'Doctor prescription creation must succeed.');
+  const createdRxId = rxCreateRes.body.rxId;
+
+  const nurseDraftRxRead = await request(app)
+    .get(`/api/v1/prescriptions/${createdRxId}`)
+    .set('Authorization', `Bearer ${nurseToken}`);
+  assert.strictEqual(nurseDraftRxRead.status, 403, 'Nurse must not read draft prescriptions.');
+  assert.strictEqual(
+    nurseDraftRxRead.body.error.code,
+    'PRESCRIPTION_VISIBILITY_RESTRICTED',
+    'Draft prescription visibility should be explicitly denied to operational staff.'
+  );
+  pass('Nurse can only read clinically appropriate prescriptions');
+
+  const authorizeRxRes = await request(app)
+    .post(`/api/v1/prescriptions/${createdRxId}/authorize`)
+    .set('Authorization', `Bearer ${doctorToken}`)
+    .send({ version: 1 });
+  assert.strictEqual(authorizeRxRes.status, 200, 'Doctor prescription authorization must succeed.');
+
+  const nurseAuthorizedRxRead = await request(app)
+    .get(`/api/v1/prescriptions/${createdRxId}`)
+    .set('Authorization', `Bearer ${nurseToken}`);
+  assert.strictEqual(nurseAuthorizedRxRead.status, 200, 'Nurse must be able to read authorized prescriptions.');
+  assert.strictEqual(nurseAuthorizedRxRead.body.status, 'AUTHORIZED', 'Nurse should only receive authorized prescription data.');
+  pass('Nurse can read authorized prescriptions');
+
+  const nurseRxEditAttempt = await request(app)
+    .put(`/api/v1/prescriptions/${createdRxId}`)
+    .set('Authorization', `Bearer ${nurseToken}`)
+    .send({ rx_content: 'tamper attempt', version: 2 });
+  assert.strictEqual(nurseRxEditAttempt.status, 403, 'Nurse must not edit prescription content.');
+  assert.strictEqual(nurseRxEditAttempt.body.error.code, 'FORBIDDEN_ROLE', 'Nurse edit attempts must fail at the role boundary.');
+  pass('Nurse cannot edit prescriptions');
+
+  const draftHandoverBlocked = await request(app)
+    .post('/api/v1/prescriptions/rx-1/handover')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ dispensing_note: 'Attempted before authorization' });
+  assert.strictEqual(draftHandoverBlocked.status, 403, 'Handover must be blocked for non-authorized prescriptions.');
+  assert.strictEqual(
+    draftHandoverBlocked.body.error.code,
+    'PRESCRIPTION_VISIBILITY_RESTRICTED',
+    'Draft handover denial must use the explicit visibility code.'
+  );
+  pass('Prescription handover is blocked until authorization');
+
+  const nurseHandoverRes = await request(app)
+    .post(`/api/v1/prescriptions/${createdRxId}/handover`)
+    .set('Authorization', `Bearer ${nurseToken}`)
+    .send({ dispensing_note: 'Printed and handed to the patient attendant.' });
+  assert.strictEqual(nurseHandoverRes.status, 200, 'Nurse must be able to mark an authorized prescription as handed over.');
+
+  const handedOverRx = await get(
+    `SELECT status, handed_over_by, handed_over_at, dispensing_note
+     FROM prescriptions
+     WHERE id = ?`,
+    [createdRxId]
+  );
+  assert.strictEqual(handedOverRx.status, 'AUTHORIZED', 'Handover must not alter clinical prescription status.');
+  assert.strictEqual(handedOverRx.handed_over_by, 'nurse_qa', 'Handover actor must be persisted.');
+  assert.ok(handedOverRx.handed_over_at, 'Handover timestamp must be persisted.');
+  assert.strictEqual(handedOverRx.dispensing_note, 'Printed and handed to the patient attendant.', 'Optional dispensing note must be persisted.');
+  pass('Nurse can mark handover without changing clinical content');
+
+  const duplicateHandoverRes = await request(app)
+    .post(`/api/v1/prescriptions/${createdRxId}/handover`)
+    .set('Authorization', `Bearer ${nurseToken}`)
+    .send({ dispensing_note: 'Second attempt' });
+  assert.strictEqual(duplicateHandoverRes.status, 422, 'Prescription handover should not be repeatable.');
+  assert.strictEqual(duplicateHandoverRes.body.error.code, 'PRESCRIPTION_ALREADY_HANDED_OVER', 'Repeat handover should return a stable state code.');
+
+  const handoverAudit = await get(
+    `SELECT action
+     FROM audit_logs
+     WHERE action = ?
+     ORDER BY id DESC
+     LIMIT 1`,
+    [`RX_HANDOVER:${createdRxId}:by:nurse_qa`]
+  );
+  assert.ok(handoverAudit, 'Prescription handover must write an immutable audit entry.');
+  pass('Prescription handover writes immutable audit');
+
+  const patientEditRes = await request(app)
+    .patch('/api/v1/patients/pat-3')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      name: 'Ramesh S.',
+      dob: '1975-03-22',
+      gender: 'Male',
+      phone: '+919876543250'
+    });
+  assert.strictEqual(patientEditRes.status, 200, 'Admin must be able to correct patient demographics.');
+  assert.strictEqual(patientEditRes.body.patient.phone, '+919876543250', 'Updated patient phone should be normalized and returned.');
+
+  const editedPatient = await get(
+    `SELECT name, phone
+     FROM patients
+     WHERE id = ?`,
+    ['pat-3']
+  );
+  assert.strictEqual(editedPatient.name, 'Ramesh S.', 'Admin edit should persist updated patient name.');
+  assert.strictEqual(editedPatient.phone, '+919876543250', 'Admin edit should persist updated patient phone.');
+  pass('Admin can edit patient demographics safely');
+
+  const duplicatePhoneEditRes = await request(app)
+    .patch('/api/v1/patients/pat-3')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ phone: SEEDED_PATIENT_PHONES.pat2 });
+  assert.strictEqual(duplicatePhoneEditRes.status, 409, 'Admin demographic correction must reject duplicate phone collisions.');
+  assert.strictEqual(duplicatePhoneEditRes.body.error.code, 'PHONE_ALREADY_REGISTERED', 'Duplicate phone correction must return a stable collision code.');
+  pass('Duplicate phone protection applies to patient edits');
 
   const noteCreateRes = await request(app)
     .post('/api/v1/notes')

@@ -24,6 +24,7 @@ const SEEDED_ENCOUNTERS = [
     phase: 'DISCHARGED',
     lifecycle_status: 'DISCHARGED',
     is_discharged: 1,
+    assigned_doctor_id: 'doc1_qa',
     __v: 2,
     created_at: '2026-03-15T09:00:00.000Z'
   },
@@ -33,6 +34,13 @@ const SEEDED_ENCOUNTERS = [
     phase: 'RECEPTION',
     lifecycle_status: 'RECEPTION',
     is_discharged: 0,
+    assigned_doctor_id: 'doc2_qa',
+    chief_complaint: 'Follow-up review after previous diabetes visit.',
+    triage_priority: 'STANDARD',
+    handoff_notes: 'Stable vitals on arrival. Review long-term glucose control.',
+    triage_vitals_json: JSON.stringify({ height: 175, weight: 81, systolic: 128, diastolic: 82, hr: 76, temp: 36.9, spo2: 99 }),
+    triaged_by: 'nurse_qa',
+    triaged_at: '2026-04-09T08:02:00.000Z',
     __v: 1,
     created_at: '2026-04-09T08:00:00.000Z'
   },
@@ -42,6 +50,13 @@ const SEEDED_ENCOUNTERS = [
     phase: 'IN_CONSULTATION',
     lifecycle_status: 'IN_CONSULTATION',
     is_discharged: 0,
+    assigned_doctor_id: 'doc1_qa',
+    chief_complaint: 'General fatigue for 3 days with poor appetite.',
+    triage_priority: 'URGENT',
+    handoff_notes: 'Patient reports worsening fatigue since yesterday evening.',
+    triage_vitals_json: JSON.stringify({ height: 164, weight: 68, systolic: 136, diastolic: 88, hr: 102, temp: 37.8, spo2: 98 }),
+    triaged_by: 'nurse_qa',
+    triaged_at: '2026-04-09T08:20:00.000Z',
     __v: 1,
     created_at: '2026-04-09T08:15:00.000Z'
   },
@@ -51,6 +66,13 @@ const SEEDED_ENCOUNTERS = [
     phase: 'AWAITING',
     lifecycle_status: 'AWAITING',
     is_discharged: 0,
+    assigned_doctor_id: 'doc1_qa',
+    chief_complaint: 'Left knee pain after a slip at home.',
+    triage_priority: 'STANDARD',
+    handoff_notes: 'Ambulating with mild discomfort. No visible deformity.',
+    triage_vitals_json: JSON.stringify({ height: 170, weight: 74, systolic: 122, diastolic: 80, hr: 84, temp: 36.8, spo2: 99 }),
+    triaged_by: 'nurse_qa',
+    triaged_at: '2026-04-09T08:35:00.000Z',
     __v: 1,
     created_at: '2026-04-09T08:30:00.000Z'
   }
@@ -126,6 +148,7 @@ const SEEDED_NOTIFICATIONS = [
     patient_id: 'pat-2',
     actor_id: 'nurse_qa',
     target_role: 'DOCTOR',
+    target_user_id: 'doc1_qa',
     read: 0
   },
   {
@@ -212,7 +235,7 @@ async function seedEncounters(context) {
       'encounters',
       'id',
       encounter,
-      ['patient_id', 'phase', 'lifecycle_status', 'is_discharged', '__v', 'created_at']
+      ['patient_id', 'phase', 'lifecycle_status', 'is_discharged', 'assigned_doctor_id', 'chief_complaint', 'triage_priority', 'handoff_notes', 'triage_vitals_json', 'triaged_by', 'triaged_at', '__v', 'created_at']
     );
   }
 }
@@ -269,7 +292,7 @@ async function seedNotifications(context) {
         id: counter,
         ...notification
       },
-      ['type', 'title', 'body', 'patient_id', 'actor_id', 'target_role', 'read']
+      ['type', 'title', 'body', 'patient_id', 'actor_id', 'target_role', 'target_user_id', 'read']
     );
     counter += 1;
   }

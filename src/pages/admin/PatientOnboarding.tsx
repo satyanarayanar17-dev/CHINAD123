@@ -181,6 +181,9 @@ export const PatientOnboarding = () => {
 
         <div className="rounded-xl border border-outline/20 bg-surface-container-low p-4 text-xs text-on-surface-variant">
           Use this for real pilot onboarding: the system generates the internal UHID, ensures an active encounter, and issues a one-time activation code for manual sharing.
+          <span className="block mt-2">
+            In this pilot, admin is temporarily acting as the receptionist proxy. Queue-first consultation remains intentional, and no calendar scheduling is live yet.
+          </span>
         </div>
 
         {result && (

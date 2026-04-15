@@ -22,6 +22,23 @@ export interface Patient {
   activeMeds: Medication[];
 }
 
+export interface AssignedDoctorSummary {
+  id: string;
+  name: string;
+  status?: 'ACTIVE' | 'INACTIVE';
+  activeQueueCount?: number;
+}
+
+export interface TriageVitals {
+  height: number;
+  weight: number;
+  systolic: number;
+  diastolic: number;
+  hr: number;
+  temp: number;
+  spo2: number;
+}
+
 export interface AppointmentSlot {
   id: string;
   time: string;
@@ -31,6 +48,13 @@ export interface AppointmentSlot {
   specialty: string;
   lifecycleStatus: 'AWAITING' | 'RECEPTION' | 'IN_CONSULTATION' | 'DISCHARGED';
   encounterPhase?: string;
+  assignedDoctor?: AssignedDoctorSummary | null;
+  chiefComplaint?: string | null;
+  triagePriority?: string | null;
+  handoffNotes?: string | null;
+  triageVitals?: TriageVitals | null;
+  triagedAt?: string | null;
+  triagedBy?: string | null;
   __v?: number;
 }
 
@@ -69,6 +93,9 @@ export interface Prescription {
   daysRemaining: number;
   reminderEnabled: boolean;
   status?: string;
+  handedOverBy?: string | null;
+  handedOverAt?: string | null;
+  dispensingNote?: string | null;
 }
 
 export interface LabReport {

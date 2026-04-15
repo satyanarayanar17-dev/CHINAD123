@@ -1,9 +1,11 @@
 import type {
+  AssignedDoctorSummary,
   AppointmentSlot,
   LabReport,
   Patient,
   PatientAppointment,
   Prescription,
+  TriageVitals,
   TimelineEntry,
 } from '../types/clinical';
 
@@ -43,6 +45,11 @@ function asNumber(value: unknown, fallback = 0): number {
 function asInteger(value: unknown, fallback = 1): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   return Number.isInteger(numeric) ? numeric : fallback;
+}
+
+function asNullableInteger(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function normalizePatientName(name: unknown, patientId: string): string {
@@ -105,6 +112,63 @@ function normalizeTimelineType(value: unknown): TimelineEntry['type'] {
   }
 
   return 'consultation';
+}
+
+function normalizeAssignedDoctor(value: unknown): AssignedDoctorSummary | null {
+  const row = asRecord(value);
+  const id = asString(row.id);
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id,
+    name: asString(row.name) || id,
+    status: asString(row.status) === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+    activeQueueCount: asNullableInteger(row.activeQueueCount ?? row.active_queue_count) ?? undefined
+  };
+}
+
+function normalizeTriageVitals(value: unknown): TriageVitals | null {
+  const source = typeof value === 'string'
+    ? (() => {
+        try {
+          return JSON.parse(value);
+        } catch {
+          return {};
+        }
+      })()
+    : value;
+  const row = asRecord(source);
+  const height = asNullableInteger(row.height);
+  const weight = asNullableInteger(row.weight);
+  const systolic = asNullableInteger(row.systolic);
+  const diastolic = asNullableInteger(row.diastolic);
+  const hr = asNullableInteger(row.hr);
+  const temp = typeof row.temp === 'number' ? row.temp : Number(row.temp);
+  const spo2 = asNullableInteger(row.spo2);
+
+  if (
+    height === null ||
+    weight === null ||
+    systolic === null ||
+    diastolic === null ||
+    hr === null ||
+    !Number.isFinite(temp) ||
+    spo2 === null
+  ) {
+    return null;
+  }
+
+  return {
+    height,
+    weight,
+    systolic,
+    diastolic,
+    hr,
+    temp,
+    spo2
+  };
 }
 
 export function normalizePatient(raw: unknown): Patient {
@@ -190,6 +254,13 @@ export function normalizeQueueSlot(raw: unknown, index = 0): AppointmentSlot | n
       ? (rawLifecycle as AppointmentSlot['lifecycleStatus'])
       : 'AWAITING',
     encounterPhase: asString(row.encounterPhase) || undefined,
+    assignedDoctor: normalizeAssignedDoctor(row.assignedDoctor),
+    chiefComplaint: asString(row.chiefComplaint),
+    triagePriority: asString(row.triagePriority),
+    handoffNotes: asString(row.handoffNotes),
+    triageVitals: normalizeTriageVitals(row.triageVitals),
+    triagedAt: asString(row.triagedAt),
+    triagedBy: asString(row.triagedBy),
     __v: asInteger(row.__v, 1),
   };
 }
@@ -249,6 +320,9 @@ export function normalizePrescription(raw: unknown, index = 0): Prescription {
     daysRemaining,
     reminderEnabled: typeof row.reminderEnabled === 'boolean' ? row.reminderEnabled : false,
     status: asString(row.status) || 'AUTHORIZED',
+    handedOverBy: asString(row.handedOverBy ?? row.handed_over_by),
+    handedOverAt: asString(row.handedOverAt ?? row.handed_over_at),
+    dispensingNote: asString(row.dispensingNote ?? row.dispensing_note),
   };
 }
 

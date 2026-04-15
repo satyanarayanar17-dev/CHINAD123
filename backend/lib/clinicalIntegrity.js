@@ -8,6 +8,7 @@ const LEGACY_ENCOUNTER_PHASE_ALIASES = {
 };
 const NOTE_STATUSES = ['DRAFT', 'FINALIZED'];
 const PRESCRIPTION_STATUSES = ['DRAFT', 'AUTHORIZED'];
+const TRIAGE_PRIORITIES = ['IMMEDIATE', 'URGENT', 'STANDARD', 'LOW'];
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
@@ -228,6 +229,16 @@ function normalizePrescriptionStatus(value) {
   return PRESCRIPTION_STATUSES.includes(upper) ? upper : null;
 }
 
+function normalizeTriagePriority(value) {
+  const trimmed = trimToNull(value);
+  if (!trimmed) {
+    return null;
+  }
+
+  const upper = trimmed.toUpperCase();
+  return TRIAGE_PRIORITIES.includes(upper) ? upper : null;
+}
+
 function toDischargeFlag(value) {
   return Number(value) === 1 ? 1 : 0;
 }
@@ -349,10 +360,23 @@ function serializeQueueSlot(row = {}) {
       time: '09:00',
       status: 'ON_TIME',
       patient,
-      type: 'General Review',
+      type: row.triage_priority ? `Nurse Triage · ${row.triage_priority}` : 'General Review',
       specialty: 'General Medicine',
       lifecycleStatus: lifecycle.lifecycleStatus,
       encounterPhase: lifecycle.phase,
+      assignedDoctor: row.assigned_doctor_id
+        ? {
+            id: row.assigned_doctor_id,
+            name: trimToNull(row.assigned_doctor_name) || row.assigned_doctor_id,
+            status: row.assigned_doctor_active === 0 ? 'INACTIVE' : 'ACTIVE'
+          }
+        : null,
+      chiefComplaint: trimToNull(row.chief_complaint),
+      triagePriority: normalizeTriagePriority(row.triage_priority),
+      handoffNotes: trimToNull(row.handoff_notes),
+      triageVitals: trimToNull(row.triage_vitals_json),
+      triagedAt: trimToNull(row.triaged_at),
+      triagedBy: trimToNull(row.triaged_by),
       __v: Number.isInteger(row.__v) ? row.__v : Number(row.__v) || 1
     },
     warnings,
@@ -360,7 +384,8 @@ function serializeQueueSlot(row = {}) {
   };
 }
 
-function validatePatientRegistrationPayload(payload = {}) {
+function validatePatientRegistrationPayload(payload = {}, options = {}) {
+  const { requirePhone = false } = options;
   const normalized = {
     id: normalizeIdentifier(payload.id),
     name: trimToNull(payload.name),
@@ -371,7 +396,9 @@ function validatePatientRegistrationPayload(payload = {}) {
   };
   const errors = [];
 
-  if (!normalized.phone) {
+  if (requirePhone && !normalized.phone) {
+    errors.push({ field: 'phone', message: 'Patient phone must be a valid mobile number.' });
+  } else if (payload.phone && !normalized.phone) {
     errors.push({ field: 'phone', message: 'Patient phone must be a valid mobile number.' });
   }
 
@@ -413,6 +440,7 @@ module.exports = {
   ENCOUNTER_LIFECYCLE_STATUSES,
   NOTE_STATUSES,
   PRESCRIPTION_STATUSES,
+  TRIAGE_PRIORITIES,
   LEGACY_ENCOUNTER_PHASE_ALIASES,
   isIsoDateOnly,
   trimToNull,
@@ -429,6 +457,7 @@ module.exports = {
   normalizeQueueTransitionPhase,
   normalizeNoteStatus,
   normalizePrescriptionStatus,
+  normalizeTriagePriority,
   validateEncounterLifecycle,
   validatePatientRegistrationPayload,
   serializeQueueSlot,

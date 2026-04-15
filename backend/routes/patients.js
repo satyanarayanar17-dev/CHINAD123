@@ -6,7 +6,6 @@ const { writeAuditDirect } = require('../middleware/audit');
 const { writeNotification } = require('./notifications');
 const {
   buildPatientReadModel,
-  generateNumericOTP,
   isIsoDateOnly,
   normalizePatientGender,
   normalizePatientPhone,
@@ -30,7 +29,7 @@ const activationOtpDelivery =
   (process.env.NODE_ENV === 'production' ? 'console' : 'api_response');
 
 function generateActivationCode() {
-  return generateNumericOTP(6);
+  return crypto.randomInt(100000, 1000000).toString();
 }
 
 function buildActivationEnvelope(otp, expiresAt) {
@@ -640,8 +639,8 @@ router.post('/:patientId/break-glass', requireAuth, requireRole(['DOCTOR', 'NURS
     });
 
     res.json({
-      acknowledged: true,
-      message: 'Emergency access request recorded and admin notified. Finalized records are visible in the patient dossier. To transfer active case ownership, ask admin to reassign this encounter.',
+      granted: true,
+      message: 'Emergency access granted. All actions are being recorded.',
       patientId, actor: req.user.id, timestamp: new Date().toISOString()
     });
   } catch (err) { next(err); }

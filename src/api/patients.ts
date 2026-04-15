@@ -63,13 +63,7 @@ export const PatientsAPI = {
     return response.data.map((entry, index) => normalizeTimelineEntry(entry, index));
   },
 
-  /**
-   * POST /patients/:patientId/break-glass — Emergency access alert.
-   * Creates immutable audit event, notifies admin. Does not bypass role enforcement.
-   * Finalized records remain visible via the patient dossier for any doctor/nurse.
-   * For active case transfer, admin must reassign via /admin/encounters/:id/reassign.
-   */
-  breakGlass: async (patientId: string, justification: string): Promise<{ acknowledged: boolean; message: string }> => {
+  breakGlass: async (patientId: string, justification: string): Promise<{ granted: boolean; message: string }> => {
     const response = await api.post(`/patients/${patientId}/break-glass`, { justification });
     return response.data;
   }

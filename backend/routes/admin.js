@@ -201,4 +201,79 @@ router.post('/users/:userId/reset-password', requireAuth, requireRole(['ADMIN'])
   }
 });
 
+/**
+ * POST /api/admin/encounters/:encounterId/reassign
+ *
+ * Admin-only emergency encounter reassignment. Transfers ownership of any
+ * active encounter to a different doctor regardless of lifecycle phase.
+ * This is the legitimate escape valve for cases where a patient is
+ * IN_CONSULTATION and the assigned doctor becomes unavailable — the normal
+ * nurse triage handoff path blocks reassignment in that phase.
+ *
+ * Full audit trail: prior and new assigned_doctor_id are both recorded.
+ * OCC: uses __v to detect concurrent modifications.
+ */
+router.post('/encounters/:encounterId/reassign', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
+  const { encounterId } = req.params;
+  const { doctorId } = req.body;
+
+  if (!doctorId || typeof doctorId !== 'string' || !doctorId.trim()) {
+    return next({ status: 400, code: 'DOCTOR_ID_REQUIRED', message: 'doctorId is required.' });
+  }
+
+  try {
+    const encounter = await get(`SELECT * FROM encounters WHERE id = ?`, [encounterId]);
+    if (!encounter) {
+      return next({ status: 404, code: 'NOT_FOUND', message: 'Encounter not found.' });
+    }
+
+    if (encounter.is_discharged) {
+      return next({ status: 422, code: 'ENCOUNTER_CLOSED', message: 'Cannot reassign a discharged encounter.' });
+    }
+
+    const doctor = await get(
+      `SELECT id, name, role, is_active FROM users WHERE id = ?`,
+      [doctorId.trim()]
+    );
+
+    if (!doctor || doctor.role !== 'DOCTOR') {
+      return next({ status: 404, code: 'DOCTOR_NOT_FOUND', message: 'Target doctor not found.' });
+    }
+
+    if (doctor.is_active !== 1) {
+      return next({ status: 422, code: 'DOCTOR_UNAVAILABLE', message: 'Target doctor account is inactive.' });
+    }
+
+    const previousDoctorId = encounter.assigned_doctor_id || null;
+
+    const result = await run(
+      `UPDATE encounters SET assigned_doctor_id = ?, __v = __v + 1 WHERE id = ? AND __v = ?`,
+      [doctor.id, encounterId, encounter.__v]
+    );
+
+    if (result.changes === 0) {
+      return next({ status: 409, code: 'STALE_STATE', message: 'Encounter was modified concurrently. Please retry.' });
+    }
+
+    await writeAuditDirect({
+      correlation_id: req.correlationId,
+      actor_id: req.user.id,
+      patient_id: encounter.patient_id,
+      action: `ADMIN_ENCOUNTER_REASSIGN:${encounterId}:from:${previousDoctorId || 'UNASSIGNED'}:to:${doctor.id}:by:${req.user.id}`,
+      prior_state: JSON.stringify({ assigned_doctor_id: previousDoctorId, __v: encounter.__v }),
+      new_state: JSON.stringify({ assigned_doctor_id: doctor.id, __v: encounter.__v + 1 })
+    });
+
+    res.json({
+      encounterId,
+      previousDoctorId,
+      newDoctorId: doctor.id,
+      newDoctorName: doctor.name,
+      reassigned: true
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

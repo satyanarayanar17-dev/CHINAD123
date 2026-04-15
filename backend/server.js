@@ -29,6 +29,56 @@ const isRestrictedPilot = process.env.APP_ENV === 'restricted_web_pilot';
 const isLockedDeployment = isProduction || isRestrictedPilot;
 const allowedOtpDeliveryModes = new Set(['console', 'api_response']);
 
+/**
+ * Detect placeholder / weak JWT secrets that would pass a simple length check
+ * but are not cryptographically suitable for production.
+ *
+ * Blocks:
+ *   - Known hardcoded bad values (exact match)
+ *   - Secrets containing obvious placeholder substrings
+ *   - Secrets containing spaces (copy-paste artifacts)
+ *
+ * A properly generated secret (`openssl rand -hex 32`) is 64 lowercase hex
+ * chars and will never trigger any of these checks.
+ */
+function isWeakJwtSecret(secret) {
+  const KNOWN_BAD = new Set([
+    'pilot-beta-secure-secret-key',
+    'super_secure_crypto_secret_32_characters_long_for_test',
+    'changeme',
+    'secret',
+    'your-secret-here',
+    'jwt-secret',
+    'mysecret'
+  ]);
+
+  if (KNOWN_BAD.has(secret)) return true;
+
+  const lower = secret.toLowerCase();
+  const WEAK_SUBSTRINGS = ['test', 'dev', 'secret', 'secure', 'placeholder', 'example', 'change_me', 'your_', 'sample', 'default'];
+  if (WEAK_SUBSTRINGS.some((s) => lower.includes(s))) return true;
+
+  if (/\s/.test(secret)) return true;
+
+  return false;
+}
+
+/**
+ * Validate that CORS_ORIGIN looks like a real URL origin.
+ * Catches obviously malformed values like "https://http://localhost".
+ */
+function isValidCorsOrigin(origin) {
+  try {
+    const url = new URL(origin);
+    return (url.protocol === 'http:' || url.protocol === 'https:') &&
+      !url.pathname.replace('/', '') &&
+      !url.search &&
+      !url.hash;
+  } catch {
+    return false;
+  }
+}
+
 if (isLockedDeployment) {
   console.log('[BOOT] Initializing in RESTRICTED_WEB_PILOT deployment mode.');
 
@@ -44,11 +94,11 @@ if (isLockedDeployment) {
   }
 
   if (!process.env.JWT_SECRET) {
-    fatalErrors.push('JWT_SECRET is not set.');
-  } else if (process.env.JWT_SECRET === 'pilot-beta-secure-secret-key') {
-    fatalErrors.push('JWT_SECRET is using the known insecure default value.');
+    fatalErrors.push('JWT_SECRET is not set. Generate one with: openssl rand -hex 32');
   } else if (process.env.JWT_SECRET.length < 32) {
     fatalErrors.push(`JWT_SECRET is too short (${process.env.JWT_SECRET.length} chars). Minimum 32 required.`);
+  } else if (isWeakJwtSecret(process.env.JWT_SECRET)) {
+    fatalErrors.push('JWT_SECRET appears to be a placeholder or weak value. Generate a real secret with: openssl rand -hex 32');
   }
 
   if (process.env.DB_DIALECT === 'postgres' && !process.env.DATABASE_URL) {
@@ -57,6 +107,8 @@ if (isLockedDeployment) {
 
   if (!process.env.CORS_ORIGIN) {
     fatalErrors.push('CORS_ORIGIN must be explicitly set in production (no wildcard).');
+  } else if (!isValidCorsOrigin(process.env.CORS_ORIGIN.split(',')[0].trim())) {
+    fatalErrors.push(`CORS_ORIGIN "${process.env.CORS_ORIGIN}" is not a valid URL origin. Use the exact frontend origin, e.g. http://localhost or https://your-domain.com`);
   }
 
   if (process.env.ACTIVATION_OTP_DELIVERY && !allowedOtpDeliveryModes.has(process.env.ACTIVATION_OTP_DELIVERY)) {

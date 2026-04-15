@@ -60,10 +60,10 @@ export const PatientDossier = () => {
     onSuccess: () => {
       setBreakGlassOpen(false);
       setIsEmergencyAccess(true);
-      push('warning', 'Override Active', 'Emergency access granted. Your activity is being monitored and audited.');
+      push('warning', 'Admin Alerted', 'Break-glass alert sent and audit recorded. Finalized records are visible below. To transfer active case ownership, contact admin to reassign this encounter.');
     },
     onError: (error: any) => {
-      push('error', 'Override Prohibited', error.response?.data?.message || 'Failed to authorize emergency override.');
+      push('error', 'Alert Failed', error.response?.data?.message || 'Failed to send break-glass alert.');
     }
   });
 
@@ -124,17 +124,17 @@ export const PatientDossier = () => {
       </div>
 
       {isEmergencyAccess && (
-        <div className="bg-error/10 border-2 border-error border-dashed p-4 rounded-xl flex items-center gap-4 text-error animate-pulse">
+        <div className="bg-error/10 border-2 border-error border-dashed p-4 rounded-xl flex items-center gap-4 text-error">
           <AlertTriangle size={24} />
           <div className="flex-1">
-            <p className="text-sm font-black uppercase tracking-wider">Active Emergency Override Session</p>
-            <p className="text-xs font-bold opacity-80">All actions are being recorded to the compliance audit server.</p>
+            <p className="text-sm font-black uppercase tracking-wider">Break-Glass Alert Active — Admin Notified</p>
+            <p className="text-xs font-bold opacity-80">Your request has been logged. Finalized records are visible below. Contact admin to reassign active case ownership.</p>
           </div>
-          <button 
+          <button
             onClick={() => setIsEmergencyAccess(false)}
             className="px-4 py-2 bg-error text-white rounded-lg text-xs font-bold hover:bg-red-700 transition-colors"
           >
-            Terminate Session
+            Dismiss
           </button>
         </div>
       )}
@@ -170,10 +170,10 @@ export const PatientDossier = () => {
           >
             <span className="flex items-center justify-center gap-2">
               <LockOpen size={18} />
-              Emergency Override Access
+              Alert Admin (Break-Glass)
             </span>
             <span className="text-[10px] font-semibold tracking-normal normal-case text-white/85">
-              All access will be audited
+              Audit recorded · Admin notified
             </span>
           </button>
           </ErrorBoundary>
@@ -350,11 +350,11 @@ export const PatientDossier = () => {
             <div className="flex justify-center mb-4 text-error">
               <AlertTriangle size={48} />
             </div>
-            <h3 className="text-center text-xl font-black uppercase tracking-tight text-error mb-2">Emergency Override</h3>
-            <p className="text-center font-bold text-on-surface mb-6">Emergency Override Protocol — {patient.name}</p>
+            <h3 className="text-center text-xl font-black uppercase tracking-tight text-error mb-2">Break-Glass Alert</h3>
+            <p className="text-center font-bold text-on-surface mb-6">Emergency Admin Notification — {patient.name}</p>
 
             <div className="bg-red-50 p-4 rounded-lg border border-error/20 mb-6 text-sm text-error/90 font-medium">
-              All activities during emergency access are logged in the permanent audit trail and flagged for compliance review. Unauthorized use is subject to hospital policy.
+              This will log an immutable audit record and immediately notify the administrator. Finalized records in this dossier are already visible to you. For active case transfer (draft notes, in-progress prescriptions), the admin must reassign this encounter. Unauthorized use is subject to hospital policy.
             </div>
 
             <div className="mb-6">
@@ -380,7 +380,7 @@ export const PatientDossier = () => {
                 disabled={breakGlassMutation.isPending}
                 className="flex-1 px-4 py-3 bg-error text-white rounded-xl text-sm font-black uppercase tracking-wider hover:bg-red-700 transition-colors shadow-lg shadow-error/20 disabled:opacity-50"
               >
-                {breakGlassMutation.isPending ? 'Authenticating...' : 'Grant Access'}
+                {breakGlassMutation.isPending ? 'Sending Alert...' : 'Send Alert'}
               </button>
             </div>
           </div>

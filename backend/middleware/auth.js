@@ -117,9 +117,43 @@ async function authenticateToken(token, options = {}) {
     await enforceRevocation(decoded);
   } catch (err) {
     if (err.status) {
+      // Known auth error (e.g. TOKEN_REVOKED) — propagate as-is.
       throw err;
     }
-    console.error(`[AUTH] Revocation check failed for user ${decoded.id}:`, err.message);
+
+    // Unexpected error during revocation DB check (pool exhaustion, network blip, etc.).
+    // Strategy: use the stale in-process cache entry if one exists for this user,
+    // so active clinical staff are not locked out during a transient DB hiccup.
+    // If no cache entry exists at all, we have zero prior knowledge — fail closed.
+    const staleEntry = revocationCache.get(decoded.id);
+
+    if (staleEntry) {
+      logEvent('warn', 'revocation_check_degraded', {
+        userId: decoded.id,
+        cachedRevokedAt: staleEntry.revokedAt,
+        cacheAgeMs: Date.now() - staleEntry.cachedAt,
+        error: err.message
+      });
+
+      // If the stale cache shows a prior revocation, enforce it even though the
+      // DB re-check failed — better to block a potentially revoked token than
+      // to allow it through.
+      if (staleEntry.revokedAt) {
+        const revokedAtMs = new Date(staleEntry.revokedAt).getTime();
+        const tokenIssuedAtMs = decoded.iat * 1000;
+        if (revokedAtMs > tokenIssuedAtMs) {
+          throw tokenError(401, 'TOKEN_REVOKED', 'Your session has been revoked. Please contact support.');
+        }
+      }
+      // Stale cache shows no revocation — allow through under degraded mode.
+    } else {
+      // No prior knowledge of this user's revocation state. Fail closed.
+      logEvent('error', 'revocation_check_failed_no_cache', {
+        userId: decoded.id,
+        error: err.message
+      });
+      throw tokenError(503, 'SERVICE_UNAVAILABLE', 'Authentication service is temporarily unavailable. Please try again shortly.');
+    }
   }
 
   if (options.expectedPurpose && decoded.purpose !== options.expectedPurpose) {

@@ -85,12 +85,10 @@ export const clinicalApi = {
   },
 
   /**
-   * POST /encounters/:encounterId/break-glass — Emergency access alert.
-   * Creates immutable audit event, notifies admin. Does not bypass role enforcement.
-   * Finalized records remain visible via the patient dossier for any doctor/nurse.
-   * For active case transfer, admin must reassign via /admin/encounters/:id/reassign.
+   * POST /encounters/:encounterId/break-glass — Emergency access override.
+   * Creates immutable audit event with justification.
    */
-  breakGlass: async (encounterId: string, justification: string): Promise<{ acknowledged: boolean; message: string }> => {
+  breakGlass: async (encounterId: string, justification: string): Promise<{ granted: boolean; message: string }> => {
     const response = await api.post(`/encounters/${encounterId}/break-glass`, { justification });
     return response.data;
   }

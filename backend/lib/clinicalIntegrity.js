@@ -1,5 +1,3 @@
-const crypto = require('crypto');
-
 const PATIENT_GENDERS = ['Male', 'Female', 'Other', 'Not specified'];
 const ACTIVE_ENCOUNTER_PHASES = ['AWAITING', 'RECEPTION', 'IN_CONSULTATION'];
 const DISCHARGED_ENCOUNTER_PHASE = 'DISCHARGED';
@@ -434,18 +432,6 @@ function describeQueueIntegrityIssue(row, reasons = []) {
   };
 }
 
-/**
- * Generate a cryptographically secure N-digit numeric OTP.
- * Single canonical implementation — both activation paths use this.
- * @param {number} digits - Number of digits (default 6)
- * @returns {string}
- */
-function generateNumericOTP(digits = 6) {
-  const min = Math.pow(10, digits - 1);
-  const max = Math.pow(10, digits);
-  return crypto.randomInt(min, max).toString();
-}
-
 module.exports = {
   PATIENT_GENDERS,
   ACTIVE_ENCOUNTER_PHASES,
@@ -475,6 +461,5 @@ module.exports = {
   validateEncounterLifecycle,
   validatePatientRegistrationPayload,
   serializeQueueSlot,
-  describeQueueIntegrityIssue,
-  generateNumericOTP
+  describeQueueIntegrityIssue
 };

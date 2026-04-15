@@ -9,15 +9,29 @@ const {
 } = require('../lib/clinicalIntegrity');
 const {
   assertPatientRecord,
+  assertDoctorAssignment,
   loadPatientRecord,
   resolveSingleActiveEncounter
 } = require('../lib/careFlow');
 
 const router = express.Router();
+const DISPENSING_NOTE_MAX_LENGTH = 300;
+
+function assertOperationalPrescriptionVisibility(rx) {
+  if (rx.status !== 'AUTHORIZED') {
+    throw {
+      status: 403,
+      code: 'PRESCRIPTION_VISIBILITY_RESTRICTED',
+      message: 'Only authorized prescriptions are available to operational staff.'
+    };
+  }
+
+  return rx;
+}
 
 async function loadPrescriptionWithContext(rxId) {
   const rx = await get(
-    `SELECT p.*, e.patient_id, e.phase AS encounter_phase, e.lifecycle_status, e.is_discharged, pt.id AS linked_patient_record_id
+    `SELECT p.*, e.patient_id, e.phase AS encounter_phase, e.lifecycle_status, e.is_discharged, e.assigned_doctor_id, pt.id AS linked_patient_record_id
      FROM prescriptions p
      LEFT JOIN encounters e ON p.encounter_id = e.id
      LEFT JOIN patients pt ON pt.id = e.patient_id
@@ -64,11 +78,16 @@ async function loadPrescriptionWithContext(rxId) {
   return { rx, error: null };
 }
 
-router.get('/:rxId', requireAuth, requireRole(['DOCTOR']), async (req, res, next) => {
+router.get('/:rxId', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const { rx, error } = await loadPrescriptionWithContext(req.params.rxId);
     if (error) return next(error);
     if (!rx) return next({ status: 404, code: 'NOT_FOUND', message: 'Prescription not found.' });
+    if (req.user.role === 'DOCTOR') {
+      assertDoctorAssignment(rx, req.user.id);
+    } else {
+      assertOperationalPrescriptionVisibility(rx);
+    }
     res.json(rx);
   } catch (err) { next(err); }
 });
@@ -85,6 +104,7 @@ router.post('/', requireAuth, requireRole(['DOCTOR']), async (req, res, next) =>
       malformedMessage: 'Active encounter is malformed and cannot accept prescriptions.',
       duplicateMessage: 'Multiple active encounters exist for this patient. Repair the data before writing prescriptions.'
     });
+    assertDoctorAssignment(encounter, req.user.id);
     const rxId = `rx-${Date.now()}`;
     await run(
       `INSERT INTO prescriptions (id, encounter_id, rx_content, status, __v) VALUES (?, ?, ?, 'DRAFT', 1)`,
@@ -109,6 +129,7 @@ router.put('/:rxId', requireAuth, requireRole(['DOCTOR']), async (req, res, next
     const { rx, error } = await loadPrescriptionWithContext(rxId);
     if (error) return next(error);
     if (!rx) return next({ status: 404, code: 'NOT_FOUND' });
+    assertDoctorAssignment(rx, req.user.id);
     if (rx.status === 'AUTHORIZED') return next({ status: 422, code: 'INVALID_STATE', message: 'Cannot edit an authorized prescription.' });
     if (rx.__v !== version) return next({ status: 409, code: 'STALE_STATE', message: 'Prescription conflict detected.' });
     const updateResult = await run(
@@ -138,6 +159,7 @@ router.post('/:rxId/authorize', requireAuth, requireRole(['DOCTOR']), async (req
     const { rx, error } = await loadPrescriptionWithContext(rxId);
     if (error) return next(error);
     if (!rx) return next({ status: 404, code: 'NOT_FOUND' });
+    assertDoctorAssignment(rx, req.user.id);
     if (rx.status === 'AUTHORIZED') return next({ status: 422, code: 'INVALID_STATE', message: 'Prescription already authorized.' });
     if (rx.__v !== version) return next({ status: 409, code: 'STALE_STATE' });
 
@@ -169,6 +191,58 @@ router.post('/:rxId/authorize', requireAuth, requireRole(['DOCTOR']), async (req
     });
 
     res.json({ message: 'Prescription officially authorized' });
+  } catch (err) { next(err); }
+});
+
+router.post('/:rxId/handover', requireAuth, requireRole(['NURSE', 'ADMIN']), async (req, res, next) => {
+  const { rxId } = req.params;
+  const rawDispensingNote = typeof req.body?.dispensing_note === 'string' ? req.body.dispensing_note.trim() : '';
+
+  if (rawDispensingNote.length > DISPENSING_NOTE_MAX_LENGTH) {
+    return next({
+      status: 400,
+      code: 'DISPENSING_NOTE_TOO_LONG',
+      message: `Dispensing note must be ${DISPENSING_NOTE_MAX_LENGTH} characters or fewer.`
+    });
+  }
+
+  try {
+    const { rx, error } = await loadPrescriptionWithContext(rxId);
+    if (error) return next(error);
+    if (!rx) return next({ status: 404, code: 'NOT_FOUND', message: 'Prescription not found.' });
+    assertOperationalPrescriptionVisibility(rx);
+
+    if (rx.handed_over_at) {
+      return next({
+        status: 422,
+        code: 'PRESCRIPTION_ALREADY_HANDED_OVER',
+        message: 'This prescription has already been marked as handed over.'
+      });
+    }
+
+    await run(
+      `UPDATE prescriptions
+       SET handed_over_by = ?, handed_over_at = CURRENT_TIMESTAMP, dispensing_note = ?
+       WHERE id = ?`,
+      [req.user.id, rawDispensingNote || null, rxId]
+    );
+
+    await writeAuditDirect({
+      correlation_id: req.correlationId,
+      actor_id: req.user.id,
+      patient_id: rx.patient_id,
+      action: `RX_HANDOVER:${rxId}:by:${req.user.id}`,
+      new_state: JSON.stringify({
+        handed_over_by: req.user.id,
+        dispensing_note: rawDispensingNote || null
+      })
+    });
+
+    res.json({
+      message: 'Prescription marked as handed over.',
+      handed_over_by: req.user.id,
+      dispensing_note: rawDispensingNote || null
+    });
   } catch (err) { next(err); }
 });
 

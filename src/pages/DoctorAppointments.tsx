@@ -6,6 +6,7 @@ import { useLiveQueue } from '../hooks/queries/useLiveQueue';
 import { useNavigate } from 'react-router-dom';
 import { useToast, ToastContainer } from '../components/ui/Toast';
 import type { AppointmentSlot } from '../types/clinical';
+import { useAuth } from '../hooks/useAuth';
 
 const SPECIALTIES = ['All', 'Cardiology', 'General Medicine', 'Orthopedics'];
 const FALLBACK_SLOT_STATUS = { cls: 'text-gray-500', border: 'border-l-gray-300' };
@@ -36,6 +37,7 @@ function getPatientInitials(slot: AppointmentSlot) {
 
 export const DoctorAppointments = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { toasts, push, dismiss } = useToast();
   const { queue, updateSlotStatus, isLoading, isError } = useLiveQueue();
   
@@ -83,7 +85,8 @@ export const DoctorAppointments = () => {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h3 className="text-primary font-semibold text-xs uppercase tracking-widest">Doctor</h3>
-          <h1 className="text-3xl font-bold text-on-surface">Appointment Management</h1>
+          <h1 className="text-3xl font-bold text-on-surface">Queue Management</h1>
+          <p className="mt-1 text-sm text-on-surface-variant">Only patients assigned to {user?.name || 'the signed-in doctor'} appear here. Calendar scheduling is intentionally out of scope for this pilot.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Search */}
@@ -187,6 +190,12 @@ export const DoctorAppointments = () => {
                     <td className="px-5 py-4">
                       <div className="font-medium text-on-surface">{slot.type || 'General Review'}</div>
                       <div className="text-xs text-on-surface-variant">{slot.specialty || 'General Medicine'}</div>
+                      {slot.chiefComplaint && (
+                        <div className="mt-1 text-xs text-on-surface-variant">{slot.chiefComplaint}</div>
+                      )}
+                      {slot.assignedDoctor && (
+                        <div className="mt-1 text-[11px] font-semibold text-primary">Assigned: {slot.assignedDoctor.name}</div>
+                      )}
                     </td>
                     <td className="px-5 py-4">
                       <StatusChip variant={chip.variant} label={chip.label} />
@@ -208,12 +217,12 @@ export const DoctorAppointments = () => {
                             <CheckCircle size={13} /> Approve
                           </button>
                         )}
-                        <button
-                          onClick={() => setRescheduleSlot(slot)}
-                          className="px-3 py-1.5 bg-gray-100 text-on-surface-variant text-xs font-bold rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-1"
-                        >
-                          <Clock size={13} /> Reschedule
-                        </button>
+                          <button
+                            onClick={() => setRescheduleSlot(slot)}
+                            className="px-3 py-1.5 bg-gray-100 text-on-surface-variant text-xs font-bold rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-1"
+                          >
+                            <Clock size={13} /> Adjust Queue
+                          </button>
                       </div>
                     </td>
                   </tr>
@@ -228,12 +237,12 @@ export const DoctorAppointments = () => {
       {rescheduleSlot && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6">
-            <h2 className="text-lg font-extrabold mb-1">Reschedule Appointment</h2>
+            <h2 className="text-lg font-extrabold mb-1">Adjust Queue Timing</h2>
             <p className="text-sm text-on-surface-variant mb-5 flex items-center gap-2">
               <User size={14} /> {rescheduleSlot.patient.name} — {rescheduleSlot.type}
             </p>
             <div className="mb-5">
-              <label className="text-xs font-bold uppercase text-on-surface-variant mb-1.5 block">New Time Slot</label>
+                  <label className="text-xs font-bold uppercase text-on-surface-variant mb-1.5 block">Queue Time Placeholder</label>
               <input
                 type="time"
                 value={newTime}
@@ -256,6 +265,9 @@ export const DoctorAppointments = () => {
                 Confirm
               </button>
             </div>
+            <p className="mt-4 text-xs text-on-surface-variant">
+              Calendar scheduling is not part of the pilot yet. This control remains queue-only.
+            </p>
           </div>
         </div>
       )}

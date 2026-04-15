@@ -4,6 +4,8 @@ const refreshTokenAccountType = require('./003_refresh_token_account_type');
 const encounterLifecycleContract = require('./004_encounter_lifecycle_contract');
 const patientPhoneIdentity = require('./005_patient_phone_identity');
 const usersMustChangePassword = require('./006_users_must_change_password');
+const triageDoctorAssignment = require('./007_triage_doctor_assignment');
+const prescriptionHandover = require('./008_prescription_handover');
 
 const migrations = [
   initialSchema,
@@ -11,7 +13,9 @@ const migrations = [
   refreshTokenAccountType,
   encounterLifecycleContract,
   patientPhoneIdentity,
-  usersMustChangePassword
+  usersMustChangePassword,
+  triageDoctorAssignment,
+  prescriptionHandover
 ];
 
 function migrationTableSql(dialect) {

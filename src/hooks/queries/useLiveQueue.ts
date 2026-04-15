@@ -7,36 +7,10 @@ const QUEUE_KEY = ['liveQueue'];
 export const useLiveQueue = () => {
   const queryClient = useQueryClient();
 
-
-
   const query = useQuery({
     queryKey: QUEUE_KEY,
     queryFn: queueApi.fetchQueue,
     refetchInterval: 3000, // Poll every 3s to simulate live queue updates
-  });
-
-  const addSlotMutation = useMutation({
-    mutationFn: async (newSlot: AppointmentSlot) => {
-      await queueApi.addQueueSlot(newSlot);
-      return newSlot;
-    },
-    onMutate: async (newSlot) => {
-      await queryClient.cancelQueries({ queryKey: QUEUE_KEY });
-      const previousQueue = queryClient.getQueryData<AppointmentSlot[]>(QUEUE_KEY);
-      queryClient.setQueryData<AppointmentSlot[]>(QUEUE_KEY, (old) => {
-        if (!old) return [newSlot];
-        return [newSlot, ...old];
-      });
-      return { previousQueue };
-    },
-    onError: (err, newSlot, context) => {
-      if (context?.previousQueue) {
-        queryClient.setQueryData(QUEUE_KEY, context.previousQueue);
-      }
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: QUEUE_KEY });
-    }
   });
 
   const patchMutation = useMutation({
@@ -75,7 +49,6 @@ export const useLiveQueue = () => {
     isLoading: query.isLoading,
     isError: query.isError,
     refetchQueue: query.refetch,
-    addSlot: (slot: AppointmentSlot) => addSlotMutation.mutate(slot),
     updateSlotStatus: (encounterId: string, phase: string, version: number) => 
       patchMutation.mutate({ encounterId, phase, version })
   };

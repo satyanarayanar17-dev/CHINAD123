@@ -61,6 +61,7 @@ import { DoctorAppointments } from './pages/DoctorAppointments'
 import { AdminDashboard } from './pages/AdminDashboard'
 import { PatientDossier } from './pages/PatientDossier'
 import { NurseTriage } from './pages/NurseTriage'
+import { NursePrescriptionView } from './pages/NursePrescriptionView'
 import { ClinicalNoteEditor } from './pages/ClinicalNoteEditor'
 import { PrescriptionBuilder } from './pages/PrescriptionBuilder'
 import { InstitutionalSettings } from './pages/InstitutionalSettings'
@@ -144,7 +145,8 @@ function App() {
         {/* ── Nurse Specific ── */}
         <Route element={<RequireRole allowed={['nurse']} />}>
           <Route element={<BaseLayout />}>
-            <Route path="/operations/nurse-triage" element={<NurseTriage />} />
+            <Route path="/operations/nurse-triage/:patientId?" element={<NurseTriage />} />
+            <Route path="/operations/prescriptions/:patientId/:prescriptionId" element={<NursePrescriptionView />} />
           </Route>
         </Route>
 

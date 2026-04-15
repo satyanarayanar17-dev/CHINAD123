@@ -7,6 +7,7 @@ const {
   DISCHARGED_ENCOUNTER_PHASE,
   validateEncounterLifecycle
 } = require('../lib/clinicalIntegrity');
+const { assertDoctorAssignment } = require('../lib/careFlow');
 
 const router = express.Router();
 
@@ -103,6 +104,9 @@ router.patch('/:encounterId/discharge', requireAuth, requireRole(['DOCTOR']), as
         message: 'Encounter is malformed and must be repaired before discharge.',
         details: encounterState.errors
       });
+    }
+    if (req.user.role === 'DOCTOR') {
+      assertDoctorAssignment(encounter, req.user.id);
     }
     if (encounter.is_discharged) return next({ status: 422, code: 'INVALID_STATE', message: 'Encounter is already discharged.' });
 

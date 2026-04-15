@@ -128,7 +128,7 @@ router.get('/prescriptions', requireAuth, requireRole(['PATIENT']), async (req, 
              e.patient_id, e.phase AS encounter_phase, e.lifecycle_status, e.is_discharged
       FROM prescriptions p
       JOIN encounters e ON p.encounter_id = e.id
-      WHERE e.patient_id = ?
+      WHERE e.patient_id = ? AND p.status = 'AUTHORIZED'
       ORDER BY p.created_at DESC, p.id DESC
     `, [patientId]);
 

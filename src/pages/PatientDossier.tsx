@@ -30,6 +30,7 @@ export const PatientDossier = () => {
   const [isEmergencyAccess, setIsEmergencyAccess] = useState(false);
   const [justification, setJustification] = useState('');
   const canWriteDoctorOrders = role === 'doctor';
+  const canOpenOperationalPrescription = role === 'nurse';
   const registryRoute = role === 'nurse' ? '/operations/nurse-triage' : '/clinical/command-center';
 
   const { data: patient, isLoading: isPatientLoading, isError: isPatientError } = usePatient(patientId);
@@ -72,6 +73,22 @@ export const PatientDossier = () => {
        return;
     }
     breakGlassMutation.mutate(justification);
+  };
+
+  const getPrescriptionRoute = (rxId?: string | null) => {
+    if (!rxId || !patientId) {
+      return null;
+    }
+
+    if (canWriteDoctorOrders) {
+      return `/clinical/patient/${patientId}/prescription/${rxId}`;
+    }
+
+    if (canOpenOperationalPrescription) {
+      return `/operations/prescriptions/${patientId}/${rxId}`;
+    }
+
+    return null;
   };
 
   return (
@@ -308,6 +325,14 @@ export const PatientDossier = () => {
                     <span className="text-xs font-medium text-on-surface-variant block mb-3">• {entry.date}</span>
                     <h3 className="text-lg font-bold text-on-surface mb-2">{entry.title}</h3>
                     <p className="text-sm text-on-surface mb-4">{entry.summary}</p>
+                    {entry.type === 'prescription' && getPrescriptionRoute(entry.rxId) && (
+                      <Link
+                        to={getPrescriptionRoute(entry.rxId)!}
+                        className="mb-4 inline-flex items-center gap-2 rounded-lg border border-outline bg-white px-3 py-2 text-xs font-bold text-primary hover:bg-primary/5"
+                      >
+                        Open Authorized Prescription
+                      </Link>
+                    )}
                     <AuditMetadata lastModifiedDate={entry.date} verifiedBy={entry.verifiedBy} />
                   </div>
                 ))

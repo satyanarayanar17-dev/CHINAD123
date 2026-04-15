@@ -21,6 +21,9 @@ function broadcastNotification(notification) {
       if (notification.targetRole && client.role !== notification.targetRole) {
         continue;
       }
+      if (notification.targetUserId && userId !== notification.targetUserId) {
+        continue;
+      }
       client.res.write(payload);
     } catch (err) {
       // Client socket already closed — clean up silently

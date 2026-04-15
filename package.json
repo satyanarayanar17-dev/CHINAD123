@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:auth-boundary": "node --test --experimental-strip-types src/auth/roleBoundary.test.ts"
+    "test:auth-boundary": "node --test --experimental-strip-types src/auth/roleBoundary.test.ts",
+    "test:triage": "node --test --experimental-strip-types src/pages/nurseTriage.form.test.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.96.2",

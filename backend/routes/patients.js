@@ -6,6 +6,8 @@ const { writeAuditDirect } = require('../middleware/audit');
 const { writeNotification } = require('./notifications');
 const {
   buildPatientReadModel,
+  isIsoDateOnly,
+  normalizePatientGender,
   normalizePatientPhone,
   validatePatientRegistrationPayload,
   validatePatientRecord,
@@ -114,8 +116,68 @@ function summarizePrescriptionContent(rawContent) {
   return display;
 }
 
-router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
-  const validation = validatePatientRegistrationPayload(req.body);
+function validatePatientUpdatePayload(payload = {}) {
+  const has = (field) => Object.prototype.hasOwnProperty.call(payload, field);
+  const value = {};
+  const errors = [];
+
+  if (has('name')) {
+    const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+    if (!name) {
+      errors.push({ field: 'name', message: 'Patient name is required.' });
+    } else {
+      value.name = name;
+    }
+  }
+
+  if (has('dob')) {
+    const dob = typeof payload.dob === 'string' ? payload.dob.trim() : '';
+    if (!isIsoDateOnly(dob)) {
+      errors.push({ field: 'dob', message: 'Patient DOB must be a valid YYYY-MM-DD date.' });
+    } else {
+      value.dob = dob;
+    }
+  }
+
+  if (has('gender')) {
+    const gender = normalizePatientGender(payload.gender);
+    if (!gender) {
+      errors.push({ field: 'gender', message: 'Gender must be one of: Male, Female, Other, Not specified.' });
+    } else {
+      value.gender = gender;
+    }
+  }
+
+  if (has('phone')) {
+    const rawPhone = typeof payload.phone === 'string' ? payload.phone.trim() : '';
+    if (!rawPhone) {
+      value.phone = null;
+    } else {
+      const normalizedPhone = normalizePatientPhone(rawPhone);
+      if (!normalizedPhone) {
+        errors.push({ field: 'phone', message: 'Patient phone must be a valid mobile number.' });
+      } else {
+        value.phone = normalizedPhone;
+      }
+    }
+  }
+
+  if (Object.keys(value).length === 0 && errors.length === 0) {
+    errors.push({ field: 'payload', message: 'At least one editable patient field must be provided.' });
+  }
+
+  return {
+    valid: errors.length === 0,
+    value,
+    errors
+  };
+}
+
+router.post('/', requireAuth, requireRole(['ADMIN', 'NURSE']), async (req, res, next) => {
+  const issueActivationToken = req.body?.issueActivationToken === true;
+  const validation = validatePatientRegistrationPayload(req.body, {
+    requirePhone: issueActivationToken
+  });
   if (!validation.valid) {
     logEvent('warn', 'patient_write_rejected', {
       correlationId: req.correlationId,
@@ -139,7 +201,14 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
     gender,
     createEncounter
   } = validation.value;
-  const issueActivationToken = req.body?.issueActivationToken === true;
+
+  if (issueActivationToken && req.user.role !== 'ADMIN') {
+    return next({
+      status: 403,
+      code: 'FORBIDDEN_ROLE',
+      message: 'Only administrators can issue activation tokens during onboarding.'
+    });
+  }
 
   try {
     const result = await withTransaction(async (tx) => {
@@ -283,7 +352,7 @@ router.post('/', requireAuth, requireRole(['ADMIN']), async (req, res, next) => 
   }
 });
 
-router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE']), async (req, res, next) => {
+router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const q = req.query.q || '';
     const normalizedQueryPhone = normalizePatientPhone(q);
@@ -316,7 +385,7 @@ router.get('/', requireAuth, requireRole(['DOCTOR', 'NURSE']), async (req, res, 
   } catch (err) { next(err); }
 });
 
-router.get('/:patientId', requireAuth, requireRole(['DOCTOR', 'NURSE']), async (req, res, next) => {
+router.get('/:patientId', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const p = await get(`SELECT id,name,phone,dob,gender FROM patients WHERE id = ?`, [req.params.patientId]);
     if (!p) return next({ status: 404, code: 'NOT_FOUND', message: 'Patient not found.' });
@@ -331,6 +400,77 @@ router.get('/:patientId', requireAuth, requireRole(['DOCTOR', 'NURSE']), async (
 
     res.json(buildPatientReadModel(p));
   } catch (err) { next(err); }
+});
+
+router.patch('/:patientId', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
+  const validation = validatePatientUpdatePayload(req.body);
+  if (!validation.valid) {
+    return next({
+      status: 400,
+      code: 'INVALID_PATIENT_UPDATE',
+      message: validation.errors.map((error) => error.message).join(' '),
+      details: validation.errors
+    });
+  }
+
+  try {
+    const updatedPatient = await withTransaction(async (tx) => {
+      const existingPatient = await loadPatientRecord(tx, req.params.patientId);
+      assertPatientRecord(existingPatient);
+
+      const nextPatient = {
+        ...existingPatient,
+        ...validation.value,
+      };
+
+      const collision = nextPatient.phone
+        ? await findPatientByPhone(tx, nextPatient.phone)
+        : null;
+
+      if (collision && collision.id !== existingPatient.id) {
+        throw {
+          status: 409,
+          code: 'PHONE_ALREADY_REGISTERED',
+          message: 'This phone number is already linked to another patient record.'
+        };
+      }
+
+      await tx.run(
+        `UPDATE patients
+         SET name = ?, phone = ?, dob = ?, gender = ?
+         WHERE id = ?`,
+        [nextPatient.name, nextPatient.phone, nextPatient.dob, nextPatient.gender, existingPatient.id]
+      );
+
+      return {
+        before: existingPatient,
+        after: nextPatient
+      };
+    });
+
+    await writeAuditDirect({
+      correlation_id: req.correlationId,
+      actor_id: req.user.id,
+      patient_id: req.params.patientId,
+      action: `PATIENT_DEMOGRAPHICS_UPDATE:${req.params.patientId}`,
+      prior_state: JSON.stringify(updatedPatient.before),
+      new_state: JSON.stringify(updatedPatient.after)
+    });
+
+    res.json({
+      patient: buildPatientReadModel(updatedPatient.after),
+      updated: true
+    });
+  } catch (err) {
+    if (isPhoneUniqueConstraint(err)) {
+      return next({
+        status: 409,
+        code: 'PHONE_ALREADY_REGISTERED',
+        message: 'This phone number is already linked to another patient record.'
+      });
+    }
+    next(err);
+  }
 });
 
 router.get('/:patientId/timeline', requireAuth, requireRole(['DOCTOR', 'NURSE']), async (req, res, next) => {

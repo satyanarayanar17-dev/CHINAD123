@@ -4,7 +4,8 @@ Chettinad Care is a pilot-grade, not production-grade, care continuity system fo
 
 This repo is focused on one hardened loop:
 
-- admin creates or reuses a patient identity
+- admin temporarily acts as the receptionist proxy to create or correct patient identity
+- nurse captures intake, triage, and pushes the patient into the doctor queue
 - the system guarantees a single valid active encounter
 - the patient activates portal access with a one-time code
 - the doctor opens the chart, writes the note, authorizes the prescription, and continues the timeline cleanly
@@ -121,6 +122,7 @@ Staff onboarding:
 Patient onboarding:
 
 - Admin dashboard → `Patient Onboarding`
+- Admin is temporarily acting as the receptionist proxy during this pilot
 - Register the patient demographic record in one call
 - The backend either creates or reuses the patient safely
 - The backend guarantees an active encounter before returning success
@@ -201,6 +203,7 @@ Checks run successfully during this update:
 ## Pilot Limitations
 
 - This system is pilot-grade, not production-grade.
+- Queue-first consultation is intentional in this pilot; calendar scheduling is not implemented yet by design.
 - Access tokens remain browser-memory bearer tokens; this is safer than `localStorage`, but it is not a full server-managed session architecture.
 - Rate limiting is still in-process only, so it does not provide strong protection under horizontal scale.
 - OTP delivery is still operationally simple and meant for restricted pilot use, not consumer-scale identity recovery.

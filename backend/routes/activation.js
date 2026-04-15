@@ -5,7 +5,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { get, all, run, withTransaction } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
 const { createRateLimiter } = require('../middleware/rateLimit');
-const { normalizePatientPhone, generateNumericOTP } = require('../lib/clinicalIntegrity');
+const { normalizePatientPhone } = require('../lib/clinicalIntegrity');
 const { assertPatientRecord, loadPatientRecord, resolveSingleActiveEncounter } = require('../lib/careFlow');
 const { logEvent } = require('../lib/logger');
 
@@ -14,7 +14,7 @@ const activationOtpDelivery =
   process.env.ACTIVATION_OTP_DELIVERY ||
   (process.env.NODE_ENV === 'production' ? 'console' : 'api_response');
 
-const generateOTP = () => generateNumericOTP(6);
+const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 // ---------------------------------------------------------------------------
 // Rate limiting — P2: inline claim limiter (tracks failed attempts per UHID)

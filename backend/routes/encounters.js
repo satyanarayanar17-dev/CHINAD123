@@ -82,8 +82,8 @@ router.post('/:encounterId/break-glass', requireAuth, requireRole(['DOCTOR', 'NU
     });
 
     res.json({
-      acknowledged: true,
-      message: 'Emergency access request recorded and admin notified. Finalized records are visible in the patient dossier. To transfer active case ownership, ask admin to reassign this encounter.',
+      granted: true,
+      message: 'Emergency access granted. All actions are being recorded.',
       encounterId,
       actor: req.user.id,
       timestamp: new Date().toISOString()

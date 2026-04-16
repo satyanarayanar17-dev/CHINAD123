@@ -5,6 +5,51 @@ import { api } from '../../api/client';
 
 const EXPIRED_ACTIVATION_ERROR_PATTERN = /(expired|token expired|otp expired|code expired|activation expired|invalid or expired)/i;
 
+function getErrorCode(error: unknown) {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof error.response === 'object' &&
+    error.response !== null &&
+    'data' in error.response &&
+    typeof error.response.data === 'object' &&
+    error.response.data !== null
+  ) {
+    const payload = error.response.data as { error?: unknown; code?: unknown };
+    if (typeof payload.error === 'string') return payload.error;
+    if (payload.error && typeof payload.error === 'object' && 'code' in payload.error && typeof payload.error.code === 'string') {
+      return payload.error.code;
+    }
+    if (typeof payload.code === 'string') return payload.code;
+  }
+
+  return null;
+}
+
+function getErrorMessage(error: unknown) {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof error.response === 'object' &&
+    error.response !== null &&
+    'data' in error.response &&
+    typeof error.response.data === 'object' &&
+    error.response.data !== null
+  ) {
+    const payload = error.response.data as { message?: unknown; error?: { message?: unknown } };
+    if (typeof payload.message === 'string') return payload.message;
+    if (payload.error && typeof payload.error.message === 'string') return payload.error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return 'Activation failed. Please check your details and try again.';
+}
+
 export const PatientActivation = () => {
   const navigate = useNavigate();
   const [phone, setPhone] = useState('');
@@ -16,19 +61,27 @@ export const PatientActivation = () => {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const getActivationErrorMessage = (err: any) => {
-    const errorCode = err.response?.data?.error?.code || err.response?.data?.code || err.response?.data?.error;
-    const errorMessage = err.response?.data?.message || err.response?.data?.error?.message || '';
+  const getActivationErrorMessage = (error: unknown) => {
+    const errorCode = getErrorCode(error);
+    const errorMessage = getErrorMessage(error);
 
     if (
-      err.response?.status === 410 ||
+      (typeof error === 'object' && error !== null && 'response' in error && (error as { response?: { status?: number } }).response?.status === 410) ||
       (typeof errorCode === 'string' && EXPIRED_ACTIVATION_ERROR_PATTERN.test(errorCode)) ||
       (typeof errorMessage === 'string' && EXPIRED_ACTIVATION_ERROR_PATTERN.test(errorMessage))
     ) {
       return 'Your activation code has expired. Please contact the registration desk at +91 44 4741 1000 for a new activation code.';
     }
 
-    return err.response?.data?.message || 'Activation failed. Please check your details and try again.';
+    if (errorCode === 'ACTIVATION_CODE_USED' || errorCode === 'ACCOUNT_EXISTS') {
+      return 'This activation code has already been used. Please log in with your patient account or contact the registration desk if you still need help.';
+    }
+
+    if (errorCode === 'INVALID_TOKEN') {
+      return 'The activation code does not match our records for this mobile number. Please re-check the code and try again.';
+    }
+
+    return errorMessage;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -62,8 +115,8 @@ export const PatientActivation = () => {
       
       setSuccess('Account activated successfully. You can now log in.');
       setTimeout(() => navigate('/login'), 3000);
-    } catch (err: any) {
-      setError(getActivationErrorMessage(err));
+    } catch (error: unknown) {
+      setError(getActivationErrorMessage(error));
     } finally {
       setLoading(false);
     }

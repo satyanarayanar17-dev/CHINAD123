@@ -105,7 +105,7 @@ export const PatientActivation = () => {
               type="tel"
               value={phone}
               onChange={e => setPhone(e.target.value)}
-              placeholder="e.g. 98765 43210"
+              placeholder="Enter your registered mobile number"
               required
               disabled={loading || !!success}
               className="w-full bg-surface-container border border-outline rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none"

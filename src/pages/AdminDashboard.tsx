@@ -68,14 +68,14 @@ export const AdminDashboard = () => {
                   <div key={slot.id || i} className="p-4 flex items-center gap-4 hover:bg-surface-container-low transition-colors">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-bold text-sm text-on-surface">{slot.patient?.name || 'Anonymous'}</h4>
+                        <h4 className="font-bold text-sm text-on-surface">{slot.patient?.name || 'Patient record unavailable'}</h4>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-extrabold uppercase ${
                           slot.status === 'DELAYED' ? 'bg-tertiary-container text-tertiary' : 'bg-primary-container text-primary'
                         }`}>
                           {slot.status === 'DELAYED' ? 'Urgent' : 'Routine'}
                         </span>
                       </div>
-                      <span className="text-xs text-on-surface-variant">ID: #{slot.patient?.id || '???'} • {slot.specialty}</span>
+                      <span className="text-xs text-on-surface-variant">ID: #{slot.patient?.id || 'Pending registration'} • {slot.specialty}</span>
                     </div>
                     <div className="text-right">
                       <span className={`font-bold text-xs ${slot.status === 'DELAYED' ? 'text-error' : 'text-primary'}`}>

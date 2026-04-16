@@ -152,7 +152,7 @@ export const UserManagement = () => {
         {isLoading ? (
           <div className="text-sm text-on-surface-variant flex justify-center p-4">Loading users...</div>
         ) : users.length === 0 ? (
-          <div className="text-sm text-on-surface-variant flex justify-center p-4">No users found.</div>
+          <div className="text-sm text-on-surface-variant flex justify-center p-4">No users created yet.</div>
         ) : (
           users.map(user => (
             <div key={user.id} className="flex justify-between items-center border-b border-outline/20 pb-2">
@@ -213,12 +213,12 @@ export const UserManagement = () => {
                 <div>
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">User ID</label>
                   <input value={formId} onChange={e => { setFormId(e.target.value); setFormError(''); }}
-                    placeholder="e.g. doc3_qa" className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all" />
+                    placeholder="Unique staff identifier" className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all" />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Full Name</label>
                   <input value={formName} onChange={e => { setFormName(e.target.value); setFormError(''); }}
-                    placeholder="Dr. Full Name" className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all" />
+                    placeholder="Enter full legal name" className="w-full border border-outline rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all" />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Role</label>

@@ -63,9 +63,11 @@ async function seedUsers(context, passwordHash) {
         is_active: 1,
         patient_id: user.patient_id,
         failed_attempts: 0,
-        locked_until: null
+        locked_until: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       },
-      ['role', 'name', 'password_hash', 'is_active', 'patient_id', 'failed_attempts', 'locked_until']
+      ['role', 'name', 'password_hash', 'is_active', 'patient_id', 'failed_attempts', 'locked_until', 'created_at', 'updated_at']
     );
   }
 }

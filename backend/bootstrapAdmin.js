@@ -37,8 +37,8 @@ async function ensureBootstrapAdmin({ get, run }) {
 
   const passwordHash = await bcrypt.hash(config.password, BCRYPT_COST);
   await run(
-    `INSERT INTO users (id, role, name, password_hash, is_active, failed_attempts, locked_until)
-     VALUES (?, 'ADMIN', ?, ?, 1, 0, NULL)`,
+    `INSERT INTO users (id, role, name, password_hash, is_active, failed_attempts, locked_until, created_at, updated_at)
+     VALUES (?, 'ADMIN', ?, ?, 1, 0, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
     [config.id, config.name, passwordHash]
   );
 

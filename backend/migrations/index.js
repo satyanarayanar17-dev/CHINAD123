@@ -6,6 +6,7 @@ const patientPhoneIdentity = require('./005_patient_phone_identity');
 const usersMustChangePassword = require('./006_users_must_change_password');
 const triageDoctorAssignment = require('./007_triage_doctor_assignment');
 const prescriptionHandover = require('./008_prescription_handover');
+const staffUserProfiles = require('./009_staff_user_profiles');
 
 const migrations = [
   initialSchema,
@@ -15,7 +16,8 @@ const migrations = [
   patientPhoneIdentity,
   usersMustChangePassword,
   triageDoctorAssignment,
-  prescriptionHandover
+  prescriptionHandover,
+  staffUserProfiles
 ];
 
 function migrationTableSql(dialect) {

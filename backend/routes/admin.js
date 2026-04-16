@@ -4,12 +4,27 @@ const crypto = require('crypto');
 const { requireAuth, requireRole, clearRevocationCache } = require('../middleware/auth');
 const { get, all, run } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
+const { getStaffDepartments, resolveStaffDepartment } = require('../lib/staffDepartments');
 
 const router = express.Router();
 
 const PASSWORD_MIN_LENGTH = 8;
 const BCRYPT_COST = 10;
 const TEMP_PASSWORD_LENGTH = 18;
+const ALLOWED_ROLES = ['NURSE', 'DOCTOR', 'ADMIN'];
+const EDITABLE_PROFILE_FIELDS = ['fullName', 'name', 'role', 'department'];
+
+function normalizeWhitespace(value) {
+  return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
+}
+
+function normalizeUserId(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isUniqueConstraintError(err) {
+  return err?.code === 'SQLITE_CONSTRAINT' || err?.code === '23505';
+}
 
 function generateTemporaryPassword() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*+-_=';
@@ -18,19 +33,91 @@ function generateTemporaryPassword() {
   return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
 }
 
+function toDirectoryUser(user) {
+  return {
+    ...user,
+    status: user.is_active === 1 ? 'ACTIVE' : 'INACTIVE'
+  };
+}
+
+function normalizeRole(value) {
+  return typeof value === 'string' ? value.trim().toUpperCase() : '';
+}
+
+function hasOwnPayloadField(body, fieldName) {
+  return Boolean(body && Object.prototype.hasOwnProperty.call(body, fieldName));
+}
+
+async function getStaffDirectoryUser(userId) {
+  return get(
+    `SELECT id,
+            role,
+            name,
+            department,
+            is_active,
+            created_at,
+            updated_at
+     FROM users
+     WHERE id = ? AND role IN ('ADMIN', 'DOCTOR', 'NURSE')`,
+    [userId]
+  );
+}
+
+async function ensureRoleChangeAllowed({ currentUser, nextRole, actorId }) {
+  if (currentUser.id === actorId && nextRole !== currentUser.role) {
+    throw {
+      status: 400,
+      code: 'SELF_ROLE_CHANGE',
+      message: 'Administrators cannot change their own role.'
+    };
+  }
+
+  if (currentUser.role === 'DOCTOR' && nextRole !== 'DOCTOR') {
+    const activeAssignments = await get(
+      `SELECT COUNT(*) AS count
+       FROM encounters
+       WHERE assigned_doctor_id = ? AND is_discharged = 0`,
+      [currentUser.id]
+    );
+
+    if (Number(activeAssignments?.count || 0) > 0) {
+      throw {
+        status: 409,
+        code: 'ROLE_CHANGE_BLOCKED',
+        message: 'Cannot change role while this doctor is assigned to active encounters.'
+      };
+    }
+  }
+}
+
+router.get('/departments', requireAuth, requireRole(['ADMIN']), async (req, res) => {
+  res.json(getStaffDepartments());
+});
+
 /**
  * GET /api/admin/users
- * List all staff accounts (id, role, name, is_active — NO password hashes)
+ * List all staff accounts (id, role, name, department, is_active — NO password hashes)
  */
 router.get('/users', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
   try {
     const users = await all(
-      `SELECT id, role, name, is_active
+      `SELECT id,
+              role,
+              name,
+              department,
+              is_active,
+              created_at,
+              updated_at
        FROM users
        WHERE role IN ('ADMIN', 'DOCTOR', 'NURSE')
-       ORDER BY role, name`
+       ORDER BY CASE role
+         WHEN 'ADMIN' THEN 0
+         WHEN 'DOCTOR' THEN 1
+         WHEN 'NURSE' THEN 2
+         ELSE 3
+       END, name`
     );
-    res.json(users);
+    res.json(users.map(toDirectoryUser));
   } catch (err) {
     next(err);
   }
@@ -39,46 +126,243 @@ router.get('/users', requireAuth, requireRole(['ADMIN']), async (req, res, next)
 /**
  * POST /api/admin/users
  * Create a new staff account with hashed password.
- * Body: { id, role, name, password }
+ * Body: { username|loginId|id, role, fullName|name, password, department? }
  */
 router.post('/users', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
-  const { id, role, name, password } = req.body;
+  const userId = normalizeUserId(req.body?.username || req.body?.loginId || req.body?.id);
+  const role = typeof req.body?.role === 'string' ? req.body.role.trim().toUpperCase() : '';
+  const name = normalizeWhitespace(req.body?.fullName || req.body?.name);
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  const rawDepartment = normalizeWhitespace(req.body?.department);
+  const resolvedDepartment = rawDepartment ? resolveStaffDepartment(rawDepartment) : null;
 
   // Input validation
-  if (!id || !role || !name || !password) {
-    return next({ status: 400, code: 'MISSING_FIELDS', message: 'id, role, name, and password are all required.' });
+  if (!userId || !role || !name || !password) {
+    return next({
+      status: 400,
+      code: 'MISSING_FIELDS',
+      message: 'username/login ID, role, full name, and password are all required.'
+    });
   }
 
-  const allowedRoles = ['NURSE', 'DOCTOR', 'ADMIN'];
-  if (!allowedRoles.includes(role)) {
-    return next({ status: 400, code: 'INVALID_ROLE', message: `Role must be one of: ${allowedRoles.join(', ')}` });
+  if (/\s/.test(userId)) {
+    return next({
+      status: 400,
+      code: 'INVALID_USERNAME',
+      message: 'username/login ID cannot contain spaces.'
+    });
+  }
+
+  if (!ALLOWED_ROLES.includes(role)) {
+    return next({ status: 400, code: 'INVALID_ROLE', message: `Role must be one of: ${ALLOWED_ROLES.join(', ')}` });
   }
 
   if (password.length < PASSWORD_MIN_LENGTH) {
     return next({ status: 400, code: 'WEAK_PASSWORD', message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.` });
   }
 
+  if (role === 'DOCTOR' && !rawDepartment) {
+    return next({
+      status: 400,
+      code: 'DEPARTMENT_REQUIRED',
+      message: 'Doctors must be assigned to a department.'
+    });
+  }
+
+  if (role === 'DOCTOR' && !resolvedDepartment) {
+    return next({
+      status: 400,
+      code: 'INVALID_DEPARTMENT',
+      message: 'Selected department is invalid.'
+    });
+  }
+
+  if (role !== 'DOCTOR' && rawDepartment) {
+    return next({
+      status: 400,
+      code: 'DEPARTMENT_NOT_ALLOWED',
+      message: 'Department can only be assigned when creating a doctor account.'
+    });
+  }
+
   try {
     // Check for existing user
-    const existing = await get(`SELECT id FROM users WHERE id = ?`, [id]);
+    const existing = await get(`SELECT id FROM users WHERE id = ?`, [userId]);
     if (existing) {
-      return next({ status: 409, code: 'USER_EXISTS', message: 'A user with this ID already exists.' });
+      return next({ status: 409, code: 'USER_EXISTS', message: 'A user with this username/login ID already exists.' });
     }
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
     await run(
-      `INSERT INTO users (id, role, name, password_hash, is_active) VALUES (?, ?, ?, ?, 1)`,
-      [id, role, name, passwordHash]
+      `INSERT INTO users (id, role, name, password_hash, is_active, department, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      [userId, role, name, passwordHash, resolvedDepartment]
     );
 
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
-      action: `ADMIN_USER_CREATE:${id}:role:${role}:by:${req.user.id}`,
-      new_state: JSON.stringify({ user_id: id, role, name })
+      action: `ADMIN_USER_CREATE:${userId}:role:${role}:by:${req.user.id}`,
+      new_state: JSON.stringify({ user_id: userId, role, name, department: resolvedDepartment })
     });
 
-    res.status(201).json({ userId: id, role, name, created: true });
+    res.status(201).json({
+      userId,
+      username: userId,
+      role,
+      name,
+      department: resolvedDepartment,
+      created: true
+    });
+  } catch (err) {
+    if (isUniqueConstraintError(err)) {
+      return next({ status: 409, code: 'USER_EXISTS', message: 'A user with this username/login ID already exists.' });
+    }
+    next(err);
+  }
+});
+
+/**
+ * PATCH /api/admin/users/:userId
+ * Edit a persisted staff account. Username changes are intentionally blocked
+ * because users.id is the current auth primary key.
+ */
+router.patch('/users/:userId', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
+  const { userId } = req.params;
+  const requestedUsername = normalizeUserId(req.body?.username || req.body?.loginId || req.body?.id);
+  const nextName = hasOwnPayloadField(req.body, 'fullName') || hasOwnPayloadField(req.body, 'name')
+    ? normalizeWhitespace(req.body?.fullName || req.body?.name)
+    : null;
+  const nextRole = hasOwnPayloadField(req.body, 'role') ? normalizeRole(req.body?.role) : null;
+  const rawDepartment = hasOwnPayloadField(req.body, 'department')
+    ? normalizeWhitespace(req.body?.department)
+    : null;
+  const includesUnsupportedFields = Object.keys(req.body || {}).some((field) => {
+    if (['username', 'loginId', 'id'].includes(field)) {
+      return false;
+    }
+    return !EDITABLE_PROFILE_FIELDS.includes(field);
+  });
+
+  if (requestedUsername && requestedUsername !== userId) {
+    return next({
+      status: 400,
+      code: 'USERNAME_IMMUTABLE',
+      message: 'Username/login ID changes are not supported because the current auth schema uses it as the primary key.'
+    });
+  }
+
+  if (includesUnsupportedFields) {
+    return next({
+      status: 400,
+      code: 'UNSUPPORTED_FIELDS',
+      message: 'Only full name, role, and department can be edited on staff accounts.'
+    });
+  }
+
+  if (nextName !== null && !nextName) {
+    return next({
+      status: 400,
+      code: 'INVALID_NAME',
+      message: 'Full name cannot be empty.'
+    });
+  }
+
+  if (nextRole !== null && !ALLOWED_ROLES.includes(nextRole)) {
+    return next({
+      status: 400,
+      code: 'INVALID_ROLE',
+      message: `Role must be one of: ${ALLOWED_ROLES.join(', ')}`
+    });
+  }
+
+  try {
+    const currentUser = await get(`SELECT * FROM users WHERE id = ? AND role IN ('ADMIN', 'DOCTOR', 'NURSE')`, [userId]);
+    if (!currentUser) {
+      return next({ status: 404, code: 'NOT_FOUND', message: 'User not found.' });
+    }
+
+    const resolvedRole = nextRole || currentUser.role;
+    const resolvedDepartment = hasOwnPayloadField(req.body, 'department')
+      ? (rawDepartment ? resolveStaffDepartment(rawDepartment) : null)
+      : currentUser.department || null;
+
+    if (resolvedRole === 'DOCTOR' && !resolvedDepartment) {
+      return next({
+        status: 400,
+        code: 'DEPARTMENT_REQUIRED',
+        message: 'Doctors must be assigned to a department.'
+      });
+    }
+
+    if (rawDepartment && !resolveStaffDepartment(rawDepartment)) {
+      return next({
+        status: 400,
+        code: 'INVALID_DEPARTMENT',
+        message: 'Selected department is invalid.'
+      });
+    }
+
+    if (resolvedRole !== 'DOCTOR' && hasOwnPayloadField(req.body, 'department') && rawDepartment) {
+      return next({
+        status: 400,
+        code: 'DEPARTMENT_NOT_ALLOWED',
+        message: 'Department can only be assigned when the role is DOCTOR.'
+      });
+    }
+
+    await ensureRoleChangeAllowed({ currentUser, nextRole: resolvedRole, actorId: req.user.id });
+
+    const updatedName = nextName ?? currentUser.name;
+    const updatedDepartment = resolvedRole === 'DOCTOR' ? resolvedDepartment : null;
+
+    const hasChanges =
+      updatedName !== currentUser.name ||
+      resolvedRole !== currentUser.role ||
+      updatedDepartment !== (currentUser.department || null);
+
+    if (!hasChanges) {
+      const unchangedUser = await getStaffDirectoryUser(userId);
+      return res.json({
+        user: toDirectoryUser(unchangedUser),
+        updated: false
+      });
+    }
+
+    await run(
+      `UPDATE users
+       SET name = ?,
+           role = ?,
+           department = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [updatedName, resolvedRole, updatedDepartment, userId]
+    );
+
+    await writeAuditDirect({
+      correlation_id: req.correlationId,
+      actor_id: req.user.id,
+      action: `ADMIN_USER_UPDATE:${userId}:by:${req.user.id}`,
+      prior_state: JSON.stringify({
+        name: currentUser.name,
+        role: currentUser.role,
+        department: currentUser.department || null,
+        is_active: currentUser.is_active
+      }),
+      new_state: JSON.stringify({
+        name: updatedName,
+        role: resolvedRole,
+        department: updatedDepartment,
+        is_active: currentUser.is_active
+      })
+    });
+
+    const updatedUser = await getStaffDirectoryUser(userId);
+    return res.json({
+      user: toDirectoryUser(updatedUser),
+      updated: true,
+      usernameEditable: false
+    });
   } catch (err) {
     next(err);
   }
@@ -97,7 +381,7 @@ router.patch('/users/:userId/disable', requireAuth, requireRole(['ADMIN']), asyn
   }
 
   try {
-    const user = await get(`SELECT id, is_active FROM users WHERE id = ?`, [userId]);
+    const user = await get(`SELECT id, role, name, department, is_active FROM users WHERE id = ?`, [userId]);
     if (!user) {
       return next({ status: 404, code: 'NOT_FOUND', message: 'User not found.' });
     }
@@ -106,7 +390,7 @@ router.patch('/users/:userId/disable', requireAuth, requireRole(['ADMIN']), asyn
       return next({ status: 422, code: 'ALREADY_DISABLED', message: 'Account is already disabled.' });
     }
 
-    await run(`UPDATE users SET is_active = 0 WHERE id = ?`, [userId]);
+    await run(`UPDATE users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [userId]);
 
     // Insert / overwrite a revocation record so any live JWTs for this user
     // are rejected by requireAuth within the 60-second cache TTL window.
@@ -116,7 +400,19 @@ router.patch('/users/:userId/disable', requireAuth, requireRole(['ADMIN']), asyn
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
-      action: `ADMIN_USER_DISABLE:${userId}:by:${req.user.id}`
+      action: `ADMIN_USER_DISABLE:${userId}:by:${req.user.id}`,
+      prior_state: JSON.stringify({
+        role: user.role,
+        name: user.name,
+        department: user.department || null,
+        is_active: 1
+      }),
+      new_state: JSON.stringify({
+        role: user.role,
+        name: user.name,
+        department: user.department || null,
+        is_active: 0
+      })
     });
 
     res.json({ userId, disabled: true });
@@ -133,7 +429,7 @@ router.patch('/users/:userId/enable', requireAuth, requireRole(['ADMIN']), async
   const { userId } = req.params;
 
   try {
-    const user = await get(`SELECT id, is_active FROM users WHERE id = ?`, [userId]);
+    const user = await get(`SELECT id, role, name, department, is_active FROM users WHERE id = ?`, [userId]);
     if (!user) {
       return next({ status: 404, code: 'NOT_FOUND', message: 'User not found.' });
     }
@@ -142,7 +438,7 @@ router.patch('/users/:userId/enable', requireAuth, requireRole(['ADMIN']), async
       return next({ status: 422, code: 'ALREADY_ACTIVE', message: 'Account is already active.' });
     }
 
-    await run(`UPDATE users SET is_active = 1 WHERE id = ?`, [userId]);
+    await run(`UPDATE users SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [userId]);
 
     // Remove the revocation record and clear the in-process cache so that
     // freshly-issued tokens for this user are accepted immediately.
@@ -152,7 +448,19 @@ router.patch('/users/:userId/enable', requireAuth, requireRole(['ADMIN']), async
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
-      action: `ADMIN_USER_ENABLE:${userId}:by:${req.user.id}`
+      action: `ADMIN_USER_ENABLE:${userId}:by:${req.user.id}`,
+      prior_state: JSON.stringify({
+        role: user.role,
+        name: user.name,
+        department: user.department || null,
+        is_active: 0
+      }),
+      new_state: JSON.stringify({
+        role: user.role,
+        name: user.name,
+        department: user.department || null,
+        is_active: 1
+      })
     });
 
     res.json({ userId, enabled: true });
@@ -169,7 +477,7 @@ router.post('/users/:userId/reset-password', requireAuth, requireRole(['ADMIN'])
   const { userId } = req.params;
 
   try {
-    const user = await get(`SELECT id FROM users WHERE id = ?`, [userId]);
+    const user = await get(`SELECT id, role, name, department, must_change_password FROM users WHERE id = ?`, [userId]);
     if (!user) {
       return next({ status: 404, code: 'NOT_FOUND', message: 'User not found.' });
     }
@@ -178,7 +486,7 @@ router.post('/users/:userId/reset-password', requireAuth, requireRole(['ADMIN'])
     const newHash = await bcrypt.hash(temporaryPassword, BCRYPT_COST);
     await run(
       `UPDATE users
-       SET password_hash = ?, must_change_password = 1
+       SET password_hash = ?, must_change_password = 1, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [newHash, userId]
     );
@@ -186,7 +494,19 @@ router.post('/users/:userId/reset-password', requireAuth, requireRole(['ADMIN'])
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
-      action: `ADMIN_PASS_RESET:${userId}:by:${req.user.id}`
+      action: `ADMIN_PASS_RESET:${userId}:by:${req.user.id}`,
+      prior_state: JSON.stringify({
+        role: user.role,
+        name: user.name,
+        department: user.department || null,
+        must_change_password: user.must_change_password === 1
+      }),
+      new_state: JSON.stringify({
+        role: user.role,
+        name: user.name,
+        department: user.department || null,
+        must_change_password: true
+      })
     });
 
     res.json({

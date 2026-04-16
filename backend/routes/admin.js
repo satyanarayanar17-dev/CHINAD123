@@ -1,8 +1,9 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { requireAuth, requireRole, clearRevocationCache } = require('../middleware/auth');
-const { get, all, run } = require('../database');
+const { createRateLimiter } = require('../middleware/rateLimit');
+const { requireAuth, requireRole, clearRevocationCache, setRevocationCache } = require('../middleware/auth');
+const { get, all, run, withTransaction } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
 const { getStaffDepartments, resolveStaffDepartment } = require('../lib/staffDepartments');
 
@@ -11,8 +12,23 @@ const router = express.Router();
 const PASSWORD_MIN_LENGTH = 8;
 const BCRYPT_COST = 10;
 const TEMP_PASSWORD_LENGTH = 18;
+const PASSWORD_RESET_COOLDOWN_MS = 60 * 1000;
 const ALLOWED_ROLES = ['NURSE', 'DOCTOR', 'ADMIN'];
 const EDITABLE_PROFILE_FIELDS = ['fullName', 'name', 'role', 'department'];
+
+const passwordResetRateLimit = createRateLimiter({
+  max: 3,
+  windowMs: 15 * 60 * 1000,
+  keyFn: (req) => {
+    const actorId = req.user?.id || 'unknown-admin';
+    const targetId = normalizeUserId(req.params?.userId) || 'unknown-user';
+    return [
+      `admin:password-reset:actor:${actorId}`,
+      `admin:password-reset:target:${targetId}`
+    ];
+  },
+  message: 'Too many password reset requests. Please wait before trying again.'
+});
 
 function normalizeWhitespace(value) {
   return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
@@ -48,23 +64,17 @@ function hasOwnPayloadField(body, fieldName) {
   return Boolean(body && Object.prototype.hasOwnProperty.call(body, fieldName));
 }
 
-async function getStaffDirectoryUser(userId) {
-  return get(
-    `SELECT id,
-            role,
-            name,
-            department,
-            is_active,
-            created_at,
-            updated_at
-     FROM users
-     WHERE id = ? AND role IN ('ADMIN', 'DOCTOR', 'NURSE')`,
-    [userId]
-  );
+function passwordResetCooldownSeconds(passwordResetAt) {
+  if (!passwordResetAt) {
+    return 0;
+  }
+
+  const retryAfterMs = (new Date(passwordResetAt).getTime() + PASSWORD_RESET_COOLDOWN_MS) - Date.now();
+  return retryAfterMs > 0 ? Math.ceil(retryAfterMs / 1000) : 0;
 }
 
-async function countActiveAdmins() {
-  const row = await get(
+async function countActiveAdmins(context = { get }) {
+  const row = await context.get(
     `SELECT COUNT(*) AS count
      FROM users
      WHERE role = 'ADMIN' AND is_active = 1`
@@ -72,7 +82,12 @@ async function countActiveAdmins() {
   return Number(row?.count || 0);
 }
 
-async function ensureAdminContinuity({ targetUser, nextRole = targetUser.role, nextIsActive = targetUser.is_active }) {
+async function ensureAdminContinuity({
+  context = { get },
+  targetUser,
+  nextRole = targetUser.role,
+  nextIsActive = targetUser.is_active
+}) {
   const isRemovingLastActiveAdmin =
     targetUser.role === 'ADMIN' &&
     targetUser.is_active === 1 &&
@@ -82,7 +97,7 @@ async function ensureAdminContinuity({ targetUser, nextRole = targetUser.role, n
     return;
   }
 
-  const activeAdminCount = await countActiveAdmins();
+  const activeAdminCount = await countActiveAdmins(context);
   if (activeAdminCount <= 1) {
     throw {
       status: 409,
@@ -92,8 +107,13 @@ async function ensureAdminContinuity({ targetUser, nextRole = targetUser.role, n
   }
 }
 
-async function ensureRoleChangeAllowed({ currentUser, nextRole, actorId }) {
-  await ensureAdminContinuity({ targetUser: currentUser, nextRole, nextIsActive: currentUser.is_active });
+async function ensureRoleChangeAllowed({ context = { get }, currentUser, nextRole, actorId }) {
+  await ensureAdminContinuity({
+    context,
+    targetUser: currentUser,
+    nextRole,
+    nextIsActive: currentUser.is_active
+  });
 
   if (currentUser.id === actorId && nextRole !== currentUser.role) {
     throw {
@@ -104,7 +124,7 @@ async function ensureRoleChangeAllowed({ currentUser, nextRole, actorId }) {
   }
 
   if (currentUser.role === 'DOCTOR' && nextRole !== 'DOCTOR') {
-    const activeAssignments = await get(
+    const activeAssignments = await context.get(
       `SELECT COUNT(*) AS count
        FROM encounters
        WHERE assigned_doctor_id = ? AND is_discharged = 0`,
@@ -308,90 +328,152 @@ router.patch('/users/:userId', requireAuth, requireRole(['ADMIN']), async (req, 
   }
 
   try {
-    const currentUser = await get(`SELECT * FROM users WHERE id = ? AND role IN ('ADMIN', 'DOCTOR', 'NURSE')`, [userId]);
-    if (!currentUser) {
-      return next({ status: 404, code: 'NOT_FOUND', message: 'User not found.' });
-    }
+    const result = await withTransaction(async (tx) => {
+      const currentUser = await tx.get(
+        `SELECT * FROM users WHERE id = ? AND role IN ('ADMIN', 'DOCTOR', 'NURSE')`,
+        [userId]
+      );
+      if (!currentUser) {
+        throw { status: 404, code: 'NOT_FOUND', message: 'User not found.' };
+      }
 
-    const resolvedRole = nextRole || currentUser.role;
-    const resolvedDepartment = hasOwnPayloadField(req.body, 'department')
-      ? (rawDepartment ? resolveStaffDepartment(rawDepartment) : null)
-      : currentUser.department || null;
+      const resolvedRole = nextRole || currentUser.role;
+      const resolvedDepartment = hasOwnPayloadField(req.body, 'department')
+        ? (rawDepartment ? resolveStaffDepartment(rawDepartment) : null)
+        : currentUser.department || null;
 
-    if (resolvedRole === 'DOCTOR' && !resolvedDepartment) {
-      return next({
-        status: 400,
-        code: 'DEPARTMENT_REQUIRED',
-        message: 'Doctors must be assigned to a department.'
+      if (resolvedRole === 'DOCTOR' && !resolvedDepartment) {
+        throw {
+          status: 400,
+          code: 'DEPARTMENT_REQUIRED',
+          message: 'Doctors must be assigned to a department.'
+        };
+      }
+
+      if (rawDepartment && !resolveStaffDepartment(rawDepartment)) {
+        throw {
+          status: 400,
+          code: 'INVALID_DEPARTMENT',
+          message: 'Selected department is invalid.'
+        };
+      }
+
+      if (resolvedRole !== 'DOCTOR' && hasOwnPayloadField(req.body, 'department') && rawDepartment) {
+        throw {
+          status: 400,
+          code: 'DEPARTMENT_NOT_ALLOWED',
+          message: 'Department can only be assigned when the role is DOCTOR.'
+        };
+      }
+
+      await ensureRoleChangeAllowed({
+        context: tx,
+        currentUser,
+        nextRole: resolvedRole,
+        actorId: req.user.id
       });
-    }
 
-    if (rawDepartment && !resolveStaffDepartment(rawDepartment)) {
-      return next({
-        status: 400,
-        code: 'INVALID_DEPARTMENT',
-        message: 'Selected department is invalid.'
-      });
-    }
+      const updatedName = nextName ?? currentUser.name;
+      const updatedDepartment = resolvedRole === 'DOCTOR' ? resolvedDepartment : null;
 
-    if (resolvedRole !== 'DOCTOR' && hasOwnPayloadField(req.body, 'department') && rawDepartment) {
-      return next({
-        status: 400,
-        code: 'DEPARTMENT_NOT_ALLOWED',
-        message: 'Department can only be assigned when the role is DOCTOR.'
-      });
-    }
+      const hasChanges =
+        updatedName !== currentUser.name ||
+        resolvedRole !== currentUser.role ||
+        updatedDepartment !== (currentUser.department || null);
 
-    await ensureRoleChangeAllowed({ currentUser, nextRole: resolvedRole, actorId: req.user.id });
+      if (!hasChanges) {
+        return {
+          currentUser,
+          updated: false,
+          user: await tx.get(
+            `SELECT id, role, name, department, is_active, created_at, updated_at
+             FROM users
+             WHERE id = ? AND role IN ('ADMIN', 'DOCTOR', 'NURSE')`,
+            [userId]
+          )
+        };
+      }
 
-    const updatedName = nextName ?? currentUser.name;
-    const updatedDepartment = resolvedRole === 'DOCTOR' ? resolvedDepartment : null;
+      let updateQuery = `UPDATE users
+        SET name = ?,
+            role = ?,
+            department = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?`;
+      const updateParams = [updatedName, resolvedRole, updatedDepartment, userId];
 
-    const hasChanges =
-      updatedName !== currentUser.name ||
-      resolvedRole !== currentUser.role ||
-      updatedDepartment !== (currentUser.department || null);
+      if (currentUser.role === 'DOCTOR' && resolvedRole !== 'DOCTOR') {
+        updateQuery += `
+          AND NOT EXISTS (
+            SELECT 1 FROM encounters
+            WHERE assigned_doctor_id = ?
+              AND is_discharged = 0
+          )`;
+        updateParams.push(userId);
+      }
 
-    if (!hasChanges) {
-      const unchangedUser = await getStaffDirectoryUser(userId);
-      return res.json({
-        user: toDirectoryUser(unchangedUser),
-        updated: false
-      });
-    }
+      if (currentUser.role === 'ADMIN' && resolvedRole !== 'ADMIN') {
+        updateQuery += `
+          AND EXISTS (
+            SELECT 1 FROM users
+            WHERE role = 'ADMIN'
+              AND is_active = 1
+              AND id != ?
+          )`;
+        updateParams.push(userId);
+      }
 
-    await run(
-      `UPDATE users
-       SET name = ?,
-           role = ?,
-           department = ?,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-      [updatedName, resolvedRole, updatedDepartment, userId]
-    );
+      const updateResult = await tx.run(updateQuery, updateParams);
+      if (updateResult.changes === 0) {
+        if (currentUser.role === 'ADMIN' && resolvedRole !== 'ADMIN') {
+          throw {
+            status: 409,
+            code: 'LAST_ACTIVE_ADMIN_PROTECTED',
+            message: 'This action would remove the last active administrator account.'
+          };
+        }
+        throw {
+          status: 409,
+          code: 'ROLE_CHANGE_BLOCKED',
+          message: 'Cannot change role while this doctor is assigned to active encounters.'
+        };
+      }
+
+      const updatedUser = await tx.get(
+        `SELECT id, role, name, department, is_active, created_at, updated_at
+         FROM users
+         WHERE id = ? AND role IN ('ADMIN', 'DOCTOR', 'NURSE')`,
+        [userId]
+      );
+
+      return {
+        currentUser,
+        updated: true,
+        user: updatedUser
+      };
+    });
 
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
       action: `ADMIN_USER_UPDATE:${userId}:by:${req.user.id}`,
       prior_state: JSON.stringify({
-        name: currentUser.name,
-        role: currentUser.role,
-        department: currentUser.department || null,
-        is_active: currentUser.is_active
+        name: result.currentUser.name,
+        role: result.currentUser.role,
+        department: result.currentUser.department || null,
+        is_active: result.currentUser.is_active
       }),
       new_state: JSON.stringify({
-        name: updatedName,
-        role: resolvedRole,
-        department: updatedDepartment,
-        is_active: currentUser.is_active
+        name: result.user.name,
+        role: result.user.role,
+        department: result.user.department || null,
+        is_active: result.user.is_active
       })
     });
 
-    const updatedUser = await getStaffDirectoryUser(userId);
     return res.json({
-      user: toDirectoryUser(updatedUser),
-      updated: true,
+      user: toDirectoryUser(result.user),
+      updated: result.updated,
       usernameEditable: false
     });
   } catch (err) {
@@ -407,29 +489,74 @@ router.patch('/users/:userId/disable', requireAuth, requireRole(['ADMIN']), asyn
   const { userId } = req.params;
 
   try {
-    const user = await get(`SELECT id, role, name, department, is_active FROM users WHERE id = ?`, [userId]);
-    if (!user) {
-      return next({ status: 404, code: 'NOT_FOUND', message: 'User not found.' });
-    }
+    const { user, revokedAt } = await withTransaction(async (tx) => {
+      const currentUser = await tx.get(
+        `SELECT id, role, name, department, is_active
+         FROM users
+         WHERE id = ? AND role IN ('ADMIN', 'DOCTOR', 'NURSE')`,
+        [userId]
+      );
+      if (!currentUser) {
+        throw { status: 404, code: 'NOT_FOUND', message: 'User not found.' };
+      }
 
-    if (user.is_active === 0) {
-      return next({ status: 422, code: 'ALREADY_DISABLED', message: 'Account is already disabled.' });
-    }
+      if (currentUser.is_active === 0) {
+        throw { status: 422, code: 'ALREADY_DISABLED', message: 'Account is already disabled.' };
+      }
 
-    await ensureAdminContinuity({ targetUser: user, nextRole: user.role, nextIsActive: 0 });
+      await ensureAdminContinuity({
+        context: tx,
+        targetUser: currentUser,
+        nextRole: currentUser.role,
+        nextIsActive: 0
+      });
 
-    // Prevent self-disable after the continuity protection check so the
-    // last-admin case returns the stronger lockout-specific error.
-    if (userId === req.user.id) {
-      return next({ status: 400, code: 'SELF_DISABLE', message: 'Administrators cannot disable their own account.' });
-    }
+      if (userId === req.user.id) {
+        throw { status: 400, code: 'SELF_DISABLE', message: 'Administrators cannot disable their own account.' };
+      }
 
-    await run(`UPDATE users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [userId]);
+      const disableQuery = currentUser.role === 'ADMIN'
+        ? `UPDATE users
+           SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?
+             AND is_active = 1
+             AND EXISTS (
+               SELECT 1 FROM users
+               WHERE role = 'ADMIN'
+                 AND is_active = 1
+                 AND id != ?
+             )`
+        : `UPDATE users
+           SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND is_active = 1`;
+      const disableParams = currentUser.role === 'ADMIN'
+        ? [userId, userId]
+        : [userId];
+      const updateResult = await tx.run(disableQuery, disableParams);
 
-    // Insert / overwrite a revocation record so any live JWTs for this user
-    // are rejected by requireAuth within the 60-second cache TTL window.
-    await run(`DELETE FROM revoked_tokens WHERE user_id = ?`, [userId]);
-    await run(`INSERT INTO revoked_tokens (user_id, revoked_at) VALUES (?, CURRENT_TIMESTAMP)`, [userId]);
+      if (updateResult.changes === 0) {
+        if (currentUser.role === 'ADMIN') {
+          throw {
+            status: 409,
+            code: 'LAST_ACTIVE_ADMIN_PROTECTED',
+            message: 'This action would remove the last active administrator account.'
+          };
+        }
+        throw { status: 409, code: 'STATE_CHANGED', message: 'Account state changed concurrently. Please reload and try again.' };
+      }
+
+      const revokedAtValue = new Date().toISOString();
+      await tx.run(`UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ? AND revoked = 0`, [userId]);
+      await tx.run(`DELETE FROM revoked_tokens WHERE user_id = ?`, [userId]);
+      await tx.run(`INSERT INTO revoked_tokens (user_id, revoked_at) VALUES (?, ?)`, [userId, revokedAtValue]);
+
+      return {
+        user: currentUser,
+        revokedAt: revokedAtValue
+      };
+    });
+
+    setRevocationCache(userId, revokedAt);
 
     await writeAuditDirect({
       correlation_id: req.correlationId,
@@ -463,20 +590,36 @@ router.patch('/users/:userId/enable', requireAuth, requireRole(['ADMIN']), async
   const { userId } = req.params;
 
   try {
-    const user = await get(`SELECT id, role, name, department, is_active FROM users WHERE id = ?`, [userId]);
-    if (!user) {
-      return next({ status: 404, code: 'NOT_FOUND', message: 'User not found.' });
-    }
+    const user = await withTransaction(async (tx) => {
+      const currentUser = await tx.get(
+        `SELECT id, role, name, department, is_active
+         FROM users
+         WHERE id = ? AND role IN ('ADMIN', 'DOCTOR', 'NURSE')`,
+        [userId]
+      );
+      if (!currentUser) {
+        throw { status: 404, code: 'NOT_FOUND', message: 'User not found.' };
+      }
 
-    if (user.is_active === 1) {
-      return next({ status: 422, code: 'ALREADY_ACTIVE', message: 'Account is already active.' });
-    }
+      if (currentUser.is_active === 1) {
+        throw { status: 422, code: 'ALREADY_ACTIVE', message: 'Account is already active.' };
+      }
 
-    await run(`UPDATE users SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [userId]);
+      const updateResult = await tx.run(
+        `UPDATE users
+         SET is_active = 1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND is_active = 0`,
+        [userId]
+      );
 
-    // Remove the revocation record and clear the in-process cache so that
-    // freshly-issued tokens for this user are accepted immediately.
-    await run(`DELETE FROM revoked_tokens WHERE user_id = ?`, [userId]);
+      if (updateResult.changes === 0) {
+        throw { status: 409, code: 'STATE_CHANGED', message: 'Account state changed concurrently. Please reload and try again.' };
+      }
+
+      await tx.run(`DELETE FROM revoked_tokens WHERE user_id = ?`, [userId]);
+      return currentUser;
+    });
+
     clearRevocationCache(userId);
 
     await writeAuditDirect({
@@ -507,23 +650,76 @@ router.patch('/users/:userId/enable', requireAuth, requireRole(['ADMIN']), async
  * POST /api/admin/users/:userId/reset-password
  * Admin-driven password reset. Replaces password hash immediately.
  */
-router.post('/users/:userId/reset-password', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
+router.post('/users/:userId/reset-password', requireAuth, requireRole(['ADMIN']), passwordResetRateLimit, async (req, res, next) => {
   const { userId } = req.params;
 
   try {
-    const user = await get(`SELECT id, role, name, department, must_change_password FROM users WHERE id = ?`, [userId]);
-    if (!user) {
-      return next({ status: 404, code: 'NOT_FOUND', message: 'User not found.' });
-    }
-
     const temporaryPassword = generateTemporaryPassword();
     const newHash = await bcrypt.hash(temporaryPassword, BCRYPT_COST);
-    await run(
-      `UPDATE users
-       SET password_hash = ?, must_change_password = 1, updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-      [newHash, userId]
-    );
+    const { user, revokedAt } = await withTransaction(async (tx) => {
+      const currentUser = await tx.get(
+        `SELECT id, role, name, department, must_change_password, password_reset_at
+         FROM users
+         WHERE id = ? AND role IN ('ADMIN', 'DOCTOR', 'NURSE')`,
+        [userId]
+      );
+
+      if (!currentUser) {
+        throw { status: 404, code: 'NOT_FOUND', message: 'User not found.' };
+      }
+
+      const retryAfterSeconds = passwordResetCooldownSeconds(currentUser.password_reset_at);
+      if (retryAfterSeconds > 0) {
+        throw {
+          status: 409,
+          code: 'PASSWORD_RESET_PENDING',
+          message: 'A password reset was issued moments ago. Share the existing temporary password or wait before generating another one.',
+          retry_after_seconds: retryAfterSeconds
+        };
+      }
+
+      const issuedAt = new Date().toISOString();
+      const updateQuery = currentUser.password_reset_at
+        ? `UPDATE users
+           SET password_hash = ?,
+               must_change_password = 1,
+               password_reset_at = ?,
+               updated_at = ?
+           WHERE id = ? AND password_reset_at = ?`
+        : `UPDATE users
+           SET password_hash = ?,
+               must_change_password = 1,
+               password_reset_at = ?,
+               updated_at = ?
+           WHERE id = ? AND password_reset_at IS NULL`;
+      const updateParams = currentUser.password_reset_at
+        ? [newHash, issuedAt, issuedAt, userId, currentUser.password_reset_at]
+        : [newHash, issuedAt, issuedAt, userId];
+      const updateResult = await tx.run(
+        updateQuery,
+        updateParams
+      );
+
+      if (updateResult.changes === 0) {
+        throw {
+          status: 409,
+          code: 'PASSWORD_RESET_PENDING',
+          message: 'A password reset is already being processed for this account. Share the existing temporary password or retry shortly.'
+        };
+      }
+
+      await tx.run(`UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ? AND revoked = 0`, [userId]);
+      const revokedAtValue = new Date().toISOString();
+      await tx.run(`DELETE FROM revoked_tokens WHERE user_id = ?`, [userId]);
+      await tx.run(`INSERT INTO revoked_tokens (user_id, revoked_at) VALUES (?, ?)`, [userId, revokedAtValue]);
+
+      return {
+        user: currentUser,
+        revokedAt: revokedAtValue
+      };
+    });
+
+    setRevocationCache(userId, revokedAt);
 
     await writeAuditDirect({
       correlation_id: req.correlationId,

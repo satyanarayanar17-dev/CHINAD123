@@ -181,6 +181,23 @@ async function runVerification() {
   assert.equal(removedPatientLogin.status, 401, 'Removed seeded patient identity must fail cleanly.');
   pass('Removed seeded patient identity fails cleanly');
 
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const unknownStaffAttempt = await loginStaff('ghost_staff_suite', 'WrongPassword2026!', request(app), 'staff-rate-limit-suite');
+    assert.equal(unknownStaffAttempt.status, 401, 'Unknown staff login attempts should fail before the rate limit trips.');
+  }
+  const staffRateLimitedRes = await loginStaff('ghost_staff_suite', 'WrongPassword2026!', request(app), 'staff-rate-limit-suite');
+  assert.equal(staffRateLimitedRes.status, 429, 'Staff login should be rate-limited after repeated invalid attempts.');
+  assert.equal(extractErrorCode(staffRateLimitedRes), 'RATE_LIMITED', 'Staff login rate limiting must return RATE_LIMITED.');
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const unknownPatientAttempt = await loginPatient('+919877776666', 'WrongPassword2026!', request(app), 'patient-rate-limit-suite');
+    assert.equal(unknownPatientAttempt.status, 401, 'Unknown patient login attempts should fail before the rate limit trips.');
+  }
+  const patientRateLimitedRes = await loginPatient('+919877776666', 'WrongPassword2026!', request(app), 'patient-rate-limit-suite');
+  assert.equal(patientRateLimitedRes.status, 429, 'Patient login should be rate-limited after repeated invalid attempts.');
+  assert.equal(extractErrorCode(patientRateLimitedRes), 'RATE_LIMITED', 'Patient login rate limiting must return RATE_LIMITED.');
+  pass('Endpoint-aware rate limiting protects both staff and patient login paths');
+
   const adminViaPatientLogin = await loginPatient(TEST_USERS.admin.id, TEST_USERS.admin.password);
   assert.equal(adminViaPatientLogin.status, 403, 'Admin credentials must be rejected on patient login.');
   assert.equal(adminViaPatientLogin.body.error, 'ACCOUNT_TYPE_MISMATCH', 'Admin rejection must be explicit on the patient boundary.');
@@ -242,6 +259,27 @@ async function runVerification() {
   assert.equal(duplicateDoctorRes.status, 409, 'Duplicate staff usernames must be rejected.');
   assert.equal(extractErrorCode(duplicateDoctorRes), 'USER_EXISTS', 'Duplicate staff usernames must return USER_EXISTS.');
   pass('Duplicate usernames are rejected cleanly');
+
+  const duplicateRacePayload = {
+    id: 'staff_duplicate_race_suite',
+    role: 'NURSE',
+    name: 'Duplicate Race Nurse',
+    password: 'DuplicateRace2026!'
+  };
+  const duplicateRaceResults = await Promise.all([
+    createStaffAccount(adminToken, duplicateRacePayload),
+    createStaffAccount(adminToken, duplicateRacePayload)
+  ]);
+  const duplicateRaceStatuses = duplicateRaceResults.map((response) => response.status).sort((a, b) => a - b);
+  assert.deepEqual(duplicateRaceStatuses, [201, 409], 'Rapid duplicate staff creation requests must resolve to one success and one conflict.');
+  assert.equal(
+    extractErrorCode(duplicateRaceResults.find((response) => response.status === 409)),
+    'USER_EXISTS',
+    'Duplicate create races must fail with USER_EXISTS.'
+  );
+  const duplicateRaceUsers = await all(`SELECT id FROM users WHERE id = ?`, [duplicateRacePayload.id]);
+  assert.equal(duplicateRaceUsers.length, 1, 'Duplicate create races must leave only one persisted account.');
+  pass('Rapid repeated staff creation stays single-write under unique constraints');
 
   const staffDirectoryRes = await request(app).get('/api/v1/admin/users').set(auth(adminToken));
   assert.equal(staffDirectoryRes.status, 200, 'Admin must be able to refresh the staff directory after provisioning.');
@@ -421,6 +459,111 @@ async function runVerification() {
   assert.equal(extractErrorCode(invalidActivationFreshRes), 'INVALID_TOKEN', 'Invalid activation codes must return INVALID_TOKEN.');
   pass('Invalid activation codes fail cleanly');
 
+  const lockedPatient = {
+    name: 'Locked Activation Patient',
+    phone: '+919844445555',
+    dob: '1992-03-15',
+    gender: 'Female'
+  };
+  const lockedPatientCreateRes = await createPatient(adminToken, {
+    ...lockedPatient,
+    issueActivationToken: true
+  });
+  assert.equal(lockedPatientCreateRes.status, 201, 'Locked-attempt patient onboarding must succeed.');
+  const lockedPatientId = lockedPatientCreateRes.body.patient.id;
+  const lockedActivationCode = lockedPatientCreateRes.body.activation.activation_code;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const invalidLockedAttempt = await request(app)
+      .post('/api/v1/activation/claim')
+      .send({
+        phone: lockedPatient.phone,
+        otp: '999999',
+        new_password: 'LockedPatient2026!'
+      });
+    assert.equal(invalidLockedAttempt.status, 401, 'Invalid activation attempts should fail until the max-attempt lock trips.');
+    assert.equal(extractErrorCode(invalidLockedAttempt), 'INVALID_TOKEN', 'Pre-lock invalid attempts must return INVALID_TOKEN.');
+  }
+
+  const lockedAttemptRes = await request(app)
+    .post('/api/v1/activation/claim')
+    .send({
+      phone: lockedPatient.phone,
+      otp: '999999',
+      new_password: 'LockedPatient2026!'
+    });
+  assert.equal(lockedAttemptRes.status, 429, 'Repeated invalid activation attempts must trigger lockout.');
+  assert.equal(extractErrorCode(lockedAttemptRes), 'ACTIVATION_ATTEMPTS_EXCEEDED', 'Activation lockout must return ACTIVATION_ATTEMPTS_EXCEEDED.');
+
+  const correctCodeWhileLockedRes = await request(app)
+    .post('/api/v1/activation/claim')
+    .send({
+      phone: lockedPatient.phone,
+      otp: lockedActivationCode,
+      new_password: 'LockedPatient2026!'
+    });
+  assert.equal(correctCodeWhileLockedRes.status, 429, 'A locked activation token must reject even the correct code.');
+  assert.equal(extractErrorCode(correctCodeWhileLockedRes), 'ACTIVATION_ATTEMPTS_EXCEEDED', 'Locked activation attempts must stay explicit.');
+
+  const regeneratedActivationRes = await request(app)
+    .post('/api/v1/activation/generate')
+    .set(auth(adminToken))
+    .send({ patient_id: lockedPatientId });
+  assert.equal(regeneratedActivationRes.status, 200, 'Admins must be able to issue a fresh activation code after lockout.');
+  assert.ok(regeneratedActivationRes.body.activation_code, 'Fresh activation generation must return a new code in verification mode.');
+
+  const recoveredActivationRes = await request(app)
+    .post('/api/v1/activation/claim')
+    .send({
+      phone: lockedPatient.phone,
+      otp: regeneratedActivationRes.body.activation_code,
+      new_password: 'LockedPatient2026!'
+    });
+  assert.equal(recoveredActivationRes.status, 200, 'A newly issued activation code must recover the locked patient.');
+  pass('Activation claim attempts are throttled and reset only by issuing a fresh code');
+
+  const racedPatient = {
+    name: 'Raced Activation Patient',
+    phone: '+919855556666',
+    dob: '1986-09-23',
+    gender: 'Male'
+  };
+  const racedPatientCreateRes = await createPatient(adminToken, {
+    ...racedPatient,
+    issueActivationToken: true
+  });
+  assert.equal(racedPatientCreateRes.status, 201, 'Concurrent-claim patient onboarding must succeed.');
+  const racedPatientId = racedPatientCreateRes.body.patient.id;
+  const racedActivationCode = racedPatientCreateRes.body.activation.activation_code;
+  const racedPatientPassword = 'RacedPatient2026!';
+  const racedClaimResults = await Promise.all([
+    request(app)
+      .post('/api/v1/activation/claim')
+      .send({
+        phone: racedPatient.phone,
+        otp: racedActivationCode,
+        new_password: racedPatientPassword
+      }),
+    request(app)
+      .post('/api/v1/activation/claim')
+      .send({
+        phone: racedPatient.phone,
+        otp: racedActivationCode,
+        new_password: racedPatientPassword
+      })
+  ]);
+  const racedClaimStatuses = racedClaimResults.map((response) => response.status).sort((a, b) => a - b);
+  assert.deepEqual(racedClaimStatuses, [200, 409], 'Concurrent activation claims must resolve to one success and one rejection.');
+  assert.ok(
+    ['ACTIVATION_CODE_USED', 'ACCOUNT_EXISTS'].includes(extractErrorCode(racedClaimResults.find((response) => response.status === 409))),
+    'Concurrent activation rejections must fail cleanly without creating a second account.'
+  );
+  const racedPatientUsers = await all(`SELECT id FROM users WHERE patient_id = ?`, [racedPatientId]);
+  assert.equal(racedPatientUsers.length, 1, 'Concurrent activation claims must leave exactly one linked patient auth account.');
+  const racedPatientLogin = await loginPatient(racedPatient.phone, racedPatientPassword);
+  assert.equal(racedPatientLogin.status, 200, 'The single surviving activated patient account must be able to log in.');
+  pass('Concurrent activation claims stay atomic and preserve one patient account linkage');
+
   const patientLogin = await loginPatient(TEST_PATIENT.phone, TEST_PATIENT.password);
   assert.equal(patientLogin.status, 200, 'Patient login must succeed after activation.');
   assert.equal(patientLogin.body.role, 'patient', 'Patient login must preserve patient role.');
@@ -559,12 +702,31 @@ async function runVerification() {
 
   console.log('\n[7] Password Reset and Revocation\n');
 
-  const resetPasswordRes = await request(app)
-    .post(`/api/v1/admin/users/${TEST_USERS.doctor.id}/reset-password`)
-    .set(auth(adminToken))
-    .send({});
-  assert.equal(resetPasswordRes.status, 200, 'Admin password reset must succeed.');
+  const resetPasswordResults = await Promise.all([
+    request(app)
+      .post(`/api/v1/admin/users/${TEST_USERS.doctor.id}/reset-password`)
+      .set(auth(adminToken))
+      .send({}),
+    request(app)
+      .post(`/api/v1/admin/users/${TEST_USERS.doctor.id}/reset-password`)
+      .set(auth(adminToken))
+      .send({})
+  ]);
+  const resetPasswordRes = resetPasswordResults.find((response) => response.status === 200);
+  const rejectedResetRes = resetPasswordResults.find((response) => response.status !== 200);
+  assert.ok(resetPasswordRes, 'One of the concurrent password reset requests must succeed.');
+  assert.ok(rejectedResetRes, 'One of the concurrent password reset requests must be rejected.');
   assert.equal(resetPasswordRes.body.must_change_password, true, 'Password reset must require a change on next login.');
+  assert.equal(extractErrorCode(rejectedResetRes), 'PASSWORD_RESET_PENDING', 'Concurrent password resets must be collapsed into a single pending reset.');
+  pass('Concurrent password reset requests do not issue multiple valid temporary passwords');
+
+  const staleDoctorAccessAfterReset = await request(app).get('/api/v1/queue').set(auth(doctorToken));
+  assert.equal(staleDoctorAccessAfterReset.status, 401, 'Pre-reset doctor access tokens must be revoked after an admin reset.');
+  assert.equal(extractErrorCode(staleDoctorAccessAfterReset), 'TOKEN_REVOKED', 'Stale doctor access tokens must fail with TOKEN_REVOKED.');
+
+  const staleDoctorRefreshAfterReset = await doctorAgent.post('/api/v1/auth/refresh').send({});
+  assert.equal(staleDoctorRefreshAfterReset.status, 401, 'Pre-reset doctor refresh tokens must be revoked after an admin reset.');
+  assert.equal(staleDoctorRefreshAfterReset.body.error, 'REFRESH_REVOKED', 'Stale doctor refresh tokens must fail with REFRESH_REVOKED.');
 
   const oldDoctorLogin = await loginStaff(TEST_USERS.doctor.id, TEST_USERS.doctor.password);
   assert.equal(oldDoctorLogin.status, 401, 'Old doctor password must stop working after reset.');
@@ -587,8 +749,18 @@ async function runVerification() {
   });
   assert.equal(changePasswordRes.status, 200, 'Doctor password change must succeed.');
 
-  const changedDoctorLogin = await loginStaff(TEST_USERS.doctor.id, 'DoctorSuiteReset2026!');
+  const changedDoctorAgent = request.agent(app);
+  const changedDoctorLogin = await loginStaff(TEST_USERS.doctor.id, 'DoctorSuiteReset2026!', changedDoctorAgent, 'changed-doctor-login');
   assert.equal(changedDoctorLogin.status, 200, 'Doctor must be able to log in with the changed password.');
+
+  const logoutAfterPasswordChangeRes = await changedDoctorAgent.post('/api/v1/auth/logout').send({});
+  assert.equal(logoutAfterPasswordChangeRes.status, 200, 'Logout must succeed after password change.');
+  const refreshAfterLogoutRes = await changedDoctorAgent.post('/api/v1/auth/refresh').send({});
+  assert.equal(refreshAfterLogoutRes.status, 401, 'Refresh after logout must fail.');
+  assert.ok(
+    ['REFRESH_REVOKED', 'REFRESH_REQUIRED'].includes(refreshAfterLogoutRes.body.error),
+    'Logout must leave no usable refresh token behind.'
+  );
 
   const resetAuditLeakCheck = await all(
     `SELECT action, prior_state, new_state
@@ -608,11 +780,25 @@ async function runVerification() {
   assert.equal(serializedActivationAudit.includes(activationCode), false, 'Activation codes must not be written to audit logs.');
   pass('Password reset and change-password flows remain intact without sensitive audit leakage');
 
-  const disableNurseRes = await request(app)
-    .patch(`/api/v1/admin/users/${TEST_USERS.nurse.id}/disable`)
-    .set(auth(adminToken))
-    .send({});
-  assert.equal(disableNurseRes.status, 200, 'Admin disable must succeed.');
+  const disableNurseResults = await Promise.all([
+    request(app)
+      .patch(`/api/v1/admin/users/${TEST_USERS.nurse.id}/disable`)
+      .set(auth(adminToken))
+      .send({}),
+    request(app)
+      .patch(`/api/v1/admin/users/${TEST_USERS.nurse.id}/disable`)
+      .set(auth(adminToken))
+      .send({})
+  ]);
+  const successfulDisable = disableNurseResults.find((response) => response.status === 200);
+  const rejectedDisable = disableNurseResults.find((response) => response.status !== 200);
+  assert.ok(successfulDisable, 'One concurrent disable request must succeed.');
+  assert.ok(rejectedDisable, 'One concurrent disable request must be rejected once the state changes.');
+  assert.ok(
+    ['ALREADY_DISABLED', 'STATE_CHANGED'].includes(extractErrorCode(rejectedDisable)),
+    'Concurrent disable races must fail with an idempotent or stale-state error.'
+  );
+  pass('Concurrent disable actions collapse to a single persisted state change');
 
   const revokedNurseSession = await request(app).get('/api/v1/auth/me').set(auth(nurseToken));
   assert.equal(revokedNurseSession.status, 401, 'Disabled user token must be rejected.');

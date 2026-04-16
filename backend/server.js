@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const helmet = require('helmet');
+const crypto = require('crypto');
 const {
   dbDialect,
   migrateDatabase,
@@ -10,6 +11,11 @@ const {
   get,
   all
 } = require('./database');
+const {
+  runtimeConfig,
+  validateRuntimeConfig,
+  describeRuntimeConfig
+} = require('./config');
 const {
   ensureBootstrapAdmin,
   ensureAdminAccessProvisioned
@@ -20,119 +26,43 @@ const { scanDataIntegrity } = require('./lib/dataIntegrityAudit');
 const { logEvent } = require('./lib/logger');
 
 const app = express();
+const bootState = {
+  started_at: new Date().toISOString(),
+  ready: false,
+  last_successful_boot_at: null,
+  boot_error: null,
+  config: describeRuntimeConfig(runtimeConfig),
+  checks: {
+    database: 'unknown',
+    migrations: 'unknown',
+    admin_access: 'unknown'
+  }
+};
 
 // ===========================================================================
 // 1. STARTUP ENVIRONMENT VALIDATOR — fail-fast on misconfiguration
 // ===========================================================================
-const isProduction = process.env.NODE_ENV === 'production';
-const isRestrictedPilot = process.env.APP_ENV === 'restricted_web_pilot';
-const isLockedDeployment = isProduction || isRestrictedPilot;
-const allowedOtpDeliveryModes = new Set(['console', 'api_response']);
+const isLockedDeployment = runtimeConfig.isPilot || runtimeConfig.isProduction;
+const configValidation = validateRuntimeConfig(runtimeConfig);
 
-/**
- * Detect placeholder / weak JWT secrets that would pass a simple length check
- * but are not cryptographically suitable for production.
- *
- * Blocks:
- *   - Known hardcoded bad values (exact match)
- *   - Secrets containing obvious placeholder substrings
- *   - Secrets containing spaces (copy-paste artifacts)
- *
- * A properly generated secret (`openssl rand -hex 32`) is 64 lowercase hex
- * chars and will never trigger any of these checks.
- */
-function isWeakJwtSecret(secret) {
-  const KNOWN_BAD = new Set([
-    'pilot-beta-secure-secret-key',
-    'super_secure_crypto_secret_32_characters_long_for_test',
-    'changeme',
-    'secret',
-    'your-secret-here',
-    'jwt-secret',
-    'mysecret'
-  ]);
-
-  if (KNOWN_BAD.has(secret)) return true;
-
-  const lower = secret.toLowerCase();
-  const WEAK_SUBSTRINGS = ['test', 'dev', 'secret', 'secure', 'placeholder', 'example', 'change_me', 'your_', 'sample', 'default'];
-  if (WEAK_SUBSTRINGS.some((s) => lower.includes(s))) return true;
-
-  if (/\s/.test(secret)) return true;
-
-  return false;
-}
-
-/**
- * Validate that CORS_ORIGIN looks like a real URL origin.
- * Catches obviously malformed values like "https://http://localhost".
- */
-function isValidCorsOrigin(origin) {
-  try {
-    const url = new URL(origin);
-    return (url.protocol === 'http:' || url.protocol === 'https:') &&
-      !url.pathname.replace('/', '') &&
-      !url.search &&
-      !url.hash;
-  } catch {
-    return false;
+if (configValidation.warnings.length > 0) {
+  for (const warning of configValidation.warnings) {
+    logEvent('warn', 'boot_config_warning', { warning });
   }
 }
 
-if (isLockedDeployment) {
-  console.log('[BOOT] Initializing in RESTRICTED_WEB_PILOT deployment mode.');
+try {
+  getRefreshCookieOptions();
+} catch (err) {
+  configValidation.errors.push(err.message);
+}
 
-  const fatalErrors = [];
-  const configuredDialect = (process.env.DB_DIALECT || 'sqlite').trim().toLowerCase();
-
-  if (process.env.PILOT_AUTH_BYPASS === 'true') {
-    fatalErrors.push('PILOT_AUTH_BYPASS cannot be true in production deployment.');
-  }
-
-  if (configuredDialect !== 'postgres') {
-    fatalErrors.push('Restricted web pilot deployments must use DB_DIALECT=postgres. SQLite is local-dev only.');
-  }
-
-  if (!process.env.JWT_SECRET) {
-    fatalErrors.push('JWT_SECRET is not set. Generate one with: openssl rand -hex 32');
-  } else if (process.env.JWT_SECRET.length < 32) {
-    fatalErrors.push(`JWT_SECRET is too short (${process.env.JWT_SECRET.length} chars). Minimum 32 required.`);
-  } else if (isWeakJwtSecret(process.env.JWT_SECRET)) {
-    fatalErrors.push('JWT_SECRET appears to be a placeholder or weak value. Generate a real secret with: openssl rand -hex 32');
-  }
-
-  if (process.env.DB_DIALECT === 'postgres' && !process.env.DATABASE_URL) {
-    fatalErrors.push('DB_DIALECT=postgres but DATABASE_URL is not set.');
-  }
-
-  if (!process.env.CORS_ORIGIN) {
-    fatalErrors.push('CORS_ORIGIN must be explicitly set in production (no wildcard).');
-  } else if (!isValidCorsOrigin(process.env.CORS_ORIGIN.split(',')[0].trim())) {
-    fatalErrors.push(`CORS_ORIGIN "${process.env.CORS_ORIGIN}" is not a valid URL origin. Use the exact frontend origin, e.g. http://localhost or https://your-domain.com`);
-  }
-
-  if (process.env.ACTIVATION_OTP_DELIVERY && !allowedOtpDeliveryModes.has(process.env.ACTIVATION_OTP_DELIVERY)) {
-    fatalErrors.push('ACTIVATION_OTP_DELIVERY must be one of: console, api_response.');
-  }
-
-  try {
-    getRefreshCookieOptions();
-  } catch (err) {
-    fatalErrors.push(err.message);
-  }
-
-  if (fatalErrors.length > 0) {
-    console.error('[FATAL] Boot validation failed. The following configuration errors must be resolved:');
-    fatalErrors.forEach((e, i) => console.error(`  [${i + 1}] ${e}`));
-    process.exit(1);
-  }
-} else {
-  if (!process.env.JWT_SECRET) {
-    console.warn('[WARN] JWT_SECRET is not set. Using insecure development fallback. DO NOT use for pilot.');
-  }
-  if (process.env.PILOT_AUTH_BYPASS === 'true') {
-    console.warn('[WARN] PILOT_AUTH_BYPASS is enabled — passwords are not required for passwordless accounts. LOCAL DEV ONLY.');
-  }
+if (configValidation.errors.length > 0) {
+  logEvent('error', 'boot_config_invalid', {
+    errors: configValidation.errors,
+    config: describeRuntimeConfig(runtimeConfig)
+  });
+  process.exit(1);
 }
 
 // ===========================================================================
@@ -140,10 +70,7 @@ if (isLockedDeployment) {
 // ===========================================================================
 app.set('trust proxy', 1);
 
-const allowedOrigins = (process.env.CORS_ORIGIN || '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const allowedOrigins = runtimeConfig.corsOrigins;
 
 const corsOptions = {
   origin(origin, callback) {
@@ -179,13 +106,29 @@ app.use(express.urlencoded({ extended: true, limit: '50kb' }));
 // 3. CORRELATION LOGGING MIDDLEWARE
 // ===========================================================================
 app.use((req, res, next) => {
-  const correlationId = req.headers['x-correlation-id'] || 'SERVER-GENERATED-' + Date.now();
+  const requestStartedAt = Date.now();
+  const correlationId =
+    req.headers['x-correlation-id'] ||
+    req.headers['x-request-id'] ||
+    `SERVER-${crypto.randomUUID()}`;
   req.correlationId = correlationId;
   res.setHeader('x-correlation-id', correlationId);
+  res.setHeader('x-request-id', correlationId);
   logEvent('info', 'request_received', {
     correlationId,
     method: req.method,
-    path: req.path
+    path: req.originalUrl?.split('?')[0] || req.path,
+    remote_ip: req.ip
+  });
+  res.on('finish', () => {
+    logEvent('info', 'request_completed', {
+      correlationId,
+      method: req.method,
+      path: req.originalUrl?.split('?')[0] || req.path,
+      status: res.statusCode,
+      duration_ms: Date.now() - requestStartedAt,
+      actorId: req.user?.id || null
+    });
   });
   next();
 });
@@ -227,7 +170,7 @@ app.use('/api/v1/sse', sseRouter);
 // ===========================================================================
 // 5. HEALTH CHECK
 // ===========================================================================
-app.get('/api/v1/health', async (req, res) => {
+async function assessReadiness() {
   try {
     await pingDatabase();
     const migrationState = await get(`SELECT COUNT(*) AS count FROM schema_migrations`);
@@ -238,18 +181,31 @@ app.get('/api/v1/health', async (req, res) => {
        LIMIT 1`
     );
     const integrity = await scanDataIntegrity({ all }, { includeSnapshots: false });
+    const adminState = await get(`SELECT COUNT(*) AS count FROM users WHERE role = 'ADMIN' AND is_active = 1`);
+    const appliedMigrations = Number(migrationState?.count || 0);
+    const activeAdmins = Number(adminState?.count || 0);
+    const upToDate = appliedMigrations >= migrations.length;
 
-    res.json({
-      status: 'ok',
-      env: process.env.NODE_ENV || 'development',
-      app_env: process.env.APP_ENV || 'local_dev',
-      db: dbDialect,
+    bootState.checks = {
+      database: 'ok',
+      migrations: upToDate ? 'ok' : 'out_of_date',
+      admin_access: activeAdmins > 0 ? 'ok' : 'missing'
+    };
+    bootState.ready = upToDate && activeAdmins > 0;
+
+    return {
+      healthy: true,
+      status: bootState.ready ? 'ok' : 'degraded',
       db_status: 'ok',
       migrations: {
-        applied: Number(migrationState?.count || 0),
+        applied: appliedMigrations,
         expected: migrations.length,
         latest: latestMigration?.id || null,
-        up_to_date: Number(migrationState?.count || 0) >= migrations.length
+        up_to_date: upToDate
+      },
+      admin_access: {
+        active_admins: activeAdmins,
+        status: activeAdmins > 0 ? 'ok' : 'missing'
       },
       integrity: {
         status: integrity.counts.invalidPatients === 0 &&
@@ -261,20 +217,92 @@ app.get('/api/v1/health', async (req, res) => {
           ? 'clean'
           : 'issues_detected',
         counts: integrity.counts
-      },
-      correlation_id: req.correlationId
-    });
+      }
+    };
   } catch (err) {
-    res.status(503).json({
+    bootState.checks = {
+      database: 'unavailable',
+      migrations: 'unknown',
+      admin_access: 'unknown'
+    };
+    bootState.ready = false;
+
+    return {
+      healthy: false,
       status: 'degraded',
-      env: process.env.NODE_ENV || 'development',
-      app_env: process.env.APP_ENV || 'local_dev',
-      db: dbDialect,
       db_status: 'unavailable',
-      correlation_id: req.correlationId,
       error: err.message
-    });
+    };
   }
+}
+
+app.get('/api/v1/health', async (req, res) => {
+  const readiness = await assessReadiness();
+  const payload = {
+    status: readiness.status,
+    env: runtimeConfig.nodeEnv,
+    app_env: runtimeConfig.appEnv,
+    db: dbDialect,
+    db_status: readiness.db_status,
+    migrations: readiness.migrations || {
+      applied: 0,
+      expected: migrations.length,
+      latest: null,
+      up_to_date: false
+    },
+    admin_access: readiness.admin_access || {
+      active_admins: 0,
+      status: 'unknown'
+    },
+    integrity: readiness.integrity || {
+      status: 'unknown',
+      counts: null
+    },
+    boot: {
+      ready: bootState.ready,
+      started_at: bootState.started_at,
+      last_successful_boot_at: bootState.last_successful_boot_at,
+      checks: bootState.checks
+    },
+    config: describeRuntimeConfig(runtimeConfig),
+    correlation_id: req.correlationId
+  };
+
+  if (!readiness.healthy) {
+    payload.error = readiness.error;
+    return res.status(503).json(payload);
+  }
+
+  return res.json(payload);
+});
+
+app.get('/api/v1/ready', async (req, res) => {
+  const readiness = await assessReadiness();
+  const payload = {
+    status: readiness.status,
+    ready: readiness.healthy && bootState.ready,
+    env: runtimeConfig.nodeEnv,
+    app_env: runtimeConfig.appEnv,
+    db: dbDialect,
+    db_status: readiness.db_status,
+    migrations: readiness.migrations || null,
+    admin_access: readiness.admin_access || null,
+    boot: {
+      ready: bootState.ready,
+      last_successful_boot_at: bootState.last_successful_boot_at,
+      checks: bootState.checks
+    },
+    correlation_id: req.correlationId
+  };
+
+  if (!payload.ready) {
+    if (!readiness.healthy && readiness.error) {
+      payload.error = readiness.error;
+    }
+    return res.status(503).json(payload);
+  }
+
+  return res.json(payload);
 });
 
 // ===========================================================================

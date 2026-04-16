@@ -63,7 +63,38 @@ async function getStaffDirectoryUser(userId) {
   );
 }
 
+async function countActiveAdmins() {
+  const row = await get(
+    `SELECT COUNT(*) AS count
+     FROM users
+     WHERE role = 'ADMIN' AND is_active = 1`
+  );
+  return Number(row?.count || 0);
+}
+
+async function ensureAdminContinuity({ targetUser, nextRole = targetUser.role, nextIsActive = targetUser.is_active }) {
+  const isRemovingLastActiveAdmin =
+    targetUser.role === 'ADMIN' &&
+    targetUser.is_active === 1 &&
+    (nextRole !== 'ADMIN' || nextIsActive !== 1);
+
+  if (!isRemovingLastActiveAdmin) {
+    return;
+  }
+
+  const activeAdminCount = await countActiveAdmins();
+  if (activeAdminCount <= 1) {
+    throw {
+      status: 409,
+      code: 'LAST_ACTIVE_ADMIN_PROTECTED',
+      message: 'This action would remove the last active administrator account.'
+    };
+  }
+}
+
 async function ensureRoleChangeAllowed({ currentUser, nextRole, actorId }) {
+  await ensureAdminContinuity({ targetUser: currentUser, nextRole, nextIsActive: currentUser.is_active });
+
   if (currentUser.id === actorId && nextRole !== currentUser.role) {
     throw {
       status: 400,
@@ -375,11 +406,6 @@ router.patch('/users/:userId', requireAuth, requireRole(['ADMIN']), async (req, 
 router.patch('/users/:userId/disable', requireAuth, requireRole(['ADMIN']), async (req, res, next) => {
   const { userId } = req.params;
 
-  // Prevent self-disable
-  if (userId === req.user.id) {
-    return next({ status: 400, code: 'SELF_DISABLE', message: 'Administrators cannot disable their own account.' });
-  }
-
   try {
     const user = await get(`SELECT id, role, name, department, is_active FROM users WHERE id = ?`, [userId]);
     if (!user) {
@@ -388,6 +414,14 @@ router.patch('/users/:userId/disable', requireAuth, requireRole(['ADMIN']), asyn
 
     if (user.is_active === 0) {
       return next({ status: 422, code: 'ALREADY_DISABLED', message: 'Account is already disabled.' });
+    }
+
+    await ensureAdminContinuity({ targetUser: user, nextRole: user.role, nextIsActive: 0 });
+
+    // Prevent self-disable after the continuity protection check so the
+    // last-admin case returns the stronger lockout-specific error.
+    if (userId === req.user.id) {
+      return next({ status: 400, code: 'SELF_DISABLE', message: 'Administrators cannot disable their own account.' });
     }
 
     await run(`UPDATE users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [userId]);

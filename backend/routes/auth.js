@@ -556,7 +556,7 @@ router.post('/change-password', requireAuth, async (req, res, next) => {
     const newHash = await bcrypt.hash(newPassword, BCRYPT_COST);
     await run(
       `UPDATE users
-       SET password_hash = ?, must_change_password = 0
+       SET password_hash = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [newHash, req.user.id]
     );

@@ -20,7 +20,12 @@ const { SEEDED_PASSWORD } = require('./seed');
 
 const TEST_USERS = {
   admin: { id: 'admin_qa', password: SEEDED_PASSWORD },
-  doctor: { id: 'staff_doctor_suite', name: 'Clinical Doctor Suite', password: 'DoctorSuite2026!' },
+  doctor: {
+    id: 'staff_doctor_suite',
+    name: 'Clinical Doctor Suite',
+    department: 'Cardiology',
+    password: 'DoctorSuite2026!'
+  },
   nurse: { id: 'staff_nurse_suite', name: 'Clinical Nurse Suite', password: 'NurseSuite2026!' }
 };
 
@@ -57,6 +62,13 @@ async function loginPatient(username, password, agent = request(app), ipKey = `p
 async function createStaffAccount(adminToken, payload) {
   return request(app)
     .post('/api/v1/admin/users')
+    .set(auth(adminToken))
+    .send(payload);
+}
+
+async function updateStaffAccount(adminToken, userId, payload) {
+  return request(app)
+    .patch(`/api/v1/admin/users/${userId}`)
     .set(auth(adminToken))
     .send(payload);
 }
@@ -158,13 +170,30 @@ async function runVerification() {
 
   console.log('\n[4] Staff Provisioning and RBAC\n');
 
+  const departmentsRes = await request(app).get('/api/v1/admin/departments').set(auth(adminToken));
+  assert.equal(departmentsRes.status, 200, 'Admin must be able to read the department catalog.');
+  assert.ok(departmentsRes.body.includes(TEST_USERS.doctor.department), 'Department catalog must contain Cardiology.');
+  pass('Department catalog is exposed through the admin API');
+
+  const missingDepartmentRes = await createStaffAccount(adminToken, {
+    id: 'doctor_missing_department_suite',
+    role: 'DOCTOR',
+    name: 'Doctor Missing Department',
+    password: 'DoctorMissing2026!'
+  });
+  assert.equal(missingDepartmentRes.status, 400, 'Doctor creation must require a department.');
+  assert.equal(missingDepartmentRes.body.error.code, 'DEPARTMENT_REQUIRED', 'Doctor department errors must be explicit.');
+  pass('Doctor provisioning rejects missing departments');
+
   const doctorCreateRes = await createStaffAccount(adminToken, {
     id: TEST_USERS.doctor.id,
     role: 'DOCTOR',
     name: TEST_USERS.doctor.name,
-    password: TEST_USERS.doctor.password
+    password: TEST_USERS.doctor.password,
+    department: TEST_USERS.doctor.department
   });
   assert.equal(doctorCreateRes.status, 201, 'Doctor creation must succeed.');
+  assert.equal(doctorCreateRes.body.department, TEST_USERS.doctor.department, 'Created doctor must echo the canonical department.');
 
   const nurseCreateRes = await createStaffAccount(adminToken, {
     id: TEST_USERS.nurse.id,
@@ -174,6 +203,54 @@ async function runVerification() {
   });
   assert.equal(nurseCreateRes.status, 201, 'Nurse creation must succeed.');
   pass('Admin can create doctor and nurse accounts on demand');
+
+  const duplicateDoctorRes = await createStaffAccount(adminToken, {
+    id: TEST_USERS.doctor.id,
+    role: 'DOCTOR',
+    name: 'Duplicate Doctor',
+    password: 'DuplicateDoctor2026!',
+    department: TEST_USERS.doctor.department
+  });
+  assert.equal(duplicateDoctorRes.status, 409, 'Duplicate staff usernames must be rejected.');
+  assert.equal(duplicateDoctorRes.body.error.code, 'USER_EXISTS', 'Duplicate staff usernames must return USER_EXISTS.');
+  pass('Duplicate usernames are rejected cleanly');
+
+  const staffDirectoryRes = await request(app).get('/api/v1/admin/users').set(auth(adminToken));
+  assert.equal(staffDirectoryRes.status, 200, 'Admin must be able to refresh the staff directory after provisioning.');
+  const createdDoctor = staffDirectoryRes.body.find((user) => user.id === TEST_USERS.doctor.id);
+  const createdNurse = staffDirectoryRes.body.find((user) => user.id === TEST_USERS.nurse.id);
+  assert.equal(createdDoctor?.department, TEST_USERS.doctor.department, 'Doctor list rows must include the persisted department.');
+  assert.equal(createdDoctor?.status, 'ACTIVE', 'Doctor list rows must expose account status.');
+  assert.equal(createdNurse?.department ?? null, null, 'Nurse list rows must not force doctor-only department data.');
+  pass('Staff directory returns persisted user metadata from the database');
+
+  const immutableUsernameRes = await updateStaffAccount(adminToken, TEST_USERS.doctor.id, {
+    username: 'doctor_persistently_renamed',
+    fullName: TEST_USERS.doctor.name,
+    role: 'DOCTOR',
+    department: 'Neurology'
+  });
+  assert.equal(immutableUsernameRes.status, 400, 'Username edits must be blocked when the login ID is the primary key.');
+  assert.equal(immutableUsernameRes.body.error.code, 'USERNAME_IMMUTABLE', 'Username immutability must be explicit.');
+
+  const doctorEditRes = await updateStaffAccount(adminToken, TEST_USERS.doctor.id, {
+    fullName: 'Clinical Doctor Suite Updated',
+    role: 'DOCTOR',
+    department: 'Neurology'
+  });
+  assert.equal(doctorEditRes.status, 200, 'Editing doctor profile details must succeed.');
+  assert.equal(doctorEditRes.body.updated, true, 'Successful profile edits must be reported.');
+  assert.equal(doctorEditRes.body.user.name, 'Clinical Doctor Suite Updated', 'Edited full name must be returned.');
+  assert.equal(doctorEditRes.body.user.department, 'Neurology', 'Edited department must be returned.');
+
+  const nurseEditRes = await updateStaffAccount(adminToken, TEST_USERS.nurse.id, {
+    fullName: 'Clinical Nurse Suite Updated',
+    role: 'NURSE',
+    department: null
+  });
+  assert.equal(nurseEditRes.status, 200, 'Editing nurse profile details must succeed.');
+  assert.equal(nurseEditRes.body.user.department, null, 'Nurse edits must keep doctor-only department data empty.');
+  pass('Admin can edit persisted staff profile fields while keeping usernames immutable');
 
   const doctorAgent = request.agent(app);
   const nurseAgent = request.agent(app);
@@ -290,6 +367,15 @@ async function runVerification() {
   assert.equal(handoffRes.status, 200, 'Nurse handoff must succeed.');
   assert.equal(handoffRes.body.assignedDoctor.id, TEST_USERS.doctor.id, 'Handoff must assign the created doctor.');
   pass('Nurse can hand off a real patient to a created doctor');
+
+  const blockedDoctorRoleChangeRes = await updateStaffAccount(adminToken, TEST_USERS.doctor.id, {
+    fullName: 'Clinical Doctor Suite Updated',
+    role: 'NURSE',
+    department: null
+  });
+  assert.equal(blockedDoctorRoleChangeRes.status, 409, 'Doctors with active assignments must not be role-changed away from doctor.');
+  assert.equal(blockedDoctorRoleChangeRes.body.error.code, 'ROLE_CHANGE_BLOCKED', 'Blocked role changes must return ROLE_CHANGE_BLOCKED.');
+  pass('Role changes respect active clinical assignment safety rules');
 
   const doctorQueueRes = await request(app).get('/api/v1/queue').set(auth(doctorToken));
   assert.equal(doctorQueueRes.status, 200, 'Doctor queue read must succeed.');

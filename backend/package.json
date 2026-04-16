@@ -8,6 +8,7 @@
     "dev": "npm run migrate && node server.js",
     "migrate": "node scripts/migrate.js",
     "verify": "node verify.js",
+    "verify:staff-persistence": "node scripts/verify-staff-persistence.js",
     "seed": "node scripts/seed.js --mode=append",
     "seed:reset": "node scripts/seed.js --mode=reset --confirm-reset",
     "seed:append": "node scripts/seed.js --mode=append",

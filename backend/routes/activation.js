@@ -208,7 +208,8 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
       const hash = await bcrypt.hash(new_password, salt);
 
       await tx.run(
-        `INSERT INTO users (id, role, name, password_hash, is_active, patient_id) VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (id, role, name, password_hash, is_active, patient_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
         [newUserId, 'PATIENT', patientRecord.name, hash, 1, patientRecord.id]
       );
 

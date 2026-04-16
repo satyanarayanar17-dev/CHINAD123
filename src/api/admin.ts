@@ -4,7 +4,25 @@ export interface User {
   id: string;
   role: 'NURSE' | 'DOCTOR' | 'ADMIN';
   name: string;
+  department: string | null;
   is_active: number;
+  status: 'ACTIVE' | 'INACTIVE';
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface CreateUserPayload {
+  username: string;
+  role: User['role'];
+  fullName: string;
+  password: string;
+  department?: string | null;
+}
+
+export interface UpdateUserPayload {
+  fullName: string;
+  role: User['role'];
+  department?: string | null;
 }
 
 export interface PatientRegistrationPayload {
@@ -58,8 +76,18 @@ export const adminApi = {
     return res.data;
   },
 
-  createUser: async (payload: { id: string; role: string; name: string; password: string }) => {
+  getDepartments: async (): Promise<string[]> => {
+    const res = await api.get<string[]>('/admin/departments');
+    return res.data;
+  },
+
+  createUser: async (payload: CreateUserPayload) => {
     const res = await api.post('/admin/users', payload);
+    return res.data;
+  },
+
+  updateUser: async (userId: string, payload: UpdateUserPayload): Promise<{ user: User; updated: boolean; usernameEditable: boolean }> => {
+    const res = await api.patch<{ user: User; updated: boolean; usernameEditable: boolean }>(`/admin/users/${userId}`, payload);
     return res.data;
   },
 

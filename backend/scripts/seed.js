@@ -1,5 +1,5 @@
 const { dbDialect, migrateDatabase, resetAndSeedDatabase } = require('../database');
-const { SEEDED_PASSWORD, SEEDED_ACTIVATION_CODE, seedDevelopmentDatabase } = require('../seed');
+const { SEEDED_PASSWORD, seedDevelopmentDatabase } = require('../seed');
 const { run } = require('../database');
 
 const args = process.argv.slice(2);
@@ -14,15 +14,16 @@ const isProductionLike =
 function printSummary() {
   console.log('');
   console.log(`[SEED] Done for ${dbDialect}.`);
-  console.log(`[SEED] Shared demo password: ${SEEDED_PASSWORD}`);
-  console.log(`[SEED] Pending activation code for pat-2: ${SEEDED_ACTIVATION_CODE}`);
-  console.log('[SEED] Accounts: nurse_qa, doc1_qa, doc2_qa, admin_qa, patient_qa');
+  console.log(`[SEED] Admin password: ${SEEDED_PASSWORD}`);
+  console.log('[SEED] Seeded accounts: admin_qa');
+  console.log('[SEED] No patient, encounter, or clinical records are preloaded.');
+  console.log('[SEED] Create staff and patients through the application after first login.');
   console.log('');
 }
 
 async function main() {
   if (isProductionLike) {
-    console.error('[SEED] Demo seed data is disabled for restricted_web_pilot / production environments.');
+    console.error('[SEED] Seed script is disabled for restricted_web_pilot / production environments.');
     console.error('[SEED] Use BOOTSTRAP_ADMIN_* env vars for the first admin, then onboard staff and patients through the application.');
     process.exit(1);
   }
@@ -33,13 +34,13 @@ async function main() {
       process.exit(1);
     }
 
-    await resetAndSeedDatabase({ seedMode: 'local-demo' });
+    await resetAndSeedDatabase({ seedMode: 'local-dev' });
     printSummary();
     return;
   }
 
   await migrateDatabase();
-  await seedDevelopmentDatabase({ run, dialect: dbDialect, mode: 'local-demo' });
+  await seedDevelopmentDatabase({ run, dialect: dbDialect, mode: 'local-dev' });
   printSummary();
 }
 

@@ -40,43 +40,39 @@ The live deployment path is now PostgreSQL-backed. SQLite remains available only
    `npm install`
 2. Install backend dependencies:
    `cd backend && npm install`
-3. Seed the local SQLite demo dataset:
+3. Bootstrap the local SQLite development dataset:
    `cd backend && npm run seed:reset`
 4. Diagnose local data integrity before testing:
    `cd backend && npm run diagnose:data`
-5. Start the backend:
-   `cd backend && npm run dev`
-6. Start the frontend:
+5. Start the local stack:
    `npm run dev`
+
+`npm run dev` now starts both the Vite frontend and the Express backend together. The frontend proxy continues to use `http://localhost:3001` unless `VITE_API_BASE_URL` is explicitly set.
 
 Default local URLs:
 
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:3001/api/v1`
 
-Local demo accounts after `npm run seed:reset`:
+Local bootstrap account after `npm run seed:reset`:
 
 - `admin_qa` / `Password123!`
-- `nurse_qa` / `Password123!`
-- `doc1_qa` / `Password123!`
-- `doc2_qa` / `Password123!`
-- patient login via UHID `pat-1` / `Password123!`
 
-## Clean Demo State
+All doctor, nurse, and patient accounts must be created through the application after first login.
 
-Use this when you need a deterministic, demo-safe environment from scratch:
+## Clean Bootstrap State
+
+Use this when you need a deterministic local bootstrap environment from scratch:
 
 `cd backend && npm run seed:reset`
 
 What `seed:reset` guarantees locally:
 
-- 1 admin, 1 nurse, and multiple doctor/staff demo identities
-- 3 patients with valid demographics
-- active encounters with canonical lifecycle state
-- at least one returning patient with prior discharged history, finalized notes, and authorized prescriptions
-- no malformed queue rows in the seeded state
+- 1 bootstrap admin account with a bcrypt-hashed password
+- no preloaded staff, patient, encounter, note, or prescription records
+- a clean schema ready for real onboarding flows
 
-This command is for local/demo use only and should not be enabled in the live pilot.
+This command is for local development only and should not be enabled in the live pilot.
 
 ## Pilot Deployment
 
@@ -127,8 +123,8 @@ Patient onboarding:
 - The backend either creates or reuses the patient safely
 - The backend guarantees an active encounter before returning success
 - The backend issues the activation code from the same onboarding flow
-- Patient opens `/patient/activate`, enters UHID + activation code, sets password
-- Patient then logs in with their UHID and password
+- Patient opens `/patient/activate`, enters their registered mobile number plus activation code, and sets a password
+- Patient then logs in with their registered mobile number and password
 
 ## Auth Boundary Guarantees
 

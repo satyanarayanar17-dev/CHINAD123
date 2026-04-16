@@ -8,7 +8,7 @@ import { shouldForcePasswordChange } from './auth/passwordChangeGate'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false, // Prevent refetching mock data
+      refetchOnWindowFocus: false, // Prevent noisy background refetching during route changes
       retry: false,
     },
   },

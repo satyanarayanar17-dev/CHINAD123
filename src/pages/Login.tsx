@@ -172,7 +172,7 @@ export const Login = () => {
                   type={selectedAccountType === 'staff' ? 'text' : 'tel'}
                   value={id}
                   onChange={e => setId(e.target.value)}
-                  placeholder={selectedAccountType === 'staff' ? 'e.g. CHRI-DOC-001' : 'e.g. 98765 43210'}
+                  placeholder={selectedAccountType === 'staff' ? 'Enter your staff ID' : 'Enter your registered mobile number'}
                   className="w-full bg-white border border-outline rounded-xl px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                 />
               </div>

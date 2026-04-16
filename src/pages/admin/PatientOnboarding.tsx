@@ -114,7 +114,7 @@ export const PatientOnboarding = () => {
             <input
               value={form.name}
               onChange={(event) => updateField('name', event.target.value)}
-              placeholder="Priya Rajan"
+              placeholder="Enter patient name"
               required
               className="w-full rounded-lg border border-outline bg-white px-3 py-2 text-sm outline-none focus:border-primary"
             />
@@ -128,7 +128,7 @@ export const PatientOnboarding = () => {
               type="tel"
               value={form.phone}
               onChange={(event) => updateField('phone', event.target.value)}
-              placeholder="98765 43210"
+              placeholder="Enter registered mobile number"
               required
               className="w-full rounded-lg border border-outline bg-white px-3 py-2 text-sm outline-none focus:border-primary"
             />

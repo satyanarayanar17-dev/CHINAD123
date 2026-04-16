@@ -45,6 +45,13 @@ function clearRevocationCache(userId) {
   revocationCache.delete(userId);
 }
 
+function setRevocationCache(userId, revokedAt) {
+  revocationCache.set(userId, {
+    revokedAt: revokedAt || null,
+    cachedAt: Date.now()
+  });
+}
+
 function extractBearerToken(req) {
   const authHeader = req.headers['authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -93,7 +100,9 @@ async function enforceRevocation(decoded) {
   }
 
   const revokedAtMs = new Date(revokedAt).getTime();
-  const tokenIssuedAtMs = decoded.iat * 1000;
+  const tokenIssuedAtMs = Number.isFinite(decoded.session_iat_ms)
+    ? decoded.session_iat_ms
+    : decoded.iat * 1000;
 
   if (revokedAtMs > tokenIssuedAtMs) {
     throw tokenError(
@@ -145,7 +154,9 @@ async function authenticateToken(token, options = {}) {
       // to allow it through.
       if (staleEntry.revokedAt) {
         const revokedAtMs = new Date(staleEntry.revokedAt).getTime();
-        const tokenIssuedAtMs = decoded.iat * 1000;
+        const tokenIssuedAtMs = Number.isFinite(decoded.session_iat_ms)
+          ? decoded.session_iat_ms
+          : decoded.iat * 1000;
         if (revokedAtMs > tokenIssuedAtMs) {
           throw tokenError(401, 'TOKEN_REVOKED', 'Your session has been revoked. Please contact support.');
         }
@@ -263,6 +274,7 @@ module.exports = {
   requireRole,
   JWT_SECRET,
   clearRevocationCache,
+  setRevocationCache,
   authenticateToken,
   extractBearerToken
 };

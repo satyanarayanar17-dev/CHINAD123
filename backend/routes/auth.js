@@ -28,11 +28,51 @@ const SSE_TOKEN_TTL = '60s';
 const PASSWORD_MIN_LENGTH = 8;
 const BCRYPT_COST = 10;
 
-const loginRateLimit = createRateLimiter({
+function requestIp(req) {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
+    return forwardedFor.split(',')[0].trim();
+  }
+
+  return req.ip || 'unknown';
+}
+
+function normalizeLoginIdentity(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function staffLoginRateLimitKeys(req) {
+  const username = normalizeLoginIdentity(req.body?.username) || 'unknown-user';
+  const ip = requestIp(req);
+  return [
+    `auth:staff-login:ip:${ip}`,
+    `auth:staff-login:user:${username}`
+  ];
+}
+
+function patientLoginRateLimitKeys(req) {
+  const rawUsername = normalizeLoginIdentity(req.body?.username);
+  const normalizedPhone = normalizePatientPhone(rawUsername);
+  const patientIdentity = normalizedPhone || rawUsername || 'unknown-patient';
+  const ip = requestIp(req);
+  return [
+    `auth:patient-login:ip:${ip}`,
+    `auth:patient-login:patient:${patientIdentity}`
+  ];
+}
+
+const staffLoginRateLimit = createRateLimiter({
   max: LOGIN_MAX_ATTEMPTS,
   windowMs: LOGIN_WINDOW_MS,
-  keyFn: (req) => req.ip || req.headers['x-forwarded-for'] || 'unknown',
-  message: 'Too many login attempts. Please wait 15 minutes before trying again.'
+  keyFn: staffLoginRateLimitKeys,
+  message: 'Too many staff login attempts. Please wait 15 minutes before trying again.'
+});
+
+const patientLoginRateLimit = createRateLimiter({
+  max: LOGIN_MAX_ATTEMPTS,
+  windowMs: LOGIN_WINDOW_MS,
+  keyFn: patientLoginRateLimitKeys,
+  message: 'Too many patient login attempts. Please wait 15 minutes before trying again.'
 });
 
 function refreshTokenExpiresAt() {
@@ -56,7 +96,7 @@ function clearRefreshCookie(res) {
 
 function signAccessToken({ actorId, role, accountType }) {
   return jwt.sign(
-    { id: actorId, role, account_type: accountType },
+    { id: actorId, role, account_type: accountType, session_iat_ms: Date.now() },
     JWT_SECRET,
     { expiresIn: ACCESS_TOKEN_TTL }
   );
@@ -77,7 +117,7 @@ async function writeBoundaryMismatchAudit({ req, userRow, username, attemptedAcc
       endpoint,
       attempted_account_type: attemptedAccountType,
       actual_role: userRow.role,
-      ip: req.ip || req.headers['x-forwarded-for'] || 'unknown'
+      ip: requestIp(req)
     })
   });
 
@@ -94,7 +134,7 @@ async function recordUnknownLogin({ req, username }) {
   logEvent('warn', 'auth_unknown_user', {
     correlationId: req.correlationId,
     username,
-    ip: req.ip || req.headers['x-forwarded-for'] || 'unknown'
+    ip: requestIp(req)
   });
 
   await writeAuditDirect({
@@ -103,7 +143,7 @@ async function recordUnknownLogin({ req, username }) {
     action: 'SYS_AUTH_DENIAL:UNKNOWN_USER',
     new_state: JSON.stringify({
       username,
-      ip: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+      ip: requestIp(req),
       outcome: 'failure'
     })
   });
@@ -211,7 +251,7 @@ async function verifyPasswordForUser(userRow, password, isPilotMode) {
 async function handleLogin(req, res, next, accountType, endpoint) {
   const { username, password } = req.body;
   const isPilotMode = process.env.PILOT_AUTH_BYPASS === 'true';
-  const ipKey = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+  const ipKey = requestIp(req);
 
   if (process.env.NODE_ENV === 'production' && isPilotMode) {
     return next({ status: 500, code: 'AUTH_ENVELOPE_BREACH', message: 'Deployment environment is misconfigured. Access halted.' });
@@ -345,15 +385,15 @@ async function handleLogin(req, res, next, accountType, endpoint) {
   }
 }
 
-router.post('/login/patient', loginRateLimit, async (req, res, next) => {
+router.post('/login/patient', patientLoginRateLimit, async (req, res, next) => {
   await handleLogin(req, res, next, ACCOUNT_TYPES.PATIENT, '/api/v1/auth/login/patient');
 });
 
-router.post('/login/staff', loginRateLimit, async (req, res, next) => {
+router.post('/login/staff', staffLoginRateLimit, async (req, res, next) => {
   await handleLogin(req, res, next, ACCOUNT_TYPES.STAFF, '/api/v1/auth/login/staff');
 });
 
-router.post('/login', loginRateLimit, async (req, res, next) => {
+router.post('/login', async (req, res, next) => {
   const accountType = normalizeAccountType(req.body?.account_type);
   if (!accountType) {
     return next({
@@ -363,7 +403,17 @@ router.post('/login', loginRateLimit, async (req, res, next) => {
     });
   }
 
-  await handleLogin(req, res, next, accountType, '/api/v1/auth/login');
+  const limiter = accountType === ACCOUNT_TYPES.PATIENT
+    ? patientLoginRateLimit
+    : staffLoginRateLimit;
+
+  return limiter(req, res, async (limitErr) => {
+    if (limitErr) {
+      return next(limitErr);
+    }
+
+    await handleLogin(req, res, next, accountType, '/api/v1/auth/login');
+  });
 });
 
 router.post('/refresh', async (req, res, next) => {
@@ -375,7 +425,7 @@ router.post('/refresh', async (req, res, next) => {
 
   try {
     const tokenRow = await get(
-      `SELECT rt.*, u.role, u.is_active FROM refresh_tokens rt
+      `SELECT rt.*, u.role, u.is_active, u.must_change_password FROM refresh_tokens rt
        JOIN users u ON u.id = rt.user_id
        WHERE rt.id = ?`,
       [refreshToken]
@@ -447,7 +497,8 @@ router.post('/refresh', async (req, res, next) => {
       access_token: newAccessToken,
       token_type: 'bearer',
       role: tokenRow.role.toLowerCase(),
-      account_type: storedAccountType.toLowerCase()
+      account_type: storedAccountType.toLowerCase(),
+      must_change_password: serializeMustChangePassword(tokenRow.must_change_password)
     });
   } catch (err) {
     next(err);

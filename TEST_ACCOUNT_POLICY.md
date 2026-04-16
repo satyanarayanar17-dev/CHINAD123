@@ -1,16 +1,13 @@
 # TEST ACCOUNT POLICY 
 **Restricted Pilot Phase 1**
 
-Test accounts are hard-coded deliberately in the restricted seed script.
+Only the bootstrap admin account is seeded locally. All other staff and patient accounts must be created through the application when needed.
 
-## The Canonical Four
+## Bootstrap Account
 
-1. **nurse_qa**: Default Triaging identity. Restricted to queuing state overrides.
-2. **doc1_qa**: Primary Physician. Granted OCC-locking notes authorization.
-3. **doc2_qa**: Secondary Physician. Useful for confirming concurrent OCC locking and validating encounter discharge requirements.
-4. **admin_qa**: Sole authoritative identity with backend privileges required to execute User Account provisioning via the newly established directory API.
+1. **admin_qa**: Local bootstrap administrator used to provision staff accounts, onboard patients, and manage password resets.
 
-**Universal Default Password Setup (Prior to Staff Modification):**
+**Local Bootstrap Password:**
 `Password123!`
 
-All deployed internal pilots MUST have administrators execute manual resets via the UI immediately upon first startup.
+Any doctor, nurse, or patient account used in development should be created manually during that session and must not be treated as fixed seeded runtime data.

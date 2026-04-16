@@ -15,7 +15,7 @@ const bcrypt = require('bcryptjs');
 const request = require('supertest');
 
 const app = require('./server');
-const { resetAndSeedDatabase, get, all } = require('./database');
+const { resetAndSeedDatabase, get, all, run } = require('./database');
 const { SEEDED_PASSWORD } = require('./seed');
 
 const TEST_USERS = {
@@ -43,6 +43,18 @@ function pass(label, detail) {
 
 function auth(token) {
   return { Authorization: `Bearer ${token}` };
+}
+
+function extractErrorCode(response) {
+  if (typeof response?.body?.error === 'string') {
+    return response.body.error;
+  }
+
+  if (response?.body?.error && typeof response.body.error.code === 'string') {
+    return response.body.error.code;
+  }
+
+  return null;
 }
 
 async function loginStaff(username, password, agent = request(app), ipKey = `staff-${username}`) {
@@ -133,6 +145,22 @@ async function runVerification() {
   assert.equal(adminMe.body.id, TEST_USERS.admin.id, 'Admin /auth/me must return the bootstrap admin.');
   pass('/auth/me returns the bootstrap admin identity');
 
+  const blockLastAdminDisableRes = await request(app)
+    .patch(`/api/v1/admin/users/${TEST_USERS.admin.id}/disable`)
+    .set(auth(adminToken))
+    .send({});
+  assert.equal(blockLastAdminDisableRes.status, 409, 'Disabling the last active admin must be blocked.');
+  assert.equal(extractErrorCode(blockLastAdminDisableRes), 'LAST_ACTIVE_ADMIN_PROTECTED', 'Last-admin disable must return a stable protection code.');
+
+  const blockLastAdminDowngradeRes = await updateStaffAccount(adminToken, TEST_USERS.admin.id, {
+    fullName: 'Admin QA',
+    role: 'NURSE',
+    department: null
+  });
+  assert.equal(blockLastAdminDowngradeRes.status, 409, 'Downgrading the last active admin must be blocked.');
+  assert.equal(extractErrorCode(blockLastAdminDowngradeRes), 'LAST_ACTIVE_ADMIN_PROTECTED', 'Last-admin downgrade must return a stable protection code.');
+  pass('Last active admin continuity protections are enforced');
+
   console.log('\n[3] No Demo Identities Remain Seeded\n');
 
   const missingAccountType = await request(app)
@@ -182,7 +210,7 @@ async function runVerification() {
     password: 'DoctorMissing2026!'
   });
   assert.equal(missingDepartmentRes.status, 400, 'Doctor creation must require a department.');
-  assert.equal(missingDepartmentRes.body.error.code, 'DEPARTMENT_REQUIRED', 'Doctor department errors must be explicit.');
+  assert.equal(extractErrorCode(missingDepartmentRes), 'DEPARTMENT_REQUIRED', 'Doctor department errors must be explicit.');
   pass('Doctor provisioning rejects missing departments');
 
   const doctorCreateRes = await createStaffAccount(adminToken, {
@@ -212,7 +240,7 @@ async function runVerification() {
     department: TEST_USERS.doctor.department
   });
   assert.equal(duplicateDoctorRes.status, 409, 'Duplicate staff usernames must be rejected.');
-  assert.equal(duplicateDoctorRes.body.error.code, 'USER_EXISTS', 'Duplicate staff usernames must return USER_EXISTS.');
+  assert.equal(extractErrorCode(duplicateDoctorRes), 'USER_EXISTS', 'Duplicate staff usernames must return USER_EXISTS.');
   pass('Duplicate usernames are rejected cleanly');
 
   const staffDirectoryRes = await request(app).get('/api/v1/admin/users').set(auth(adminToken));
@@ -231,7 +259,7 @@ async function runVerification() {
     department: 'Neurology'
   });
   assert.equal(immutableUsernameRes.status, 400, 'Username edits must be blocked when the login ID is the primary key.');
-  assert.equal(immutableUsernameRes.body.error.code, 'USERNAME_IMMUTABLE', 'Username immutability must be explicit.');
+  assert.equal(extractErrorCode(immutableUsernameRes), 'USERNAME_IMMUTABLE', 'Username immutability must be explicit.');
 
   const doctorEditRes = await updateStaffAccount(adminToken, TEST_USERS.doctor.id, {
     fullName: 'Clinical Doctor Suite Updated',
@@ -319,6 +347,80 @@ async function runVerification() {
   assert.equal(activationClaimRes.status, 200, 'Patient activation claim must succeed.');
   pass('Patient activation claim succeeds');
 
+  const invalidActivationClaimRes = await request(app)
+    .post('/api/v1/activation/claim')
+    .send({
+      phone: TEST_PATIENT.phone,
+      otp: '000000',
+      new_password: 'AnotherPatientPass2026!'
+  });
+  assert.equal(invalidActivationClaimRes.status, 409, 'Used activation codes should not be treated as generic success.');
+  assert.equal(extractErrorCode(invalidActivationClaimRes), 'ACTIVATION_CODE_USED', 'Used activation codes must fail with ACTIVATION_CODE_USED.');
+
+  const usedActivationClaimRes = await request(app)
+    .post('/api/v1/activation/claim')
+    .send({
+      phone: TEST_PATIENT.phone,
+      otp: activationCode,
+      new_password: 'AnotherPatientPass2026!'
+  });
+  assert.equal(usedActivationClaimRes.status, 409, 'Reusing an activation code must fail.');
+  assert.equal(extractErrorCode(usedActivationClaimRes), 'ACTIVATION_CODE_USED', 'Reused activation codes must fail with ACTIVATION_CODE_USED.');
+  pass('Used activation codes fail cleanly');
+
+  const expiredPatient = {
+    name: 'Nivetha Raman',
+    phone: '+919822223333',
+    dob: '1993-07-12',
+    gender: 'Female'
+  };
+  const expiredPatientCreateRes = await createPatient(adminToken, {
+    ...expiredPatient,
+    issueActivationToken: true
+  });
+  assert.equal(expiredPatientCreateRes.status, 201, 'Expired-token patient onboarding must succeed.');
+  const expiredActivationCode = expiredPatientCreateRes.body.activation.activation_code;
+  await run(
+    `UPDATE patient_activation_tokens
+     SET expires_at = ?
+     WHERE patient_id = ?`,
+    [new Date(Date.now() - 60 * 1000).toISOString(), expiredPatientCreateRes.body.patient.id]
+  );
+
+  const expiredActivationClaimRes = await request(app)
+    .post('/api/v1/activation/claim')
+    .send({
+      phone: expiredPatient.phone,
+      otp: expiredActivationCode,
+      new_password: 'ExpiredPatient2026!'
+  });
+  assert.equal(expiredActivationClaimRes.status, 410, 'Expired activation codes must fail with 410.');
+  assert.equal(extractErrorCode(expiredActivationClaimRes), 'EXPIRED_TOKEN', 'Expired activation codes must return EXPIRED_TOKEN.');
+  pass('Expired activation codes fail cleanly');
+
+  const freshPatient = {
+    name: 'Harini Subramanian',
+    phone: '+919833334444',
+    dob: '1988-11-05',
+    gender: 'Female'
+  };
+  const freshPatientCreateRes = await createPatient(adminToken, {
+    ...freshPatient,
+    issueActivationToken: true
+  });
+  assert.equal(freshPatientCreateRes.status, 201, 'Fresh invalid-code patient onboarding must succeed.');
+
+  const invalidActivationFreshRes = await request(app)
+    .post('/api/v1/activation/claim')
+    .send({
+      phone: freshPatient.phone,
+      otp: '111111',
+      new_password: 'FreshInvalid2026!'
+  });
+  assert.equal(invalidActivationFreshRes.status, 401, 'Invalid activation codes must fail.');
+  assert.equal(extractErrorCode(invalidActivationFreshRes), 'INVALID_TOKEN', 'Invalid activation codes must return INVALID_TOKEN.');
+  pass('Invalid activation codes fail cleanly');
+
   const patientLogin = await loginPatient(TEST_PATIENT.phone, TEST_PATIENT.password);
   assert.equal(patientLogin.status, 200, 'Patient login must succeed after activation.');
   assert.equal(patientLogin.body.role, 'patient', 'Patient login must preserve patient role.');
@@ -374,7 +476,7 @@ async function runVerification() {
     department: null
   });
   assert.equal(blockedDoctorRoleChangeRes.status, 409, 'Doctors with active assignments must not be role-changed away from doctor.');
-  assert.equal(blockedDoctorRoleChangeRes.body.error.code, 'ROLE_CHANGE_BLOCKED', 'Blocked role changes must return ROLE_CHANGE_BLOCKED.');
+  assert.equal(extractErrorCode(blockedDoctorRoleChangeRes), 'ROLE_CHANGE_BLOCKED', 'Blocked role changes must return ROLE_CHANGE_BLOCKED.');
   pass('Role changes respect active clinical assignment safety rules');
 
   const doctorQueueRes = await request(app).get('/api/v1/queue').set(auth(doctorToken));
@@ -472,18 +574,39 @@ async function runVerification() {
   assert.equal(tempDoctorLogin.body.must_change_password, true, 'Temporary login must flag must_change_password.');
 
   const tempDoctorToken = tempDoctorLogin.body.access_token;
+  const blockedByMustChangeRes = await request(app).get('/api/v1/queue').set(auth(tempDoctorToken));
+  assert.equal(blockedByMustChangeRes.status, 403, 'must_change_password sessions must be blocked from protected app routes.');
+  assert.equal(extractErrorCode(blockedByMustChangeRes), 'PASSWORD_CHANGE_REQUIRED', 'must_change_password blocks must use PASSWORD_CHANGE_REQUIRED.');
+
   const changePasswordRes = await request(app)
     .post('/api/v1/auth/change-password')
     .set(auth(tempDoctorToken))
     .send({
       currentPassword: resetPasswordRes.body.temporaryPassword,
       newPassword: 'DoctorSuiteReset2026!'
-    });
+  });
   assert.equal(changePasswordRes.status, 200, 'Doctor password change must succeed.');
 
   const changedDoctorLogin = await loginStaff(TEST_USERS.doctor.id, 'DoctorSuiteReset2026!');
   assert.equal(changedDoctorLogin.status, 200, 'Doctor must be able to log in with the changed password.');
-  pass('Password reset and change-password flows remain intact');
+
+  const resetAuditLeakCheck = await all(
+    `SELECT action, prior_state, new_state
+     FROM audit_logs
+     WHERE action LIKE 'ADMIN_PASS_RESET:%' OR action LIKE 'SYS_AUTH_PASSWORD_CHANGE:%'`
+  );
+  const serializedResetAudit = JSON.stringify(resetAuditLeakCheck);
+  assert.equal(serializedResetAudit.includes(resetPasswordRes.body.temporaryPassword), false, 'Temporary passwords must not be written to audit logs.');
+  assert.equal(serializedResetAudit.includes('"password_hash"'), false, 'Password hashes must not be written to audit logs.');
+
+  const activationAuditLeakCheck = await all(
+    `SELECT action, prior_state, new_state
+     FROM audit_logs
+     WHERE action LIKE 'PATIENT_REGISTER:%' OR action = 'PATIENT_ACTIVATION_OTP_GENERATED' OR action = 'PATIENT_ACTIVATION_CLAIM_SUCCESS'`
+  );
+  const serializedActivationAudit = JSON.stringify(activationAuditLeakCheck);
+  assert.equal(serializedActivationAudit.includes(activationCode), false, 'Activation codes must not be written to audit logs.');
+  pass('Password reset and change-password flows remain intact without sensitive audit leakage');
 
   const disableNurseRes = await request(app)
     .patch(`/api/v1/admin/users/${TEST_USERS.nurse.id}/disable`)

@@ -1,20 +1,15 @@
 const express = require('express');
-const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { get, all, run, withTransaction } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
 const { createRateLimiter } = require('../middleware/rateLimit');
-const { normalizePatientPhone, generateNumericOTP } = require('../lib/clinicalIntegrity');
+const { normalizePatientPhone } = require('../lib/clinicalIntegrity');
 const { assertPatientRecord, loadPatientRecord, resolveSingleActiveEncounter } = require('../lib/careFlow');
+const { issuePatientActivationToken, verifyActivationCode } = require('../lib/patientActivation');
 const { logEvent } = require('../lib/logger');
 
 const router = express.Router();
-const activationOtpDelivery =
-  process.env.ACTIVATION_OTP_DELIVERY ||
-  (process.env.NODE_ENV === 'production' ? 'console' : 'api_response');
-
-const generateOTP = () => generateNumericOTP(6);
 
 // ---------------------------------------------------------------------------
 // Rate limiting — P2: inline claim limiter (tracks failed attempts per UHID)
@@ -93,41 +88,20 @@ router.post('/generate', requireAuth, requireRole(['ADMIN', 'NURSE', 'DOCTOR']),
       return res.status(409).json({ error: 'ACCOUNT_EXISTS', message: 'A portal account already exists for this patient.' });
     }
 
-    const otp = generateOTP();
-    const expiresAt = new Date(Date.now() + 20 * 60000).toISOString();
-
-    await run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patient_id]);
-    await run(
-      `INSERT INTO patient_activation_tokens (patient_id, otp, expires_at) VALUES (?, ?, ?)`,
-      [patient_id, otp, expiresAt]
-    );
+    const issuedActivation = await issuePatientActivationToken({ run }, patient_id);
 
     await writeAuditDirect({
       correlation_id: req.correlationId,
       actor_id: req.user.id,
       patient_id,
       action: 'PATIENT_ACTIVATION_OTP_GENERATED',
-      new_state: JSON.stringify({ expires_at: expiresAt, generated_by_role: req.user.role })
+      new_state: JSON.stringify({ expires_at: issuedActivation.expiresAt, generated_by_role: req.user.role })
     });
 
-    console.log(`\n---------------------------------------------------------`);
-    console.log(`[SYS: MOCK SMS] To: Patient ${patientRecord.phone || patient_id}`);
-    console.log(`[SYS: MOCK SMS] Your Chettinad Care activation code is: ${otp}. Valid for 20 mins.`);
-    console.log(`---------------------------------------------------------\n`);
-
-    const response = {
+    res.json({
       message: 'Activation token generated and delivered.',
-      expires_at: expiresAt
-    };
-
-    if (activationOtpDelivery === 'api_response') {
-      response.activation_code = otp;
-      response.delivery_mode = 'api_response';
-    } else if (process.env.NODE_ENV !== 'production') {
-      response._meta = { debug_otp: otp };
-    }
-
-    res.json(response);
+      ...issuedActivation.activation
+    });
   } catch (err) {
     next(err);
   }
@@ -171,11 +145,21 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
       });
 
       const tokenRecord = await tx.get(
-        `SELECT * FROM patient_activation_tokens WHERE patient_id = ? AND otp = ?`,
-        [patientRecord.id, otp]
+        `SELECT * FROM patient_activation_tokens WHERE patient_id = ?`,
+        [patientRecord.id]
       );
 
+      const existingUser = await tx.get(`SELECT id FROM users WHERE patient_id = ?`, [patientRecord.id]);
+
       if (!tokenRecord) {
+        if (existingUser) {
+          throw {
+            status: 409,
+            code: 'ACCOUNT_EXISTS',
+            message: 'A portal account has already been activated for this phone number.'
+          };
+        }
+
         throw {
           status: 401,
           code: 'INVALID_TOKEN',
@@ -183,23 +167,38 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
         };
       }
 
+      if (tokenRecord.consumed_at) {
+        throw {
+          status: 409,
+          code: 'ACTIVATION_CODE_USED',
+          message: 'This activation code has already been used. Please log in or request a new code.'
+        };
+      }
+
       const now = new Date();
       const expiry = new Date(tokenRecord.expires_at);
       if (now > expiry) {
-        await tx.run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patientRecord.id]);
         throw {
-          status: 401,
+          status: 410,
           code: 'EXPIRED_TOKEN',
           message: 'Activation code has expired. Please request a new one.'
         };
       }
 
-      const existingUser = await tx.get(`SELECT id FROM users WHERE patient_id = ?`, [patientRecord.id]);
+      const isValidToken = await verifyActivationCode(tokenRecord, otp);
+      if (!isValidToken) {
+        throw {
+          status: 401,
+          code: 'INVALID_TOKEN',
+          message: 'Activation code is invalid or does not match this phone number.'
+        };
+      }
+
       if (existingUser) {
         throw {
           status: 409,
-          code: 'ACCOUNT_EXISTS',
-          message: 'An account has already been claimed for this phone number.'
+          code: 'ACTIVATION_CODE_USED',
+          message: 'This activation code has already been used. Please log in or request a new code.'
         };
       }
 
@@ -213,7 +212,12 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
         [newUserId, 'PATIENT', patientRecord.name, hash, 1, patientRecord.id]
       );
 
-      await tx.run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patientRecord.id]);
+      await tx.run(
+        `UPDATE patient_activation_tokens
+         SET consumed_at = CURRENT_TIMESTAMP
+         WHERE patient_id = ?`,
+        [patientRecord.id]
+      );
 
       return { newUserId, patientId: patientRecord.id };
     });

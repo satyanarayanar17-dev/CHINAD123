@@ -467,7 +467,7 @@ export const UserManagement = () => {
                         </button>
                       </div>
                       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                        Copy this temporary password and share it securely with the staff member.
+                        This temporary password is shown only for this reset action. Copy it now and share it securely with the staff member.
                       </div>
                       <div className="rounded-xl border border-outline/20 bg-surface-container-low p-4 text-sm text-on-surface-variant">
                         The user will be required to change password on next login.

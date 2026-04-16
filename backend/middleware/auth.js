@@ -26,6 +26,11 @@ if (!JWT_SECRET) {
  */
 const revocationCache = new Map();
 const REVOCATION_CACHE_TTL_MS = 60 * 1000;
+const MUST_CHANGE_PASSWORD_ALLOWED_PATHS = new Set([
+  '/api/v1/auth/change-password',
+  '/api/v1/auth/logout',
+  '/api/v1/auth/me'
+]);
 
 function tokenError(status, code, message) {
   return { status, code, message };
@@ -169,6 +174,41 @@ async function authenticateToken(token, options = {}) {
   return decoded;
 }
 
+function isMustChangePasswordBypassPath(req) {
+  const path = req.originalUrl?.split('?')[0] || req.path || '';
+  return MUST_CHANGE_PASSWORD_ALLOWED_PATHS.has(path);
+}
+
+async function enforceCurrentUserState(req, decoded) {
+  const userRow = await get(
+    `SELECT id, role, is_active, must_change_password
+     FROM users
+     WHERE id = ?`,
+    [decoded.id]
+  );
+
+  if (!userRow || userRow.is_active === 0) {
+    throw tokenError(401, 'ACCOUNT_DISABLED', 'This account has been disabled.');
+  }
+
+  if (userRow.role !== decoded.role) {
+    throw tokenError(401, 'INVALID_SESSION_SCOPE', 'Session scope is invalid. Please log in again.');
+  }
+
+  if ((userRow.must_change_password === 1 || userRow.must_change_password === true) && !isMustChangePasswordBypassPath(req)) {
+    throw tokenError(
+      403,
+      'PASSWORD_CHANGE_REQUIRED',
+      'Password change is required before accessing the application.'
+    );
+  }
+
+  return {
+    ...decoded,
+    must_change_password: userRow.must_change_password === 1 || userRow.must_change_password === true
+  };
+}
+
 /**
  * Validates JWT existence and signature, then checks the revoked_tokens
  * table to enforce immediate token invalidation when a user is disabled.
@@ -182,7 +222,7 @@ async function requireAuth(req, res, next) {
   try {
     const token = extractBearerToken(req);
     const decoded = await authenticateToken(token);
-    req.user = decoded;
+    req.user = await enforceCurrentUserState(req, decoded);
     next();
   } catch (err) {
     next(err.status ? err : tokenError(500, 'AUTH_FAILURE', err.message));

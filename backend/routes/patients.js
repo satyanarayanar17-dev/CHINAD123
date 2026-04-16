@@ -6,7 +6,6 @@ const { writeAuditDirect } = require('../middleware/audit');
 const { writeNotification } = require('./notifications');
 const {
   buildPatientReadModel,
-  generateNumericOTP,
   isIsoDateOnly,
   normalizePatientGender,
   normalizePatientPhone,
@@ -20,32 +19,12 @@ const {
   ensureActiveEncounter,
   loadPatientRecord
 } = require('../lib/careFlow');
+const { issuePatientActivationToken } = require('../lib/patientActivation');
 const { logEvent } = require('../lib/logger');
 
 const router = express.Router();
 
 const BREAK_GLASS_MIN_LENGTH = 50;
-const activationOtpDelivery =
-  process.env.ACTIVATION_OTP_DELIVERY ||
-  (process.env.NODE_ENV === 'production' ? 'console' : 'api_response');
-
-function generateActivationCode() {
-  return generateNumericOTP(6);
-}
-
-function buildActivationEnvelope(otp, expiresAt) {
-  const activation = {
-    expires_at: expiresAt,
-    delivery_mode: activationOtpDelivery
-  };
-
-  if (activationOtpDelivery === 'api_response') {
-    activation.activation_code = otp;
-  }
-
-  return activation;
-}
-
 function isPhoneUniqueConstraint(err) {
   const message = String(err?.message || '');
   const detail = String(err?.detail || '');
@@ -290,16 +269,8 @@ router.post('/', requireAuth, requireRole(['ADMIN', 'NURSE']), async (req, res, 
           };
         }
 
-        const otp = generateActivationCode();
-        const expiresAt = new Date(Date.now() + 20 * 60 * 1000).toISOString();
-
-        await tx.run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patient.id]);
-        await tx.run(
-          `INSERT INTO patient_activation_tokens (patient_id, otp, expires_at) VALUES (?, ?, ?)`,
-          [patient.id, otp, expiresAt]
-        );
-
-        activation = buildActivationEnvelope(otp, expiresAt);
+        const issuedActivation = await issuePatientActivationToken(tx, patient.id);
+        activation = issuedActivation.activation;
       }
 
       return {
@@ -325,13 +296,6 @@ router.post('/', requireAuth, requireRole(['ADMIN', 'NURSE']), async (req, res, 
         activationIssued: Boolean(result.activation)
       })
     });
-
-    if (result.activation?.activation_code) {
-      console.log(`\n---------------------------------------------------------`);
-      console.log(`[SYS: MOCK SMS] To: Patient ${result.patient.phone || result.patient.id}`);
-      console.log(`[SYS: MOCK SMS] Your Chettinad Care activation code is: ${result.activation.activation_code}. Valid for 20 mins.`);
-      console.log(`---------------------------------------------------------\n`);
-    }
 
     res.status(result.patientCreated ? 201 : 200).json({
       patient: buildPatientReadModel(result.patient),

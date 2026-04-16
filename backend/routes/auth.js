@@ -18,6 +18,17 @@ const { logEvent } = require('../lib/logger');
 
 const router = express.Router();
 
+/**
+ * Builds a standard error envelope consistent with the global error handler shape.
+ * Includes correlation_id so every auth rejection is traceable in logs.
+ */
+function authErr(req, res, status, code, message, extra = {}) {
+  return res.status(status).json({
+    error: { code, message, ...extra },
+    meta: { correlation_id: req.correlationId || null }
+  });
+}
+
 const LOGIN_MAX_ATTEMPTS = 10;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const REFRESH_TOKEN_TTL_DAYS = 30;
@@ -273,12 +284,11 @@ async function handleLogin(req, res, next, accountType, endpoint) {
             endpoint
           });
 
-          return res.status(403).json({
-            error: 'ACCOUNT_TYPE_MISMATCH',
-            message: accountType === ACCOUNT_TYPES.PATIENT
+          return authErr(req, res, 403, 'ACCOUNT_TYPE_MISMATCH',
+            accountType === ACCOUNT_TYPES.PATIENT
               ? 'This account is not permitted on the patient login path.'
               : 'This account is not permitted on the staff login path.'
-          });
+          );
         }
 
         await recordFailedPassword({ req, userRow: alternateUser, username, ipKey });
@@ -286,7 +296,7 @@ async function handleLogin(req, res, next, accountType, endpoint) {
         await recordUnknownLogin({ req, username });
       }
 
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Invalid username or password.' });
+      return authErr(req, res, 401, 'INVALID_CREDENTIALS', 'Invalid username or password.');
     }
 
     const derivedAccountType = accountTypeForRole(userRow.role);
@@ -299,12 +309,11 @@ async function handleLogin(req, res, next, accountType, endpoint) {
         endpoint
       });
 
-      return res.status(403).json({
-        error: 'ACCOUNT_TYPE_MISMATCH',
-        message: accountType === ACCOUNT_TYPES.PATIENT
+      return authErr(req, res, 403, 'ACCOUNT_TYPE_MISMATCH',
+        accountType === ACCOUNT_TYPES.PATIENT
           ? 'This account is not permitted on the patient login path.'
           : 'This account is not permitted on the staff login path.'
-      });
+      );
     }
 
     // Account disabled
@@ -315,7 +324,7 @@ async function handleLogin(req, res, next, accountType, endpoint) {
         action: 'SYS_AUTH_FAILED:INACTIVE',
         new_state: JSON.stringify({ username, ip: ipKey, outcome: 'inactive' })
       });
-      return res.status(401).json({ error: 'ACCOUNT_DISABLED', message: 'This account has been disabled.' });
+      return authErr(req, res, 401, 'ACCOUNT_DISABLED', 'This account has been disabled.');
     }
 
     // Per-user DB lockout check
@@ -327,18 +336,17 @@ async function handleLogin(req, res, next, accountType, endpoint) {
         action: 'SYS_AUTH_FAILED:LOCKED',
         new_state: JSON.stringify({ username, ip: ipKey, outcome: 'locked', retry_after_seconds: retryAfter })
       });
-      return res.status(429).json({
-        error: 'ACCOUNT_LOCKED',
-        message: `Account temporarily locked. Try again in ${Math.ceil(retryAfter / 60)} minute(s).`,
-        retry_after_seconds: retryAfter
-      });
+      return authErr(req, res, 429, 'ACCOUNT_LOCKED',
+        `Account temporarily locked. Try again in ${Math.ceil(retryAfter / 60)} minute(s).`,
+        { retry_after_seconds: retryAfter }
+      );
     }
 
     const isValidPassword = await verifyPasswordForUser(userRow, password, isPilotMode);
 
     if (!isValidPassword) {
       await recordFailedPassword({ req, userRow, username, ipKey });
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Invalid username or password.' });
+      return authErr(req, res, 401, 'INVALID_CREDENTIALS', 'Invalid username or password.');
     }
 
     // Success — clear DB lockout state
@@ -420,7 +428,7 @@ router.post('/refresh', async (req, res, next) => {
   const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refresh_token;
 
   if (!refreshToken) {
-    return res.status(401).json({ error: 'REFRESH_REQUIRED', message: 'refresh_token is required.' });
+    return authErr(req, res, 401, 'REFRESH_REQUIRED', 'refresh_token is required.');
   }
 
   try {
@@ -433,7 +441,7 @@ router.post('/refresh', async (req, res, next) => {
 
     if (!tokenRow) {
       clearRefreshCookie(res);
-      return res.status(401).json({ error: 'REFRESH_INVALID', message: 'Invalid refresh token.' });
+      return authErr(req, res, 401, 'REFRESH_INVALID', 'Invalid refresh token.');
     }
 
     if (tokenRow.revoked === 1) {
@@ -444,18 +452,18 @@ router.post('/refresh', async (req, res, next) => {
         new_state: JSON.stringify({ refresh_token_id: refreshToken })
       });
       clearRefreshCookie(res);
-      return res.status(401).json({ error: 'REFRESH_REVOKED', message: 'Refresh token has been revoked.' });
+      return authErr(req, res, 401, 'REFRESH_REVOKED', 'Refresh token has been revoked.');
     }
 
     if (new Date(tokenRow.expires_at) < new Date()) {
       await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshToken]);
       clearRefreshCookie(res);
-      return res.status(401).json({ error: 'REFRESH_EXPIRED', message: 'Refresh token has expired. Please log in again.' });
+      return authErr(req, res, 401, 'REFRESH_EXPIRED', 'Refresh token has expired. Please log in again.');
     }
 
     if (tokenRow.is_active === 0) {
       clearRefreshCookie(res);
-      return res.status(401).json({ error: 'ACCOUNT_DISABLED', message: 'This account has been disabled.' });
+      return authErr(req, res, 401, 'ACCOUNT_DISABLED', 'This account has been disabled.');
     }
 
     const storedAccountType = normalizeAccountType(tokenRow.account_type);
@@ -472,10 +480,7 @@ router.post('/refresh', async (req, res, next) => {
         })
       });
       clearRefreshCookie(res);
-      return res.status(401).json({
-        error: 'REFRESH_SCOPE_INVALID',
-        message: 'Session scope is invalid or outdated. Please log in again.'
-      });
+      return authErr(req, res, 401, 'REFRESH_SCOPE_INVALID', 'Session scope is invalid or outdated. Please log in again.');
     }
 
     await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshToken]);
@@ -517,7 +522,7 @@ router.post('/logout', async (req, res, next) => {
         new_state: JSON.stringify({ refresh_token_id: refreshToken })
       });
     } catch (err) {
-      console.error('[AUTH] Failed to revoke refresh token:', err.message);
+      logEvent('error', 'refresh_token_revoke_failed', { error: err.message });
     }
   }
   clearRefreshCookie(res);
@@ -529,7 +534,7 @@ router.get('/me', requireAuth, requireRole(['PATIENT', 'DOCTOR', 'NURSE', 'ADMIN
   try {
     const userRow = await get(`SELECT * FROM users WHERE id = ?`, [req.user.id]);
     if (!userRow || userRow.is_active === 0) {
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Identity not found or inactive.' });
+      return authErr(req, res, 401, 'INVALID_CREDENTIALS', 'Identity not found or inactive.');
     }
 
     const expectedAccountType = accountTypeForRole(userRow.role);
@@ -545,10 +550,7 @@ router.get('/me', requireAuth, requireRole(['PATIENT', 'DOCTOR', 'NURSE', 'ADMIN
           actual_role: userRow.role
         })
       });
-      return res.status(401).json({
-        error: 'INVALID_SESSION_SCOPE',
-        message: 'Session scope is invalid. Please log in again.'
-      });
+      return authErr(req, res, 401, 'INVALID_SESSION_SCOPE', 'Session scope is invalid. Please log in again.');
     }
 
     setNoStore(res);
@@ -586,22 +588,16 @@ router.post('/change-password', requireAuth, async (req, res, next) => {
   try {
     const userRow = await get(`SELECT * FROM users WHERE id = ?`, [req.user.id]);
     if (!userRow || userRow.is_active === 0) {
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Identity not found or inactive.' });
+      return authErr(req, res, 401, 'INVALID_CREDENTIALS', 'Identity not found or inactive.');
     }
 
     if (!userRow.password_hash) {
-      return res.status(401).json({
-        error: 'INVALID_CREDENTIALS',
-        message: 'Current password is incorrect.'
-      });
+      return authErr(req, res, 401, 'INVALID_CREDENTIALS', 'Current password is incorrect.');
     }
 
     const isValidPassword = await bcrypt.compare(currentPassword, userRow.password_hash);
     if (!isValidPassword) {
-      return res.status(401).json({
-        error: 'INVALID_CREDENTIALS',
-        message: 'Current password is incorrect.'
-      });
+      return authErr(req, res, 401, 'INVALID_CREDENTIALS', 'Current password is incorrect.');
     }
 
     const newHash = await bcrypt.hash(newPassword, BCRYPT_COST);

@@ -14,6 +14,7 @@
     "seed:append": "node scripts/seed.js --mode=append",
     "diagnose:data": "node scripts/diagnose-data.js",
     "repair:data": "node scripts/repair-data.js",
+    "backup:db": "node scripts/backup-sqlite.js",
     "test": "node test.js"
   },
   "keywords": [],

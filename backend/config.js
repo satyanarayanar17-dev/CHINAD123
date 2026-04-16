@@ -260,6 +260,13 @@ function validateRuntimeConfig(config) {
     if (config.dbDialect === 'sqlite' && !readString(process.env.SQLITE_PATH)) {
       errors.push('SQLITE_PATH must be explicitly set for sqlite pilot deployments.');
     }
+    if (config.dbDialect === 'sqlite') {
+      warnings.push(
+        'SQLite is the active backing store. Ensure automated file-level backups are ' +
+        'in place before go-live (run: node backend/scripts/backup-sqlite.js). ' +
+        'SQLite does not support concurrent write access from multiple processes.'
+      );
+    }
   } else if (!config.jwtSecret) {
     warnings.push('JWT_SECRET is not set. Local dev will fall back to an insecure default. Never use that outside local_dev.');
   }

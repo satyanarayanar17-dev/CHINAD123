@@ -200,7 +200,7 @@ async function runVerification() {
 
   const adminViaPatientLogin = await loginPatient(TEST_USERS.admin.id, TEST_USERS.admin.password);
   assert.equal(adminViaPatientLogin.status, 403, 'Admin credentials must be rejected on patient login.');
-  assert.equal(adminViaPatientLogin.body.error, 'ACCOUNT_TYPE_MISMATCH', 'Admin rejection must be explicit on the patient boundary.');
+  assert.equal(extractErrorCode(adminViaPatientLogin), 'ACCOUNT_TYPE_MISMATCH', 'Admin rejection must be explicit on the patient boundary.');
   pass('Admin credentials are blocked from the patient login path');
 
   const initialUsersRes = await request(app).get('/api/v1/admin/users').set(auth(adminToken));
@@ -332,11 +332,11 @@ async function runVerification() {
 
   const doctorViaPatientLogin = await loginPatient(TEST_USERS.doctor.id, TEST_USERS.doctor.password);
   assert.equal(doctorViaPatientLogin.status, 403, 'Doctor credentials must be rejected on the patient path.');
-  assert.equal(doctorViaPatientLogin.body.error, 'ACCOUNT_TYPE_MISMATCH', 'Doctor boundary mismatch must stay explicit.');
+  assert.equal(extractErrorCode(doctorViaPatientLogin), 'ACCOUNT_TYPE_MISMATCH', 'Doctor boundary mismatch must stay explicit.');
 
   const nurseViaPatientLogin = await loginPatient(TEST_USERS.nurse.id, TEST_USERS.nurse.password);
   assert.equal(nurseViaPatientLogin.status, 403, 'Nurse credentials must be rejected on the patient path.');
-  assert.equal(nurseViaPatientLogin.body.error, 'ACCOUNT_TYPE_MISMATCH', 'Nurse boundary mismatch must stay explicit.');
+  assert.equal(extractErrorCode(nurseViaPatientLogin), 'ACCOUNT_TYPE_MISMATCH', 'Nurse boundary mismatch must stay explicit.');
   pass('Staff credentials cannot cross into the patient login boundary');
 
   const doctorOnAdminUsers = await request(app).get('/api/v1/admin/users').set(auth(doctorToken));
@@ -574,7 +574,7 @@ async function runVerification() {
 
   const patientViaStaffLogin = await loginStaff(TEST_PATIENT.phone, TEST_PATIENT.password);
   assert.equal(patientViaStaffLogin.status, 403, 'Patient credentials must be rejected on the staff path.');
-  assert.equal(patientViaStaffLogin.body.error, 'ACCOUNT_TYPE_MISMATCH', 'Patient mismatch must stay explicit.');
+  assert.equal(extractErrorCode(patientViaStaffLogin), 'ACCOUNT_TYPE_MISMATCH', 'Patient mismatch must stay explicit.');
   pass('Patient credentials cannot cross into the staff login boundary');
 
   const patientAppointmentsBeforeRecords = await request(app).get('/api/v1/my/appointments').set(auth(patientToken));
@@ -726,7 +726,7 @@ async function runVerification() {
 
   const staleDoctorRefreshAfterReset = await doctorAgent.post('/api/v1/auth/refresh').send({});
   assert.equal(staleDoctorRefreshAfterReset.status, 401, 'Pre-reset doctor refresh tokens must be revoked after an admin reset.');
-  assert.equal(staleDoctorRefreshAfterReset.body.error, 'REFRESH_REVOKED', 'Stale doctor refresh tokens must fail with REFRESH_REVOKED.');
+  assert.equal(extractErrorCode(staleDoctorRefreshAfterReset), 'REFRESH_REVOKED', 'Stale doctor refresh tokens must fail with REFRESH_REVOKED.');
 
   const oldDoctorLogin = await loginStaff(TEST_USERS.doctor.id, TEST_USERS.doctor.password);
   assert.equal(oldDoctorLogin.status, 401, 'Old doctor password must stop working after reset.');
@@ -813,7 +813,7 @@ async function runVerification() {
 
   const disabledNurseLogin = await loginStaff(TEST_USERS.nurse.id, TEST_USERS.nurse.password);
   assert.equal(disabledNurseLogin.status, 401, 'Disabled nurse must not be able to log in.');
-  assert.equal(disabledNurseLogin.body.error, 'ACCOUNT_DISABLED', 'Disabled account must return ACCOUNT_DISABLED.');
+  assert.equal(extractErrorCode(disabledNurseLogin), 'ACCOUNT_DISABLED', 'Disabled account must return ACCOUNT_DISABLED.');
   pass('Disable flow revokes existing tokens and blocks future login');
 
   console.log('\n[8] Reset Endpoint Returns to Clean Baseline\n');

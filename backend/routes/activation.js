@@ -16,6 +16,13 @@ const { logEvent } = require('../lib/logger');
 
 const router = express.Router();
 
+function activationErr(req, res, status, code, message, extra = {}) {
+  return res.status(status).json({
+    error: { code, message, ...extra },
+    meta: { correlation_id: req.correlationId || null }
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Rate limiting — P2: inline claim limiter (tracks failed attempts per UHID)
 // P3 addition: generate limiter via shared factory (5 per 10 min per staff user)
@@ -121,17 +128,16 @@ router.post('/generate', requireAuth, requireRole(['ADMIN', 'NURSE', 'DOCTOR']),
       actorId: req.user.id,
       reason: 'missing_patient_id'
     });
-    return res.status(400).json({ error: 'MISSING_DATA', message: 'patient_id is required' });
+    return activationErr(req, res, 400, 'MISSING_DATA', 'patient_id is required');
   }
 
   try {
     const patientRecord = await loadPatientRecord({ get }, patient_id);
     assertPatientRecord(patientRecord);
     if (!patientRecord.phone) {
-      return res.status(422).json({
-        error: 'PHONE_REQUIRED',
-        message: 'Patient activation requires a validated phone number on the patient profile.'
-      });
+      return activationErr(req, res, 422, 'PHONE_REQUIRED',
+        'Patient activation requires a validated phone number on the patient profile.'
+      );
     }
 
     await resolveSingleActiveEncounter({ all }, patient_id, {
@@ -149,7 +155,7 @@ router.post('/generate', requireAuth, requireRole(['ADMIN', 'NURSE', 'DOCTOR']),
         patientId: patient_id,
         reason: 'account_already_exists'
       });
-      return res.status(409).json({ error: 'ACCOUNT_EXISTS', message: 'A portal account already exists for this patient.' });
+      return activationErr(req, res, 409, 'ACCOUNT_EXISTS', 'A portal account already exists for this patient.');
     }
 
     const issuedActivation = await issuePatientActivationToken({ run }, patient_id);
@@ -186,7 +192,7 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
       phone: normalizedPhone || null,
       reason: 'missing_fields'
     });
-    return res.status(400).json({ error: 'MISSING_DATA', message: 'phone, otp, and new_password are required' });
+    return activationErr(req, res, 400, 'MISSING_DATA', 'phone, otp, and new_password are required');
   }
 
   if (new_password.length < 8) {
@@ -195,7 +201,7 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
       phone: normalizedPhone,
       reason: 'weak_password'
     });
-    return res.status(400).json({ error: 'WEAK_PASSWORD', message: 'Password must be at least 8 characters long.' });
+    return activationErr(req, res, 400, 'WEAK_PASSWORD', 'Password must be at least 8 characters long.');
   }
 
   try {

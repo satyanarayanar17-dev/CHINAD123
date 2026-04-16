@@ -5,6 +5,7 @@ const { Pool } = require('pg');
 const { applyMigrations } = require('./migrations');
 const { seedDevelopmentDatabase } = require('./seed');
 const { runtimeConfig } = require('./config');
+const { logEvent } = require('./lib/logger');
 
 const dbDialect = runtimeConfig.dbDialect;
 const sqlitePath = path.resolve(__dirname, runtimeConfig.sqlitePath);
@@ -40,7 +41,7 @@ function createPostgresQueryContext(client) {
 }
 
 if (dbDialect === 'postgres') {
-  console.log('[DB] Connecting to PostgreSQL pool...');
+  logEvent('info', 'db_pool_connecting', { dialect: 'postgres' });
   pgPool = new Pool({
     connectionString: runtimeConfig.databaseUrl,
     max: runtimeConfig.pgPoolMax,
@@ -48,7 +49,7 @@ if (dbDialect === 'postgres') {
     ssl: useDatabaseSsl ? { rejectUnauthorized: false } : undefined
   });
   pgPool.on('error', (err) => {
-    console.error('[DB] PostgreSQL pool error:', err.message);
+    logEvent('error', 'db_pool_error', { dialect: 'postgres', error: err.message });
   });
 } else {
   fs.mkdirSync(path.dirname(sqlitePath), { recursive: true });
@@ -163,7 +164,7 @@ async function withTransaction(work) {
       try {
         await client.query('ROLLBACK');
       } catch (rollbackErr) {
-        console.error('[DB] PostgreSQL rollback failed:', rollbackErr.message);
+        logEvent('error', 'db_rollback_failed', { dialect: 'postgres', error: rollbackErr.message });
       }
       throw err;
     } finally {
@@ -181,7 +182,7 @@ async function withTransaction(work) {
       try {
         await run('ROLLBACK');
       } catch (rollbackErr) {
-        console.error('[DB] SQLite rollback failed:', rollbackErr.message);
+        logEvent('error', 'db_rollback_failed', { dialect: 'sqlite', error: rollbackErr.message });
       }
       throw err;
     }
@@ -231,7 +232,7 @@ async function resetAndSeedDatabase(options = {}) {
     seedMode = 'local-demo'
   } = options;
 
-  console.log(`[DB] Initiating destructive reset (${dbDialect})...`);
+  logEvent('warn', 'db_destructive_reset_start', { dialect: dbDialect });
 
   await dropAllTables();
   await migrateDatabase();
@@ -240,7 +241,7 @@ async function resetAndSeedDatabase(options = {}) {
     await seedDevelopmentDatabase({ run, dialect: dbDialect, mode: seedMode });
   }
 
-  console.log('[DB] Schema boot complete.');
+  logEvent('info', 'db_schema_boot_complete', { dialect: dbDialect });
 }
 
 module.exports = {

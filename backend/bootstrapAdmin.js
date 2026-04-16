@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const { logEvent } = require('./lib/logger');
 
 const BCRYPT_COST = 10;
 const MIN_BOOTSTRAP_PASSWORD_LENGTH = 12;
@@ -42,7 +43,7 @@ async function ensureBootstrapAdmin({ get, run }) {
     [config.id, config.name, passwordHash]
   );
 
-  console.log(`[BOOT] Created bootstrap admin ${config.id}`);
+  logEvent('info', 'bootstrap_admin_created', { userId: config.id });
 
   return { created: true, skipped: false, userId: config.id };
 }

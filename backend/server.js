@@ -345,10 +345,10 @@ app.use((err, req, res, next) => {
 setInterval(async () => {
   try {
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    await run(`DELETE FROM clinical_drafts WHERE updated_at < ?`, [cutoff]);
-    console.log('[CLEANUP] Pruned stale clinical drafts older than 48h');
+    const result = await run(`DELETE FROM clinical_drafts WHERE updated_at < ?`, [cutoff]);
+    logEvent('info', 'draft_cleanup_ran', { pruned: result.changes ?? 0, cutoff });
   } catch (err) {
-    console.error('[CLEANUP] Draft cleanup failed:', err.message);
+    logEvent('error', 'draft_cleanup_failed', { error: err.message });
   }
 }, 6 * 60 * 60 * 1000);
 
@@ -366,14 +366,17 @@ if (require.main === module) {
 
     const PORT = process.env.PORT || 3001;
     app.listen(PORT, () => {
-      console.log(`[BOOT] Chettinad Care Backend listening on port ${PORT}`);
-      console.log(`[BOOT] Environment: ${process.env.NODE_ENV || 'development'} / ${process.env.APP_ENV || 'local_dev'}`);
-      console.log(`[BOOT] DB Dialect: ${dbDialect}`);
+      logEvent('info', 'server_listening', {
+        port: PORT,
+        node_env: process.env.NODE_ENV || 'development',
+        app_env: process.env.APP_ENV || 'local_dev',
+        db_dialect: dbDialect
+      });
     });
   }
 
   startServer().catch((err) => {
-    console.error('[FATAL] Startup failed:', err);
+    logEvent('error', 'server_start_fatal', { error: err.message, stack: err.stack });
     process.exit(1);
   });
 }

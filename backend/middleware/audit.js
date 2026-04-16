@@ -1,4 +1,5 @@
 const { run } = require('../database');
+const { logEvent } = require('../lib/logger');
 
 const REDACTED_VALUE = '[REDACTED]';
 const SENSITIVE_KEYS = new Set([
@@ -84,9 +85,9 @@ async function auditLogWriter(req, res, next) {
         sanitizeAuditState(new_state)
       ]);
       
-      console.log(`[AUDIT WRITTEN] ${action} | Actor: ${actor_id} | CID: ${correlation_id}`);
+      logEvent('info', 'audit_written', { action, actorId: actor_id, correlationId: correlation_id });
     } catch (err) {
-      console.error(`[CRITICAL] FAILED TO WRITE AUDIT LOG:`, err);
+      logEvent('error', 'audit_write_failed', { action, actorId: actor_id, correlationId: correlation_id, error: err.message });
     }
   }
 
@@ -120,7 +121,7 @@ async function writeAuditDirect({
       sanitizeAuditState(new_state)
     ]);
   } catch (err) {
-    console.error(`[CRITICAL] FAILED TO WRITE AUDIT LOG:`, err);
+    logEvent('error', 'audit_write_failed', { action, actorId: actor_id || 'UNKNOWN', error: err.message });
   }
 }
 

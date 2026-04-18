@@ -758,7 +758,7 @@ async function runVerification() {
   const refreshAfterLogoutRes = await changedDoctorAgent.post('/api/v1/auth/refresh').send({});
   assert.equal(refreshAfterLogoutRes.status, 401, 'Refresh after logout must fail.');
   assert.ok(
-    ['REFRESH_REVOKED', 'REFRESH_REQUIRED'].includes(refreshAfterLogoutRes.body.error),
+    ['REFRESH_REVOKED', 'REFRESH_REQUIRED'].includes(extractErrorCode(refreshAfterLogoutRes)),
     'Logout must leave no usable refresh token behind.'
   );
 

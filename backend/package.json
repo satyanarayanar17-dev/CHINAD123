@@ -15,7 +15,13 @@
     "diagnose:data": "node scripts/diagnose-data.js",
     "repair:data": "node scripts/repair-data.js",
     "backup:db": "node scripts/backup-sqlite.js",
-    "test": "node test.js"
+    "test": "node test.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "test:opd": "node opd/acceptance.cjs",
+    "test:notifications": "node opd/notifications.test.cjs",
+    "demo:seed": "node opd/demo.cjs",
+    "test:config": "node --test config.test.cjs",
+    "test:auth-session": "node --test opd/auth-session.test.cjs"
   },
   "keywords": [],
   "author": "",
@@ -31,6 +37,17 @@
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.20.0",
     "sqlite3": "^6.0.1",
-    "supertest": "^7.2.2"
+    "supertest": "^7.2.2",
+    "zod": "^4.6.4"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^26.5.1",
+    "@types/supertest": "^7.2.1",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=24.0.0"
   }
 }

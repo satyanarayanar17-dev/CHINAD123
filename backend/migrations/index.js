@@ -21,7 +21,9 @@ const migrations = [
   prescriptionHandover,
   staffUserProfiles,
   patientActivationTokenHardening,
-  authSecurityHardening
+  authSecurityHardening,
+  require('./012_connected_opd'),
+  require('./013_session_and_encounter_integrity')
 ];
 
 function migrationTableSql(dialect) {

@@ -1,4 +1,4 @@
-FROM node:18-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 ARG VITE_API_BASE_URL=/api/v1
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
@@ -13,7 +13,7 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy nginx config that:
 # 1. Serves React SPA with try_files for client-side routing
-# 2. Proxies /api/v1/* to backend Express container (rewritten to /api/*)
+# 2. Proxies /api/v1/* to the backend without rewriting the API prefix
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80

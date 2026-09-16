@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const { Pool } = require('pg');
+const { parse: parsePostgresUrl } = require('pg-connection-string');
 const { applyMigrations } = require('./migrations');
 const { seedDevelopmentDatabase } = require('./seed');
 const { runtimeConfig } = require('./config');
@@ -42,11 +43,20 @@ function createPostgresQueryContext(client) {
 
 if (dbDialect === 'postgres') {
   logEvent('info', 'db_pool_connecting', { dialect: 'postgres' });
+  // Parse before applying TLS policy: pg otherwise lets URL sslmode override ssl options.
+  const connection = parsePostgresUrl(runtimeConfig.databaseUrl);
+  const tlsEnabled = useDatabaseSsl || Boolean(connection.ssl) ||
+    Boolean(process.env.PGSSLMODE && process.env.PGSSLMODE !== 'disable');
   pgPool = new Pool({
-    connectionString: runtimeConfig.databaseUrl,
+    ...connection,
     max: runtimeConfig.pgPoolMax,
     connectionTimeoutMillis: runtimeConfig.pgConnectTimeoutMs,
-    ssl: useDatabaseSsl ? { rejectUnauthorized: false } : undefined
+    ssl: tlsEnabled ? {
+      ...(typeof connection.ssl === 'object' ? connection.ssl : {}),
+      rejectUnauthorized: true,
+      checkServerIdentity: require('node:tls').checkServerIdentity,
+      ...(process.env.DATABASE_SSL_CA ? { ca: process.env.DATABASE_SSL_CA.replace(/\\n/g, '\n') } : {})
+    } : false
   });
   pgPool.on('error', (err) => {
     logEvent('error', 'db_pool_error', { dialect: 'postgres', error: err.message });
@@ -202,6 +212,9 @@ async function withTransaction(work) {
 
 async function dropAllTables() {
   const tables = [
+    'sms_outbox', 'opd_notifications', 'patient_otps', 'journey_events', 'lab_results', 'lab_orders',
+    'lab_test_catalog', 'diagnosis_catalog', 'drug_catalog', 'clinical_versions', 'triage_records',
+    'queue_entries', 'token_counters', 'appointments', 'practitioner_unavailability', 'practitioner_schedules', 'departments',
     'refresh_tokens',
     'revoked_tokens',
     'audit_logs',

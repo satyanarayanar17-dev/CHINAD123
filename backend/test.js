@@ -8,6 +8,7 @@
  */
 
 process.env.ALLOW_SEED_RESET = 'true';
+process.env.ENABLE_LEGACY_API = 'true';
 process.env.ACTIVATION_OTP_DELIVERY = 'api_response';
 
 const assert = require('node:assert/strict');

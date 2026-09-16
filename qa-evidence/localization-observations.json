@@ -1,0 +1,238 @@
+[
+  {
+    "language": "te",
+    "name": "patient-otp",
+    "evidence": "qa-evidence/10-telugu/patient-otp-1440px.png",
+    "width": 1440,
+    "scroll": 1440,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-overview",
+    "evidence": "qa-evidence/10-telugu/patient-overview-1440px.png",
+    "width": 1440,
+    "scroll": 1440,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-portal-responsive",
+    "evidence": "qa-evidence/10-telugu/patient-portal-responsive-320px.png",
+    "width": 320,
+    "scroll": 331,
+    "lang": "te",
+    "offenders": [
+      {
+        "tag": "DIV",
+        "classes": "topbar-actions",
+        "right": 331,
+        "width": 196,
+        "text": "Englishதமிழ்తెలుగు9+"
+      }
+    ],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-portal-responsive",
+    "evidence": "qa-evidence/10-telugu/patient-portal-responsive-390px.png",
+    "width": 390,
+    "scroll": 390,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-portal-responsive",
+    "evidence": "qa-evidence/10-telugu/patient-portal-responsive-768px.png",
+    "width": 768,
+    "scroll": 768,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-portal-responsive",
+    "evidence": "qa-evidence/10-telugu/patient-portal-responsive-820px.png",
+    "width": 820,
+    "scroll": 820,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-booking-form",
+    "evidence": "qa-evidence/10-telugu/patient-booking-form-1440px.png",
+    "width": 1440,
+    "scroll": 1440,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-booking-responsive",
+    "evidence": "qa-evidence/10-telugu/patient-booking-responsive-320px.png",
+    "width": 320,
+    "scroll": 331,
+    "lang": "te",
+    "offenders": [
+      {
+        "tag": "DIV",
+        "classes": "topbar-actions",
+        "right": 331,
+        "width": 196,
+        "text": "Englishதமிழ்తెలుగు9+"
+      }
+    ],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-booking-responsive",
+    "evidence": "qa-evidence/10-telugu/patient-booking-responsive-390px.png",
+    "width": 390,
+    "scroll": 390,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-booking-responsive",
+    "evidence": "qa-evidence/10-telugu/patient-booking-responsive-768px.png",
+    "width": 768,
+    "scroll": 768,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-booking-responsive",
+    "evidence": "qa-evidence/10-telugu/patient-booking-responsive-820px.png",
+    "width": 820,
+    "scroll": 820,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-appointments",
+    "evidence": "qa-evidence/10-telugu/patient-appointments-1440px.png",
+    "width": 1440,
+    "scroll": 1440,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-queue",
+    "evidence": "qa-evidence/10-telugu/patient-queue-1440px.png",
+    "width": 1440,
+    "scroll": 1440,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-laboratory",
+    "evidence": "qa-evidence/10-telugu/patient-laboratory-1440px.png",
+    "width": 1440,
+    "scroll": 1440,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-settings",
+    "evidence": "qa-evidence/10-telugu/patient-settings-1440px.png",
+    "width": 1440,
+    "scroll": 1440,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-prescription",
+    "evidence": "qa-evidence/10-telugu/patient-prescription-1440px.png",
+    "width": 1440,
+    "scroll": 1440,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-prescription-responsive",
+    "evidence": "qa-evidence/10-telugu/patient-prescription-responsive-320px.png",
+    "width": 320,
+    "scroll": 320,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-prescription-responsive",
+    "evidence": "qa-evidence/10-telugu/patient-prescription-responsive-390px.png",
+    "width": 390,
+    "scroll": 390,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-prescription-responsive",
+    "evidence": "qa-evidence/10-telugu/patient-prescription-responsive-768px.png",
+    "width": 768,
+    "scroll": 768,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  },
+  {
+    "language": "te",
+    "name": "patient-prescription-responsive",
+    "evidence": "qa-evidence/10-telugu/patient-prescription-responsive-820px.png",
+    "width": 820,
+    "scroll": 820,
+    "lang": "te",
+    "offenders": [],
+    "untranslated": [],
+    "rawKeys": []
+  }
+]

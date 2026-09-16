@@ -154,6 +154,11 @@ const activationRouter = require('./routes/activation');
 const { router: sseRouter } = require('./routes/sse');
 
 app.use('/api/v1/auth', authRouter);
+app.use('/api/v1/auth/opd', require('./opd/auth.ts').authRouter);
+app.use('/api/v1/opd', require('./opd/router.ts').router);
+app.get('/api/v1/openapi.json', (_req, res) => res.sendFile(require('node:path').join(__dirname, 'opd/openapi.json')));
+// Legacy write paths are isolated so they cannot bypass the v2 journey state machine.
+if (process.env.ENABLE_LEGACY_API === 'true' && !isLockedDeployment) {
 app.use('/api/v1/queue', queueRouter);
 app.use('/api/v1/notes', notesRouter);
 app.use('/api/v1/prescriptions', prescriptionsRouter);
@@ -166,6 +171,7 @@ app.use('/api/v1/my', portalRouter);
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/activation', activationRouter);
 app.use('/api/v1/sse', sseRouter);
+}
 
 // ===========================================================================
 // 5. HEALTH CHECK
@@ -350,7 +356,7 @@ setInterval(async () => {
   } catch (err) {
     logEvent('error', 'draft_cleanup_failed', { error: err.message });
   }
-}, 6 * 60 * 60 * 1000);
+}, 6 * 60 * 60 * 1000).unref();
 
 module.exports = app;
 
@@ -363,6 +369,8 @@ if (require.main === module) {
     if (isLockedDeployment) {
       await ensureAdminAccessProvisioned({ get });
     }
+
+    require('./opd/notifications.ts').startNotificationWorker();
 
     const PORT = process.env.PORT || 3001;
     app.listen(PORT, () => {

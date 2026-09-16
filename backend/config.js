@@ -44,13 +44,13 @@ const ENVIRONMENT_RULES = [
     name: 'DB_DIALECT',
     required: false,
     safeLocalDefault: SAFE_LOCAL_ONLY_DEFAULTS.DB_DIALECT,
-    description: 'Database driver. Current pilot uses sqlite; postgres remains supported.'
+    description: 'Database driver. SQLite is available locally; PostgreSQL is required for restricted and production deployments.'
   },
   {
     name: 'SQLITE_PATH',
     requiredWhen: ['sqlite'],
     safeLocalDefault: SAFE_LOCAL_ONLY_DEFAULTS.SQLITE_PATH,
-    description: 'SQLite file path relative to backend/, unless already absolute. Must be explicit for pilot sqlite deploys.'
+    description: 'Local SQLite file path relative to backend/, unless already absolute.'
   },
   {
     name: 'DATABASE_URL',
@@ -104,9 +104,29 @@ const ENVIRONMENT_RULES = [
   },
   {
     name: 'ACTIVATION_OTP_DELIVERY',
-    requiredInPilot: true,
     safeLocalDefault: SAFE_LOCAL_ONLY_DEFAULTS.ACTIVATION_OTP_DELIVERY,
-    description: 'Activation code delivery mode. One of api_response or console.'
+    localOnly: true,
+    description: 'Legacy local activation delivery. Ignored by the v2 OTP workflow.'
+  },
+  {
+    name: 'OPD_DEMO_OTP',
+    localOnly: true,
+    description: 'Return development OTPs locally. Must be false for restricted and production deployments.'
+  },
+  {
+    name: 'SMS_WEBHOOK_URL',
+    requiredInPilot: true,
+    description: 'Authenticated HTTPS SMS adapter endpoint used by v2 patient OTP and notification delivery.'
+  },
+  {
+    name: 'SMS_WEBHOOK_TOKEN',
+    requiredInPilot: true,
+    description: 'SMS adapter bearer credential. Supply through the deployment secret store.'
+  },
+  {
+    name: 'ENABLE_LEGACY_API',
+    localOnly: true,
+    description: 'Expose legacy routes for local development only. Must be false for restricted and production deployments.'
   },
   {
     name: 'BOOTSTRAP_ADMIN_ID',
@@ -184,6 +204,7 @@ function isValidCorsOrigin(origin) {
   try {
     const url = new URL(origin);
     return (url.protocol === 'http:' || url.protocol === 'https:') &&
+      !url.username && !url.password && !url.hostname.includes('*') &&
       !url.pathname.replace('/', '') &&
       !url.search &&
       !url.hash;
@@ -192,9 +213,20 @@ function isValidCorsOrigin(origin) {
   }
 }
 
+function isValidSmsUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && Boolean(url.hostname) &&
+      !url.username && !url.password && !url.hash && !url.hostname.includes('*');
+  } catch {
+    return false;
+  }
+}
+
 function loadRuntimeConfig(env = process.env) {
   const nodeEnv = readString(env.NODE_ENV, SAFE_LOCAL_ONLY_DEFAULTS.NODE_ENV) || SAFE_LOCAL_ONLY_DEFAULTS.NODE_ENV;
   const appEnv = readString(env.APP_ENV, SAFE_LOCAL_ONLY_DEFAULTS.APP_ENV) || SAFE_LOCAL_ONLY_DEFAULTS.APP_ENV;
+  const locked = nodeEnv === 'production' || appEnv === APP_ENVS.PILOT;
   const dbDialect = readString(env.DB_DIALECT, SAFE_LOCAL_ONLY_DEFAULTS.DB_DIALECT).toLowerCase();
   const activationDelivery = readString(env.ACTIVATION_OTP_DELIVERY, appEnv === APP_ENVS.LOCAL ? SAFE_LOCAL_ONLY_DEFAULTS.ACTIVATION_OTP_DELIVERY : '');
   const corsOrigins = readString(env.CORS_ORIGIN)
@@ -202,6 +234,9 @@ function loadRuntimeConfig(env = process.env) {
     .map((origin) => origin.trim())
     .filter(Boolean);
   const jwtSecret = readString(env.JWT_SECRET);
+  const cookieSameSite = readString(env.COOKIE_SAME_SITE, locked ? 'none' : SAFE_LOCAL_ONLY_DEFAULTS.COOKIE_SAME_SITE).toLowerCase();
+  // Mirror cookies.js: locked deployments and SameSite=None default to Secure.
+  const cookieSecure = readString(env.COOKIE_SECURE, locked || cookieSameSite === 'none' ? 'true' : SAFE_LOCAL_ONLY_DEFAULTS.COOKIE_SECURE);
 
   return {
     nodeEnv,
@@ -219,10 +254,14 @@ function loadRuntimeConfig(env = process.env) {
     pgConnectTimeoutMs: readInteger(env.PG_CONNECT_TIMEOUT_MS, Number(SAFE_LOCAL_ONLY_DEFAULTS.PG_CONNECT_TIMEOUT_MS)),
     jwtSecret,
     corsOrigins,
-    cookieSameSite: readString(env.COOKIE_SAME_SITE, SAFE_LOCAL_ONLY_DEFAULTS.COOKIE_SAME_SITE),
-    cookieSecure: readString(env.COOKIE_SECURE, SAFE_LOCAL_ONLY_DEFAULTS.COOKIE_SECURE),
+    cookieSameSite,
+    cookieSecure,
     cookieDomain: readString(env.COOKIE_DOMAIN),
     activationOtpDelivery: activationDelivery,
+    opdDemoOtp: readBoolean(env.OPD_DEMO_OTP, false),
+    smsWebhookUrl: readString(env.SMS_WEBHOOK_URL),
+    smsWebhookToken: readString(env.SMS_WEBHOOK_TOKEN),
+    enableLegacyApi: readBoolean(env.ENABLE_LEGACY_API, false),
     bootstrapAdmin: {
       id: readString(env.BOOTSTRAP_ADMIN_ID),
       name: readString(env.BOOTSTRAP_ADMIN_NAME),
@@ -242,6 +281,9 @@ function validateRuntimeConfig(config) {
   }
 
   if (config.isPilot || config.isProduction) {
+    if (config.dbDialect !== 'postgres') {
+      errors.push('DB_DIALECT must be postgres for v2 restricted and production deployments.');
+    }
     if (config.pilotAuthBypass) {
       errors.push('PILOT_AUTH_BYPASS must be false outside local_dev.');
     }
@@ -254,18 +296,23 @@ function validateRuntimeConfig(config) {
     if (!config.corsOrigins.length) {
       errors.push('CORS_ORIGIN must be set explicitly for pilot/prod deployments.');
     }
-    if (!config.activationOtpDelivery) {
-      errors.push('ACTIVATION_OTP_DELIVERY must be set explicitly for pilot/prod deployments.');
+    if (config.opdDemoOtp) {
+      errors.push('OPD_DEMO_OTP must be false for restricted and production deployments.');
     }
-    if (config.dbDialect === 'sqlite' && !readString(process.env.SQLITE_PATH)) {
-      errors.push('SQLITE_PATH must be explicitly set for sqlite pilot deployments.');
+    if (config.enableLegacyApi) {
+      errors.push('ENABLE_LEGACY_API must be false for restricted and production deployments.');
     }
-    if (config.dbDialect === 'sqlite') {
-      warnings.push(
-        'SQLite is the active backing store. Ensure automated file-level backups are ' +
-        'in place before go-live (run: node backend/scripts/backup-sqlite.js). ' +
-        'SQLite does not support concurrent write access from multiple processes.'
-      );
+    if (config.cookieSecure !== 'true') {
+      errors.push('COOKIE_SECURE must be true for restricted and production deployments.');
+    }
+    if (config.corsOrigins.some(origin => !isValidCorsOrigin(origin) || !origin.startsWith('https://'))) {
+      errors.push('CORS_ORIGIN must contain only explicit HTTPS origins for restricted and production deployments.');
+    }
+    if (!isValidSmsUrl(config.smsWebhookUrl)) {
+      errors.push('SMS_WEBHOOK_URL must be an HTTPS endpoint without embedded credentials for v2 patient OTP delivery.');
+    }
+    if (!config.smsWebhookToken) {
+      errors.push('SMS_WEBHOOK_TOKEN is required for v2 patient OTP delivery.');
     }
   } else if (!config.jwtSecret) {
     warnings.push('JWT_SECRET is not set. Local dev will fall back to an insecure default. Never use that outside local_dev.');
@@ -287,13 +334,17 @@ function validateRuntimeConfig(config) {
     errors.push('SQLITE_PATH is required when DB_DIALECT=sqlite.');
   }
 
-  if (config.activationOtpDelivery && !ALLOWED_ACTIVATION_DELIVERY_MODES.has(config.activationOtpDelivery)) {
+  if (config.enableLegacyApi && !config.isPilot && !config.isProduction && config.activationOtpDelivery && !ALLOWED_ACTIVATION_DELIVERY_MODES.has(config.activationOtpDelivery)) {
     errors.push(`ACTIVATION_OTP_DELIVERY must be one of: ${Array.from(ALLOWED_ACTIVATION_DELIVERY_MODES).join(', ')}`);
   }
 
   if (config.corsOrigins.some((origin) => !isValidCorsOrigin(origin))) {
     errors.push('Each CORS_ORIGIN entry must be a valid bare http(s) origin without a path or query string.');
   }
+
+  if (!['lax', 'strict', 'none'].includes(config.cookieSameSite)) errors.push('COOKIE_SAME_SITE must be lax, strict, or none.');
+  if (!['true', 'false'].includes(config.cookieSecure)) errors.push('COOKIE_SECURE must be true or false.');
+  if (config.cookieSameSite === 'none' && config.cookieSecure !== 'true') errors.push('SameSite=None refresh cookies require COOKIE_SECURE=true.');
 
   const bootstrapFields = Object.values(config.bootstrapAdmin).filter(Boolean).length;
   if (bootstrapFields > 0 && bootstrapFields < 3) {
@@ -309,8 +360,12 @@ function describeRuntimeConfig(config) {
     app_env: config.appEnv,
     db_dialect: config.dbDialect,
     sqlite_path: config.dbDialect === 'sqlite' ? config.sqliteAbsolutePath : null,
-    cors_origins: config.corsOrigins,
-    activation_otp_delivery: config.activationOtpDelivery || null,
+    cors_origins: config.corsOrigins.map(origin => isValidCorsOrigin(origin) ? origin : '[invalid origin]'),
+    activation_otp_delivery: config.enableLegacyApi && !config.isPilot && !config.isProduction ? config.activationOtpDelivery : null,
+    cookie_secure: config.cookieSecure === 'true',
+    opd_demo_otp: config.opdDemoOtp,
+    sms_adapter_configured: Boolean(isValidSmsUrl(config.smsWebhookUrl) && config.smsWebhookToken),
+    legacy_api_enabled: config.enableLegacyApi,
     has_jwt_secret: Boolean(config.jwtSecret),
     bootstrap_admin_configured: Boolean(
       config.bootstrapAdmin.id &&

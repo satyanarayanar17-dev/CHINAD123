@@ -3,9 +3,9 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { createRateLimiter } = require('../middleware/rateLimit');
-const { get, run } = require('../database');
+const { get, run, withTransaction } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
-const { JWT_SECRET, requireAuth, requireRole } = require('../middleware/auth');
+const { JWT_SECRET, requireAuth, requireRole, hashRefreshToken, createSessionCredentials } = require('../middleware/auth');
 const { REFRESH_COOKIE_NAME, getRefreshCookieOptions } = require('../cookies');
 const {
   ACCOUNT_TYPES,
@@ -29,22 +29,20 @@ function authErr(req, res, status, code, message, extra = {}) {
   });
 }
 
-const LOGIN_MAX_ATTEMPTS = 10;
+const LOGIN_MAX_ATTEMPTS = process.env.NODE_ENV === 'development' ? 100 : 10;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const REFRESH_TOKEN_TTL_DAYS = 30;
 const ACCESS_TOKEN_TTL = '15m';
 const LOCKOUT_THRESHOLD = 5;
 const LOCKOUT_MINUTES = 15;
 const SSE_TOKEN_TTL = '60s';
-const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MIN_LENGTH = 12;
+const PASSWORD_MAX_LENGTH = 72;
 const BCRYPT_COST = 10;
 
 function requestIp(req) {
-  const forwardedFor = req.headers['x-forwarded-for'];
-  if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
-    return forwardedFor.split(',')[0].trim();
-  }
-
+  // Express resolves the configured trusted proxy hop. Never trust the client-
+  // supplied leftmost value, which can precede the address added by our proxy.
   return req.ip || 'unknown';
 }
 
@@ -105,9 +103,9 @@ function clearRefreshCookie(res) {
   res.clearCookie(REFRESH_COOKIE_NAME, getRefreshCookieOptions());
 }
 
-function signAccessToken({ actorId, role, accountType }) {
+function signAccessToken({ actorId, role, accountType, sessionId }) {
   return jwt.sign(
-    { id: actorId, role, account_type: accountType, session_iat_ms: Date.now() },
+    { id: actorId, role, account_type: accountType, sid: sessionId, session_iat_ms: Date.now() },
     JWT_SECRET,
     { expiresIn: ACCESS_TOKEN_TTL }
   );
@@ -260,6 +258,11 @@ async function verifyPasswordForUser(userRow, password, isPilotMode) {
 }
 
 async function handleLogin(req, res, next, accountType, endpoint) {
+  const allowLegacyPatientPasswords = process.env.ENABLE_LEGACY_API === 'true' &&
+    process.env.NODE_ENV !== 'production' && process.env.APP_ENV !== 'restricted_web_pilot';
+  if (accountType === ACCOUNT_TYPES.PATIENT && !allowLegacyPatientPasswords) {
+    return authErr(req, res, 403, 'PATIENT_OTP_REQUIRED', 'Use mobile OTP to sign in to the patient portal.');
+  }
   const { username, password } = req.body;
   const isPilotMode = process.env.PILOT_AUTH_BYPASS === 'true';
   const ipKey = requestIp(req);
@@ -355,14 +358,17 @@ async function handleLogin(req, res, next, accountType, endpoint) {
     const { id: actorId, role, name } = userRow;
     const resolvedAccountType = accountTypeForRole(role);
 
-    const accessToken = signAccessToken({ actorId, role, accountType: resolvedAccountType });
-
     // Issue refresh token
-    const refreshToken = crypto.randomUUID();
-    await run(
-      `INSERT INTO refresh_tokens (id, user_id, expires_at, revoked, account_type) VALUES (?, ?, ?, 0, ?)`,
-      [refreshToken, actorId, refreshTokenExpiresAt(), resolvedAccountType]
-    );
+    const credentials = createSessionCredentials();
+    const accessToken = signAccessToken({ actorId, role, accountType: resolvedAccountType, sessionId: credentials.sessionKey });
+    await withTransaction(async tx => {
+      const currentUser = await tx.get(`SELECT is_active, role FROM users WHERE id = ?${tx.dialect === 'postgres' ? ' FOR UPDATE' : ''}`, [actorId]);
+      if (!currentUser || !currentUser.is_active || currentUser.role !== role) throw { status: 401, code: 'ACCOUNT_DISABLED', message: 'Account is no longer available.' };
+      await tx.run(
+        `INSERT INTO refresh_tokens (id, session_key, user_id, expires_at, revoked, account_type, device_name, created_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)`,
+        [credentials.tokenHash, credentials.sessionKey, actorId, refreshTokenExpiresAt(), resolvedAccountType, (req.headers['user-agent'] || '').slice(0, 200), new Date().toISOString()]
+      );
+    });
 
     await writeAuditDirect({
       correlation_id: req.correlationId,
@@ -372,7 +378,7 @@ async function handleLogin(req, res, next, accountType, endpoint) {
       new_state: JSON.stringify({ role, ip: ipKey, outcome: 'success' })
     });
 
-    setRefreshCookie(res, refreshToken);
+    setRefreshCookie(res, credentials.secret);
     setNoStore(res);
 
     res.json({
@@ -427,16 +433,17 @@ router.post('/login', async (req, res, next) => {
 router.post('/refresh', async (req, res, next) => {
   const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refresh_token;
 
-  if (!refreshToken) {
+  if (typeof refreshToken !== 'string' || !refreshToken || refreshToken.length > 512) {
     return authErr(req, res, 401, 'REFRESH_REQUIRED', 'refresh_token is required.');
   }
+  const refreshHash = hashRefreshToken(refreshToken);
 
   try {
     const tokenRow = await get(
       `SELECT rt.*, u.role, u.is_active, u.must_change_password FROM refresh_tokens rt
        JOIN users u ON u.id = rt.user_id
        WHERE rt.id = ?`,
-      [refreshToken]
+      [refreshHash]
     );
 
     if (!tokenRow) {
@@ -449,14 +456,14 @@ router.post('/refresh', async (req, res, next) => {
         correlation_id: req.correlationId,
         actor_id: tokenRow.user_id,
         action: 'SYS_AUTH_REFRESH:REVOKED_TOKEN_REUSE',
-        new_state: JSON.stringify({ refresh_token_id: refreshToken })
+        new_state: JSON.stringify({ session_id: tokenRow.session_key })
       });
       clearRefreshCookie(res);
       return authErr(req, res, 401, 'REFRESH_REVOKED', 'Refresh token has been revoked.');
     }
 
     if (new Date(tokenRow.expires_at) < new Date()) {
-      await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshToken]);
+      await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshHash]);
       clearRefreshCookie(res);
       return authErr(req, res, 401, 'REFRESH_EXPIRED', 'Refresh token has expired. Please log in again.');
     }
@@ -474,7 +481,7 @@ router.post('/refresh', async (req, res, next) => {
         actor_id: tokenRow.user_id,
         action: 'SYS_AUTH_REFRESH:ACCOUNT_TYPE_MISMATCH',
         new_state: JSON.stringify({
-          refresh_token_id: refreshToken,
+          session_id: tokenRow.session_key,
           stored_account_type: tokenRow.account_type || null,
           actual_role: tokenRow.role
         })
@@ -483,19 +490,27 @@ router.post('/refresh', async (req, res, next) => {
       return authErr(req, res, 401, 'REFRESH_SCOPE_INVALID', 'Session scope is invalid or outdated. Please log in again.');
     }
 
-    await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshToken]);
-    const replacementRefreshToken = crypto.randomUUID();
-    await run(
-      `INSERT INTO refresh_tokens (id, user_id, expires_at, revoked, account_type) VALUES (?, ?, ?, 0, ?)`,
-      [replacementRefreshToken, tokenRow.user_id, refreshTokenExpiresAt(), storedAccountType]
-    );
+    const credentials = createSessionCredentials(tokenRow.session_key);
+    await withTransaction(async tx => {
+      // Serialize against session revocation and account disable, including
+      // credentials inserted by a refresh that was already in flight.
+      const currentUser = await tx.get(`SELECT is_active, role FROM users WHERE id = ?${tx.dialect === 'postgres' ? ' FOR UPDATE' : ''}`, [tokenRow.user_id]);
+      if (!currentUser || !currentUser.is_active || accountTypeForRole(currentUser.role) !== storedAccountType) throw { status: 401, code: 'ACCOUNT_DISABLED', message: 'Account is no longer available.' };
+      const consumed = await tx.run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ? AND revoked = 0`, [refreshHash]);
+      if (!consumed.changes) throw { status: 401, code: 'REFRESH_REVOKED', message: 'Refresh token already used.' };
+      await tx.run(
+        `INSERT INTO refresh_tokens (id, session_key, user_id, expires_at, revoked, account_type, device_name, created_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)`,
+        [credentials.tokenHash, credentials.sessionKey, tokenRow.user_id, refreshTokenExpiresAt(), storedAccountType, tokenRow.device_name, tokenRow.created_at]
+      );
+    });
 
     const newAccessToken = signAccessToken({
       actorId: tokenRow.user_id,
       role: tokenRow.role,
-      accountType: storedAccountType
+      accountType: storedAccountType,
+      sessionId: credentials.sessionKey
     });
-    setRefreshCookie(res, replacementRefreshToken);
+    setRefreshCookie(res, credentials.secret);
     setNoStore(res);
 
     res.json({
@@ -511,18 +526,27 @@ router.post('/refresh', async (req, res, next) => {
 });
 
 router.post('/logout', async (req, res, next) => {
+  setNoStore(res);
   const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refresh_token;
-  if (refreshToken) {
+  if (typeof refreshToken === 'string' && refreshToken && refreshToken.length <= 512) {
     try {
-      await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshToken]);
+      const refreshHash = hashRefreshToken(refreshToken);
+      const tokenRow = await get('SELECT user_id, session_key FROM refresh_tokens WHERE id = ?', [refreshHash]);
+      if (tokenRow) await withTransaction(async tx => {
+        if (tx.dialect === 'postgres') await tx.get('SELECT id FROM users WHERE id = ? FOR UPDATE', [tokenRow.user_id]);
+        await tx.run(`UPDATE refresh_tokens SET revoked = 1 WHERE session_key = ?`, [tokenRow.session_key]);
+      });
       await writeAuditDirect({
         correlation_id: req.correlationId,
-        actor_id: 'UNKNOWN',
+        actor_id: tokenRow?.user_id || 'UNKNOWN',
         action: 'SYS_AUTH_LOGOUT',
-        new_state: JSON.stringify({ refresh_token_id: refreshToken })
+        new_state: JSON.stringify({ session_id: tokenRow?.session_key || null })
       });
     } catch (err) {
       logEvent('error', 'refresh_token_revoke_failed', { error: err.message });
+      // Keep the HttpOnly credential for a retry. Reporting success or clearing
+      // it here would strand a still-active server session after a DB failure.
+      return next({ status: 503, code: 'LOGOUT_FAILED', message: 'Sign-out could not be confirmed. Please retry.' });
     }
   }
   clearRefreshCookie(res);
@@ -569,7 +593,7 @@ router.get('/me', requireAuth, requireRole(['PATIENT', 'DOCTOR', 'NURSE', 'ADMIN
 router.post('/change-password', requireAuth, async (req, res, next) => {
   const { currentPassword, newPassword } = req.body || {};
 
-  if (!currentPassword || !newPassword) {
+  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || !currentPassword || !newPassword) {
     return next({
       status: 400,
       code: 'MISSING_FIELDS',
@@ -577,11 +601,13 @@ router.post('/change-password', requireAuth, async (req, res, next) => {
     });
   }
 
-  if (newPassword.length < PASSWORD_MIN_LENGTH) {
+  if (newPassword.length < PASSWORD_MIN_LENGTH || newPassword.length > PASSWORD_MAX_LENGTH ||
+      !/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword) ||
+      !/[0-9]/.test(newPassword) || !/[^a-zA-Z0-9]/.test(newPassword)) {
     return next({
       status: 400,
       code: 'WEAK_PASSWORD',
-      message: `New password must be at least ${PASSWORD_MIN_LENGTH} characters.`
+      message: `New password must have ${PASSWORD_MIN_LENGTH}-${PASSWORD_MAX_LENGTH} characters, including uppercase, lowercase, a number and a symbol.`
     });
   }
 
@@ -629,7 +655,7 @@ router.post('/change-password', requireAuth, async (req, res, next) => {
 router.get('/sse-token', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const token = jwt.sign(
-      { id: req.user.id, role: req.user.role, account_type: req.user.account_type, purpose: 'sse' },
+      { id: req.user.id, role: req.user.role, account_type: req.user.account_type, sid: req.user.sid, session_iat_ms: req.user.session_iat_ms, purpose: 'sse' },
       JWT_SECRET,
       { expiresIn: SSE_TOKEN_TTL }
     );

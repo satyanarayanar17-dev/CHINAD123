@@ -1,0 +1,130 @@
+
+> chettinad-care-frontend@0.0.0 test:security-browser
+> playwright test --config playwright.security.config.ts
+
+[WebServer] (node:53734) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:53768) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 17 tests using 1 worker
+
+(node:53769) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:21:48.299Z","correlationId":"d6bd9f50-d774-4ff7-a181-5c5c413c3de4","username":"qa_invalid_staff","ip":"203.0.113.201"}
+  ✓   1 tests/security-browser.spec.ts:61:1 › unauthenticated protected URLs, invalid route and accessible credential validation (1.3s)
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:49.326Z","correlationId":"SERVER-e93ebda3-997e-4536-ae42-1f4a3e663c1a","method":"GET","path":"/api/v1/opd/staff","actorId":"demo_doctor","status":403,"code":"FORBIDDEN_ROLE","message":"FORBIDDEN_ROLE","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:49.330Z","correlationId":"SERVER-14da3ffc-8e47-4e05-bb7a-8a5396ee074c","method":"PATCH","path":"/api/v1/opd/staff/demo_admin","actorId":"demo_doctor","status":403,"code":"FORBIDDEN_ROLE","message":"FORBIDDEN_ROLE","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:49.335Z","correlationId":"SERVER-4b456dc0-6e44-47d2-a191-ef0c3d8ab750","method":"GET","path":"/api/v1/opd/patients/not-owned-id/record","actorId":"demo_doctor","status":404,"code":"NOT_FOUND","message":"NOT_FOUND","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:49.339Z","correlationId":"SERVER-3733edfa-b679-4f07-af90-c62193746871","method":"GET","path":"/api/v1/opd/patients/pat-d63fc452-0a76-4f6a-a2c7-6e460f391114/record","actorId":"demo_doctor","status":404,"code":"NOT_FOUND","message":"NOT_FOUND","details":null}
+  ✓   2 tests/security-browser.spec.ts:84:1 › doctor RBAC rejects administrative mutations and tampered patient IDs from browser (1.0s)
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:50.317Z","correlationId":"SERVER-a7f579de-8430-40dc-aaf8-a9013614832b","method":"GET","path":"/api/v1/opd/staff","actorId":"demo_nurse","status":403,"code":"FORBIDDEN_ROLE","message":"FORBIDDEN_ROLE","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:50.322Z","correlationId":"SERVER-d4ed7398-7ed9-4da0-a9df-9295a8d2c762","method":"GET","path":"/api/v1/opd/labs","actorId":"demo_nurse","status":403,"code":"FORBIDDEN_ROLE","message":"FORBIDDEN_ROLE","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:50.327Z","correlationId":"SERVER-15b7dfd2-6b8a-4756-b598-b31ec5d4c43b","method":"GET","path":"/api/v1/opd/patients/pat-d63fc452-0a76-4f6a-a2c7-6e460f391114/record","actorId":"demo_nurse","status":404,"code":"NOT_FOUND","message":"NOT_FOUND","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:50.330Z","correlationId":"SERVER-597f92d8-c950-45ce-8f7d-c4066dcd1b9e","method":"POST","path":"/api/v1/opd/encounters/enc-7de430a4-748f-4630-8735-88ddfd110bbf/start-triage","actorId":"demo_nurse","status":404,"code":"NOT_FOUND","message":"NOT_FOUND","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:50.334Z","correlationId":"SERVER-36ab37dd-2043-47b4-963c-c213934640da","method":"POST","path":"/api/v1/opd/encounters/enc-22ac36aa-8e6a-4af3-ba3f-00444c63c7b9/complete","actorId":"demo_nurse","status":403,"code":"FORBIDDEN_ROLE","message":"FORBIDDEN_ROLE","details":null}
+  ✓   3 tests/security-browser.spec.ts:102:1 › nurse department restrictions and malicious clinical writes are denied (1.2s)
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:51.484Z","correlationId":"SERVER-6bddf07d-c28b-4304-9c77-35bc0104d73b","method":"GET","path":"/api/v1/opd/patients/someone-else/record","actorId":"patient-user-3e3c25da-eff0-41b6-989e-fd5c75538dc8","status":404,"code":"NOT_FOUND","message":"NOT_FOUND","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:51.487Z","correlationId":"SERVER-6707262e-79e3-485a-92d9-e6afde0f2de9","method":"GET","path":"/api/v1/opd/patients/pat-a2cc4dbd-24c8-43bf-bee2-12d03145d335/record","actorId":"patient-user-3e3c25da-eff0-41b6-989e-fd5c75538dc8","status":404,"code":"NOT_FOUND","message":"NOT_FOUND","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:51.490Z","correlationId":"SERVER-138a66d4-bab6-4e61-b646-b50feeb65236","method":"GET","path":"/api/v1/opd/patients/pat-a2cc4dbd-24c8-43bf-bee2-12d03145d335/journey","actorId":"patient-user-3e3c25da-eff0-41b6-989e-fd5c75538dc8","status":404,"code":"NOT_FOUND","message":"NOT_FOUND","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:51.493Z","correlationId":"SERVER-2fc2c098-fd3a-4d3c-8e6e-967484de9fb2","method":"GET","path":"/api/v1/opd/staff","actorId":"patient-user-3e3c25da-eff0-41b6-989e-fd5c75538dc8","status":403,"code":"FORBIDDEN_ROLE","message":"FORBIDDEN_ROLE","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:51.497Z","correlationId":"SERVER-802733a8-874f-4980-9644-8925182d6cd9","method":"POST","path":"/api/v1/opd/encounters/other-encounter/complete","actorId":"patient-user-3e3c25da-eff0-41b6-989e-fd5c75538dc8","status":403,"code":"FORBIDDEN_ROLE","message":"FORBIDDEN_ROLE","details":null}
+  ✓   4 tests/security-browser.spec.ts:118:1 › patient OTP browser registration, own-record boundary and protected routes (1.2s)
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:52.772Z","correlationId":"4ccd0ac6-dc33-406f-9c13-73b4d832dcaf","method":"GET","path":"/api/v1/opd/patients","actorId":null,"status":401,"code":"INVALID_TOKEN","message":"Session expired or invalid token.","details":null}
+  ✓   5 tests/security-browser.spec.ts:147:1 › browser reload restores session; expired access rotates secret and public IDs cannot refresh (1.1s)
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:53.645Z","correlationId":"SERVER-f5664741-a647-409f-a4b7-5ca8a31d81ec","method":"GET","path":"/api/v1/opd/queue","actorId":null,"status":401,"code":"SESSION_REVOKED","message":"Session expired or revoked.","details":null}
+  ✓   6 tests/security-browser.spec.ts:172:1 › session revocation invalidates browser access and signing out survives reload (1.7s)
+  ✓   7 tests/security-browser.spec.ts:192:1 › network interruption is visible and retry restores service (1.0s)
+  ✓   8 tests/security-browser.spec.ts:205:1 › logout during network failure cannot silently restore a session on reload (1.8s)
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:58.424Z","correlationId":"SERVER-f4ff66ae-62b1-41e8-8d93-b716324fee9c","method":"GET","path":"/api/v1/opd/patients/pat-a2cc4dbd-24c8-43bf-bee2-12d03145d335/record","actorId":"demo_admin","status":403,"code":"CLINICAL_ACCESS_DENIED","message":"CLINICAL_ACCESS_DENIED","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:21:58.429Z","correlationId":"SERVER-8ee48e99-4210-4483-adcc-b33b557dc65d","method":"POST","path":"/api/v1/opd/encounters/enc-7de430a4-748f-4630-8735-88ddfd110bbf/complete","actorId":"demo_admin","status":403,"code":"FORBIDDEN_ROLE","message":"FORBIDDEN_ROLE","details":null}
+  ✓   9 tests/security-browser.spec.ts:220:1 › admin access is operational only; bearer and refresh secrets stay out of UI storage (1.7s)
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:00.163Z","correlationId":"361164e0-a66e-4d19-994b-224bc260fdcf","method":"GET","path":"/api/v1/opd/queue","actorId":null,"status":401,"code":"INVALID_TOKEN","message":"Session expired or invalid token.","details":null}
+  ✓  10 tests/security-browser.spec.ts:242:1 › logout clears other open browser tabs and prevents late refresh from restoring access (1.3s)
+  ✓  11 tests/security-browser.spec.ts:273:1 › server logout failure stays visible, cannot auto-restore, and retry allows an explicit new login (1.8s)
+  ✓  12 tests/security-browser.spec.ts:290:1 › missing refresh credential expires browser session without a reload loop (988ms)
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:04.259Z","correlationId":"daef9597-d54b-43d2-989e-1ba1adaeba4a","method":"POST","path":"/api/v1/auth/opd/otp/request","actorId":null,"status":429,"code":"OTP_WAIT","message":"OTP_WAIT","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:04.327Z","correlationId":"b67868a7-9b8a-4aaf-b473-f223ddee5c4b","method":"POST","path":"/api/v1/auth/opd/otp/verify","actorId":null,"status":401,"code":"OTP_INVALID","message":"OTP_INVALID","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:04.410Z","correlationId":"SERVER-5b8b1341-15a7-4258-9619-bdbac7dbaf7a","method":"POST","path":"/api/v1/auth/opd/otp/verify","actorId":null,"status":401,"code":"OTP_INVALID","message":"OTP_INVALID","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:04.414Z","correlationId":"SERVER-6ea35005-af6f-4531-a33e-6dc6fd978f91","method":"POST","path":"/api/v1/auth/opd/otp/verify","actorId":null,"status":401,"code":"OTP_INVALID","message":"OTP_INVALID","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:04.417Z","correlationId":"SERVER-742ba184-4a71-40e9-ad60-42cd2234e7a3","method":"POST","path":"/api/v1/auth/opd/otp/verify","actorId":null,"status":401,"code":"OTP_INVALID","message":"OTP_INVALID","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:04.421Z","correlationId":"SERVER-864910ab-f5ca-4502-b95d-e4d47e998637","method":"POST","path":"/api/v1/auth/opd/otp/verify","actorId":null,"status":401,"code":"OTP_INVALID","message":"OTP_INVALID","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:04.424Z","correlationId":"SERVER-b8c0133e-5ad5-449f-8288-a477dab14a7c","method":"POST","path":"/api/v1/auth/opd/otp/verify","actorId":null,"status":401,"code":"OTP_INVALID","message":"OTP_INVALID","details":null}
+  ✓  13 tests/security-browser.spec.ts:302:1 › patient OTP resend cooldown and invalid-attempt lockout are enforced (1.1s)
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:04.986Z","correlationId":"SERVER-a413d6dc-563f-42d2-9bfa-2b2504aa6366","username":"qa_rate_limit_only","ip":"203.0.113.113"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:04.995Z","correlationId":"SERVER-59cbe48f-1c49-4a10-9ede-8069983bdc2f","username":"qa_rate_limit_only","ip":"203.0.113.113"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:05.000Z","correlationId":"SERVER-087aa3e9-b299-4ee5-9482-fc77b1368890","username":"qa_rate_limit_only","ip":"203.0.113.113"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:05.003Z","correlationId":"SERVER-ecf17e7a-14d6-4025-bb07-76567fe56469","username":"qa_rate_limit_only","ip":"203.0.113.113"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:05.007Z","correlationId":"SERVER-8271a56a-9039-4eda-9523-2c59c2dac0eb","username":"qa_rate_limit_only","ip":"203.0.113.113"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:05.010Z","correlationId":"SERVER-ec505e9c-5bdb-453f-8c54-ea594b0a243f","username":"qa_rate_limit_only","ip":"203.0.113.113"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:05.014Z","correlationId":"SERVER-f328a397-0944-40f2-8e9c-c740a18fbf7f","username":"qa_rate_limit_only","ip":"203.0.113.113"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:05.016Z","correlationId":"SERVER-20659508-150d-45ac-8ff5-8bfc35665c82","username":"qa_rate_limit_only","ip":"203.0.113.113"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:05.019Z","correlationId":"SERVER-7a4dee5c-73ee-4963-9453-57b28e2421a6","username":"qa_rate_limit_only","ip":"203.0.113.113"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:05.022Z","correlationId":"SERVER-64f768a9-8e8b-40d0-9efb-90aeb30c4f79","username":"qa_rate_limit_only","ip":"203.0.113.113"}
+  ✓  14 tests/security-browser.spec.ts:318:1 › invalid staff attempts hit a bounded rate limit (815ms)
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:06.020Z","correlationId":"SERVER-a8844231-78e8-40ce-b8b6-6c0bb27cce84","username":"qa_spoof_0","ip":"203.0.113.240"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:06.031Z","correlationId":"SERVER-d2f317b6-f83e-4e8f-bfd4-399c07f37304","username":"qa_spoof_1","ip":"203.0.113.240"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:06.038Z","correlationId":"SERVER-784064ad-a422-42dc-a932-4d463552f52c","username":"qa_spoof_2","ip":"203.0.113.240"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:06.043Z","correlationId":"SERVER-e0d608ac-fe29-4e6c-a851-2625d32c2119","username":"qa_spoof_3","ip":"203.0.113.240"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:06.048Z","correlationId":"SERVER-9e60fc6b-f516-452d-9fbd-5f4219dda599","username":"qa_spoof_4","ip":"203.0.113.240"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:06.055Z","correlationId":"SERVER-32a108bd-518d-431b-a3b2-ffecb472755b","username":"qa_spoof_5","ip":"203.0.113.240"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:06.060Z","correlationId":"SERVER-f8e747bb-847d-4aad-a062-8e85b2672863","username":"qa_spoof_6","ip":"203.0.113.240"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:06.065Z","correlationId":"SERVER-04ee9917-b6d2-49d3-a447-cfd8ffa4a8a8","username":"qa_spoof_7","ip":"203.0.113.240"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:06.071Z","correlationId":"SERVER-31c42243-74b5-4cdd-8e8d-2ad8451e1760","username":"qa_spoof_8","ip":"203.0.113.240"}
+[WebServer] {"level":"warn","event":"auth_unknown_user","timestamp":"2026-09-16T06:22:06.077Z","correlationId":"SERVER-ed8a0101-129d-4f08-8451-cb2e748d4c8f","username":"qa_spoof_9","ip":"203.0.113.240"}
+  ✓  15 tests/security-browser.spec.ts:335:1 › spoofing the untrusted forwarded address cannot evade the client IP login limit (1.1s)
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:08.605Z","correlationId":"SERVER-e0776b3d-f21e-4690-8056-fb10576e9e97","method":"GET","path":"/api/v1/opd/queue","actorId":null,"status":403,"code":"PASSWORD_CHANGE_REQUIRED","message":"Password change is required before accessing the application.","details":null}
+[WebServer] {"level":"warn","event":"auth_failed_password","timestamp":"2026-09-16T06:22:09.604Z","correlationId":"SERVER-368bc335-ae99-4828-becb-6218f8662174","userId":"qa_password_gate","username":"qa_password_gate","failedAttempts":1,"lockedUntil":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:09.651Z","correlationId":"SERVER-8acf0018-0de9-4795-9275-88a2720e86b0","method":"GET","path":"/api/v1/opd/queue","actorId":null,"status":401,"code":"SESSION_REVOKED","message":"Session expired or revoked.","details":null}
+  ✓  16 tests/security-browser.spec.ts:356:1 › new staff must change password and deactivation immediately revokes access (3.9s)
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:11.579Z","correlationId":"f392f616-8332-469c-9f39-ae1bce9f963c","method":"GET","path":"/api/v1/opd/dashboard","actorId":null,"status":401,"code":"MISSING_TOKEN","message":"No authorization token provided.","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:11.581Z","correlationId":"8f8cc096-c41b-4d85-9ea2-61683ed8806f","method":"GET","path":"/api/v1/opd/queue","actorId":null,"status":401,"code":"MISSING_TOKEN","message":"No authorization token provided.","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:11.582Z","correlationId":"14e959b1-01ad-4555-a46e-2ce5d6286146","method":"GET","path":"/api/v1/opd/notifications","actorId":null,"status":401,"code":"MISSING_TOKEN","message":"No authorization token provided.","details":null}
+[WebServer] {"level":"warn","event":"request_failed","timestamp":"2026-09-16T06:22:16.628Z","correlationId":"3fbea39b-fd39-4606-9b6e-fd12ecd11b4f","method":"GET","path":"/api/v1/opd/queue","actorId":null,"status":401,"code":"MISSING_TOKEN","message":"No authorization token provided.","details":null}
+  ✘  17 tests/security-browser.spec.ts:399:1 › a delayed bootstrap session response cannot reopen a tab after another tab signs out (6.4s)
+
+
+  1) tests/security-browser.spec.ts:399:1 › a delayed bootstrap session response cannot reopen a tab after another tab signs out 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('button', { name: 'Hospital staff', exact: true })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByRole('button', { name: 'Hospital staff', exact: true }) with timeout 5000ms
+      - waiting for getByRole('button', { name: 'Hospital staff', exact: true })
+
+
+      413 |   expect((await loggedOut).status()).toBe(200);
+      414 |   release();
+    > 415 |   await expect(second.getByRole('button',{name:'Hospital staff',exact:true})).toBeVisible();
+          |                                                                               ^
+      416 |   await expect(second.locator('.sidebar')).toHaveCount(0);
+      417 |   expect(await second.evaluate(async()=> (await import('/src/api/client.ts')).getAccessToken())).toBeNull();
+      418 |   expect(errors).toEqual([]);
+        at /Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts:415:79
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/security/security-browser-a-delayed-f6187-after-another-tab-signs-out/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/security/security-browser-a-delayed-f6187-after-another-tab-signs-out/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/security/security-browser-a-delayed-f6187-after-another-tab-signs-out/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/security/security-browser-a-delayed-f6187-after-another-tab-signs-out/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/security/security-browser-a-delayed-f6187-after-another-tab-signs-out/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    tests/security-browser.spec.ts:399:1 › a delayed bootstrap session response cannot reopen a tab after another tab signs out 
+  16 passed (38.6s)

@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss()],
     server: {
+      hmr: false,
+      watch: { ignored: ['**/qa-evidence/**', 'qa-evidence/**'] },
       allowedHosts: ['.trycloudflare.com'],
       ...(hasExplicitApiBase
         ? {}

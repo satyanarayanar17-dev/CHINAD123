@@ -610,9 +610,11 @@ export async function labs(
     params.push(user.id);
   }
   if (user.role === "NURSE") fail("FORBIDDEN_ROLE", 403);
+  const limit = Math.min(parseInt(String(req.query?.limit)) || 500, 1000);
+  const offset = parseInt(String(req.query?.offset)) || 0;
   const rows = await tx.all<LabOrder>(
-    `SELECT l.*,e.patient_id,p.name AS patient_name,t.name,t.code,t.unit,t.reference_range FROM lab_orders l JOIN encounters e ON e.id=l.encounter_id JOIN patients p ON p.id=e.patient_id JOIN lab_test_catalog t ON t.id=l.test_id WHERE ${where} ORDER BY l.ordered_at DESC LIMIT 500`,
-    params,
+    `SELECT l.*,e.patient_id,p.name AS patient_name,t.name,t.code,t.unit,t.reference_range FROM lab_orders l JOIN encounters e ON e.id=l.encounter_id JOIN patients p ON p.id=e.patient_id JOIN lab_test_catalog t ON t.id=l.test_id WHERE ${where} ORDER BY l.ordered_at DESC, l.id DESC LIMIT ? OFFSET ?`,
+    [...params, limit, offset],
   );
   for (const row of rows) {
     row.result =

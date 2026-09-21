@@ -34,7 +34,9 @@ router.delete('/unavailability/:id',endpoint(async(req,res)=>{roles(req,['ADMIN'
 router.get('/patients', endpoint(async(req,res)=>{
   roles(req,['ADMIN']);const search=String(req.query.search || '').slice(0,100);
   await audit(db,req,'PATIENT_DIRECTORY_ACCESSED');
-  res.json(await db.all<Patient>('SELECT * FROM patients WHERE LOWER(name) LIKE LOWER(?) OR phone LIKE ? OR mrn LIKE ? ORDER BY name LIMIT 100',[`%${search}%`,`%${search}%`,`%${search}%`]));
+  const limit = Math.min(parseInt(String(req.query.limit)) || 100, 500);
+  const offset = parseInt(String(req.query.offset)) || 0;
+  res.json(await db.all<Patient>('SELECT * FROM patients WHERE LOWER(name) LIKE LOWER(?) OR phone LIKE ? OR mrn LIKE ? ORDER BY name, id LIMIT ? OFFSET ?',[`%${search}%`,`%${search}%`,`%${search}%`, limit, offset]));
 }));
 router.post('/patients',endpoint(async(req,res)=>{roles(req,['ADMIN']);res.status(201).json(await transaction(async tx=>{const patient=await createPatient(tx,req,req.body);await event(tx,req,patient.id,'PATIENT_REGISTERED');return patient;}));}));
 router.get('/profile',endpoint(async(req,res)=>{roles(req,['PATIENT']);const user=await actor(req);res.json(await patientAccess(req,user.patient_id!));}));
@@ -103,11 +105,18 @@ router.patch('/staff/:id',endpoint(async(req,res)=>{
   });res.json({success:true});
 }));
 router.get('/notifications',endpoint(async(req,res)=>{
-  const rows=await db.all<Notification & {context:string}>('SELECT * FROM opd_notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100',[req.user.id]);
+  const limit = Math.min(parseInt(String(req.query.limit)) || 100, 500);
+  const offset = parseInt(String(req.query.offset)) || 0;
+  const rows=await db.all<Notification & {context:string}>('SELECT * FROM opd_notifications WHERE user_id=? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?',[req.user.id, limit, offset]);
   res.json(rows.map(r=>({...r,context:JSON.parse(r.context)})));
 }));
 router.post('/notifications/read',endpoint(async(req,res)=>{await db.run('UPDATE opd_notifications SET read_at=? WHERE user_id=? AND read_at IS NULL',[now(),req.user.id]);res.json({success:true});}));
-router.get('/audit',endpoint(async(req,res)=>{roles(req,['ADMIN']);res.json(await db.all('SELECT id,timestamp,actor_id,patient_id,action,new_state FROM audit_logs ORDER BY id DESC LIMIT 200'));}));
+router.get('/audit',endpoint(async(req,res)=>{
+  roles(req,['ADMIN']);
+  const limit = Math.min(parseInt(String(req.query.limit)) || 200, 1000);
+  const offset = parseInt(String(req.query.offset)) || 0;
+  res.json(await db.all('SELECT id,timestamp,actor_id,patient_id,action,new_state FROM audit_logs ORDER BY id DESC LIMIT ? OFFSET ?', [limit, offset]));
+}));
 router.get('/dashboard',endpoint(async(req,res)=>{
   roles(req,['ADMIN','DOCTOR']); const appointments=await scheduling.appointments(req,day());
   const queue=await scheduling.queue(req);

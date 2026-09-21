@@ -7,7 +7,9 @@ const demoPath = path.resolve(__dirname, '..', process.env.OPD_DEMO_DB || 'conne
 const PASSWORD = 'ChettinadDemo2026!';
 const INITIAL_PASSWORD = 'ChettinadInitial2026!';
 Object.assign(process.env, {
-  NODE_ENV: 'development', APP_ENV: 'local_dev', DB_DIALECT: 'sqlite', SQLITE_PATH: demoPath,
+  NODE_ENV: 'development', APP_ENV: 'local_dev',
+  DB_DIALECT: process.env.DB_DIALECT || 'sqlite',
+  SQLITE_PATH: process.env.DB_DIALECT === 'postgres' ? undefined : demoPath,
   OPD_DEMO_OTP: 'true', BOOTSTRAP_ADMIN_ID: 'demo_admin',
   BOOTSTRAP_ADMIN_NAME: 'Demo Reception Administrator', BOOTSTRAP_ADMIN_PASSWORD: PASSWORD,
 });

@@ -2,6 +2,7 @@ const path = require('path');
 
 const APP_ENVS = {
   LOCAL: 'local_dev',
+  STAGING: 'staging',
   PILOT: 'restricted_web_pilot'
 };
 
@@ -226,7 +227,7 @@ function isValidSmsUrl(value) {
 function loadRuntimeConfig(env = process.env) {
   const nodeEnv = readString(env.NODE_ENV, SAFE_LOCAL_ONLY_DEFAULTS.NODE_ENV) || SAFE_LOCAL_ONLY_DEFAULTS.NODE_ENV;
   const appEnv = readString(env.APP_ENV, SAFE_LOCAL_ONLY_DEFAULTS.APP_ENV) || SAFE_LOCAL_ONLY_DEFAULTS.APP_ENV;
-  const locked = nodeEnv === 'production' || appEnv === APP_ENVS.PILOT;
+  const locked = nodeEnv === 'production' || appEnv === APP_ENVS.PILOT || appEnv === APP_ENVS.STAGING;
   const dbDialect = readString(env.DB_DIALECT, SAFE_LOCAL_ONLY_DEFAULTS.DB_DIALECT).toLowerCase();
   const activationDelivery = readString(env.ACTIVATION_OTP_DELIVERY, appEnv === APP_ENVS.LOCAL ? SAFE_LOCAL_ONLY_DEFAULTS.ACTIVATION_OTP_DELIVERY : '');
   const corsOrigins = readString(env.CORS_ORIGIN)
@@ -243,6 +244,7 @@ function loadRuntimeConfig(env = process.env) {
     appEnv,
     isProduction: nodeEnv === 'production',
     isPilot: appEnv === APP_ENVS.PILOT,
+    isStaging: appEnv === APP_ENVS.STAGING,
     isLocalDev: appEnv === APP_ENVS.LOCAL,
     port: readInteger(env.PORT, Number(SAFE_LOCAL_ONLY_DEFAULTS.PORT)),
     dbDialect,
@@ -280,9 +282,11 @@ function validateRuntimeConfig(config) {
     errors.push(`DB_DIALECT must be one of: ${Array.from(ALLOWED_DB_DIALECTS).join(', ')}`);
   }
 
-  if (config.isPilot || config.isProduction) {
+  const isLocked = config.isPilot || config.isProduction || config.isStaging;
+
+  if (isLocked) {
     if (config.dbDialect !== 'postgres') {
-      errors.push('DB_DIALECT must be postgres for v2 restricted and production deployments.');
+      errors.push('DB_DIALECT must be postgres for v2 restricted, staging, and production deployments.');
     }
     if (config.pilotAuthBypass) {
       errors.push('PILOT_AUTH_BYPASS must be false outside local_dev.');
@@ -291,28 +295,32 @@ function validateRuntimeConfig(config) {
       errors.push('ALLOW_SEED_RESET must be false outside local_dev.');
     }
     if (!config.jwtSecret) {
-      errors.push('JWT_SECRET is required for pilot/prod deployments.');
+      errors.push('JWT_SECRET is required for locked deployments.');
     }
     if (!config.corsOrigins.length) {
-      errors.push('CORS_ORIGIN must be set explicitly for pilot/prod deployments.');
+      errors.push('CORS_ORIGIN must be set explicitly for locked deployments.');
     }
-    if (config.opdDemoOtp) {
+    // Staging allows OPD_DEMO_OTP for synthetic testing; pilot/prod do not.
+    if (config.opdDemoOtp && !config.isStaging) {
       errors.push('OPD_DEMO_OTP must be false for restricted and production deployments.');
     }
     if (config.enableLegacyApi) {
-      errors.push('ENABLE_LEGACY_API must be false for restricted and production deployments.');
+      errors.push('ENABLE_LEGACY_API must be false for restricted, staging, and production deployments.');
     }
     if (config.cookieSecure !== 'true') {
-      errors.push('COOKIE_SECURE must be true for restricted and production deployments.');
+      errors.push('COOKIE_SECURE must be true for restricted, staging, and production deployments.');
     }
     if (config.corsOrigins.some(origin => !isValidCorsOrigin(origin) || !origin.startsWith('https://'))) {
-      errors.push('CORS_ORIGIN must contain only explicit HTTPS origins for restricted and production deployments.');
+      errors.push('CORS_ORIGIN must contain only explicit HTTPS origins for locked deployments.');
     }
-    if (!isValidSmsUrl(config.smsWebhookUrl)) {
-      errors.push('SMS_WEBHOOK_URL must be an HTTPS endpoint without embedded credentials for v2 patient OTP delivery.');
-    }
-    if (!config.smsWebhookToken) {
-      errors.push('SMS_WEBHOOK_TOKEN is required for v2 patient OTP delivery.');
+    // Staging allows SMS to be optional so testers aren't blocked by needing a real provider.
+    if (!config.isStaging) {
+      if (!isValidSmsUrl(config.smsWebhookUrl)) {
+        errors.push('SMS_WEBHOOK_URL must be an HTTPS endpoint without embedded credentials for v2 patient OTP delivery.');
+      }
+      if (!config.smsWebhookToken) {
+        errors.push('SMS_WEBHOOK_TOKEN is required for v2 patient OTP delivery.');
+      }
     }
   } else if (!config.jwtSecret) {
     warnings.push('JWT_SECRET is not set. Local dev will fall back to an insecure default. Never use that outside local_dev.');

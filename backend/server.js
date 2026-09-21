@@ -42,7 +42,7 @@ const bootState = {
 // ===========================================================================
 // 1. STARTUP ENVIRONMENT VALIDATOR — fail-fast on misconfiguration
 // ===========================================================================
-const isLockedDeployment = runtimeConfig.isPilot || runtimeConfig.isProduction;
+const isLockedDeployment = runtimeConfig.isPilot || runtimeConfig.isProduction || runtimeConfig.isStaging;
 const configValidation = validateRuntimeConfig(runtimeConfig);
 
 if (configValidation.warnings.length > 0) {
@@ -270,7 +270,6 @@ app.get('/api/v1/health', async (req, res) => {
       last_successful_boot_at: bootState.last_successful_boot_at,
       checks: bootState.checks
     },
-    config: describeRuntimeConfig(runtimeConfig),
     correlation_id: req.correlationId
   };
 
@@ -287,24 +286,12 @@ app.get('/api/v1/ready', async (req, res) => {
   const payload = {
     status: readiness.status,
     ready: readiness.healthy && bootState.ready,
-    env: runtimeConfig.nodeEnv,
-    app_env: runtimeConfig.appEnv,
-    db: dbDialect,
     db_status: readiness.db_status,
-    migrations: readiness.migrations || null,
-    admin_access: readiness.admin_access || null,
-    boot: {
-      ready: bootState.ready,
-      last_successful_boot_at: bootState.last_successful_boot_at,
-      checks: bootState.checks
-    },
+    migrations_up_to_date: readiness.migrations?.up_to_date || false,
     correlation_id: req.correlationId
   };
 
   if (!payload.ready) {
-    if (!readiness.healthy && readiness.error) {
-      payload.error = readiness.error;
-    }
     return res.status(503).json(payload);
   }
 
@@ -361,6 +348,8 @@ setInterval(async () => {
 module.exports = app;
 
 if (require.main === module) {
+  let httpServer;
+
   async function startServer() {
     await migrateDatabase();
     await pingDatabase();
@@ -373,15 +362,45 @@ if (require.main === module) {
     require('./opd/notifications.ts').startNotificationWorker();
 
     const PORT = process.env.PORT || 3001;
-    app.listen(PORT, () => {
+    const HOST = '0.0.0.0';
+    httpServer = app.listen(PORT, HOST, () => {
       logEvent('info', 'server_listening', {
         port: PORT,
+        host: HOST,
         node_env: process.env.NODE_ENV || 'development',
         app_env: process.env.APP_ENV || 'local_dev',
         db_dialect: dbDialect
       });
     });
   }
+
+  // Graceful shutdown: drain HTTP connections and close database pool.
+  function gracefulShutdown(signal) {
+    logEvent('info', 'shutdown_signal', { signal });
+    if (httpServer) {
+      httpServer.close(() => {
+        logEvent('info', 'http_server_closed');
+        if (require('./database').pgPool) {
+          require('./database').pgPool.end().then(() => {
+            logEvent('info', 'pg_pool_closed');
+            process.exit(0);
+          }).catch(() => process.exit(1));
+        } else {
+          process.exit(0);
+        }
+      });
+      // Force exit after 10 seconds if connections don't drain.
+      setTimeout(() => {
+        logEvent('warn', 'shutdown_forced');
+        process.exit(1);
+      }, 10000).unref();
+    } else {
+      process.exit(0);
+    }
+  }
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
   startServer().catch((err) => {
     logEvent('error', 'server_start_fatal', { error: err.message, stack: err.stack });

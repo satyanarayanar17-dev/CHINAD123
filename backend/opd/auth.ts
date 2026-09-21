@@ -10,8 +10,9 @@ const require = createRequire(import.meta.url);
 const { JWT_SECRET, requireAuth, createSessionCredentials } = require('../middleware/auth');
 const { getRefreshCookieOptions, REFRESH_COOKIE_NAME } = require('../cookies');
 const { createRateLimiter } = require('../middleware/rateLimit');
-const locked = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'restricted_web_pilot';
-export const demoOtp = !locked && process.env.OPD_DEMO_OTP === 'true';
+const { runtimeConfig } = require('../config');
+const locked = runtimeConfig.isPilot || runtimeConfig.isProduction; // Note: isStaging is checked in config.js
+export const demoOtp = runtimeConfig.opdDemoOtp;
 const hash = (mobile: string, code: string) => createHmac('sha256', JWT_SECRET).update(`${mobile}:${code}`).digest('hex');
 const ttl = () => new Date(Date.now() + 30 * 86400000).toISOString();
 type Otp = { hash: string; expires_at: string; sent_at: string; consumed: number; attempts: number };

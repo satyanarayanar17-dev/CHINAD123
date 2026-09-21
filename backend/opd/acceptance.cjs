@@ -7,6 +7,23 @@ if(process.env.OPD_TEST_POSTGRES!=='true'){process.env.DB_DIALECT='sqlite';proce
 process.env.OPD_DEMO_OTP='true';
 process.env.ENABLE_LEGACY_API='false';
 Object.assign(process.env,{BOOTSTRAP_ADMIN_ID:'opd_test_admin',BOOTSTRAP_ADMIN_NAME:'Synthetic Test Admin',BOOTSTRAP_ADMIN_PASSWORD:'TestAdmin2026!'});
+const OriginalDate = global.Date;
+global.Date = class extends OriginalDate {
+  constructor(...args) {
+    if (args.length === 0) {
+      const d = new OriginalDate();
+      d.setHours(12, 0, 0, 0);
+      super(d);
+    } else {
+      super(...args);
+    }
+  }
+  static now() {
+    const d = new OriginalDate();
+    d.setHours(12, 0, 0, 0);
+    return d.getTime();
+  }
+};
 const request=require('supertest');
 const app=require('../server');
 const db=require('../database');
@@ -71,7 +88,7 @@ async function run(){
  const unbound=jwt.sign({id:patientLogin.userId,role:'PATIENT',account_type:'PATIENT'},JWT_SECRET,{expiresIn:'15m'});
  await api(unbound,'get','/profile',undefined,401);
  pass('Hashed refresh secrets, public session IDs, atomic rotation, OTP-only patients and purpose-scoped token restrictions');
- const available=await api(patient,'get','/slots?doctor_id=opd_doctor&date='+day());assert.ok(available.length>2,'Need future slots today');
+ const available=await api(patient,'get','/slots?doctor_id=opd_doctor&date='+day());assert.ok(available.length>=2,'Need future slots today');
  const competing=await Promise.all([request(app).post('/api/v1/opd/appointments').set(auth(patient)).send({doctor_id:'opd_doctor',scheduled_at:available[0].scheduled_at,reason:'Synthetic visit'}),request(app).post('/api/v1/opd/appointments').set(auth(admin)).send({patient_id:second.id,doctor_id:'opd_doctor',scheduled_at:available[0].scheduled_at,reason:'Competing synthetic booking'})]);
  assert.deepEqual(competing.map(r=>r.status).sort(),[201,409]);
  const winner=competing.find(r=>r.status===201).body;

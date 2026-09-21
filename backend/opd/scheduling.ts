@@ -257,9 +257,11 @@ export async function appointments(req: Req, dateOverride?: string) {
       new Date(start.getTime() + 86400000).toISOString(),
     );
   }
+  const limit = Math.min(parseInt(String(req.query?.limit)) || 500, 1000);
+  const offset = parseInt(String(req.query?.offset)) || 0;
   return db.all<Appointment>(
-    `${appointmentSelect} WHERE ${where} ORDER BY a.scheduled_at DESC LIMIT 500`,
-    values,
+    `${appointmentSelect} WHERE ${where} ORDER BY a.scheduled_at DESC, a.id DESC LIMIT ? OFFSET ?`,
+    [...values, limit, offset],
   );
 }
 export async function changeAppointment(req: Req, action: string) {

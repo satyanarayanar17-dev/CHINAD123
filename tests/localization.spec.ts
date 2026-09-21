@@ -11,7 +11,7 @@ for(const locale of ['en','ta','te']) {
  if(!match) throw Error('Cannot load UI vocabulary for '+locale);
  words[locale]=vm.runInNewContext('('+match[1]+')');
 }
-const dimensions=[{width:320,height:568},{width:390,height:844},{width:768,height:1024},{width:820,height:1180}];
+const dimensions=[{width:320,height:568},{width:360,height:800},{width:390,height:844},{width:430,height:932}];
 const observations:unknown[]=[];
 function dir(language:string){return `qa-evidence/${language==='ta'?'09-tamil':'10-telugu'}`;}
 function t(language:string,key:string){return words[language][key]||words.en[key]||key.replaceAll('_',' ').toLowerCase();}

@@ -1,0 +1,1 @@
+sed -i '' 's/const SPECIALTIES = \['\''All'\'', '\''General Medicine'\'', '\''Paediatrics'\'', '\''Cardiology'\'', '\''Orthopaedics'\'', '\''Neurology'\'', '\''Pulmonology \/ Respiratory Medicine'\''\];//g' src/pages/DoctorAppointments.tsx

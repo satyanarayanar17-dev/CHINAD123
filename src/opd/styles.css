@@ -1755,12 +1755,12 @@ pre {
 }
 .session-list p {
   font-size: 11px;
-  color: #667d6c;
+  color: #566b5c;
   overflow-wrap: anywhere;
 }
 .session-list small {
   font-size: 11px;
-  color: #738577;
+  color: #566b5c;
 }
 .audit-context {
   max-width: 340px;

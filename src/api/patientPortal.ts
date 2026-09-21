@@ -29,5 +29,16 @@ export const PatientPortalAPI = {
   fetchMyRecords: async (): Promise<LabReport[]> => {
     const response = await api.get<LabReport[]>('/my/records');
     return response.data.map((record, index) => normalizeLabReport(record, index));
+  },
+
+  fetchCarePlanAdherence: async (patientId: string): Promise<any[]> => {
+    return (await api.get(`/opd/adherence/${patientId}/today`)).data;
+  },
+  fetchCarePlanTimeline: async (patientId: string): Promise<any[]> => {
+    return (await api.get(`/opd/adherence/${patientId}/timeline`)).data;
+  },
+  recordAdherence: async (adherenceId: string, payload: any): Promise<any> => {
+    return (await api.post(`/opd/adherence/${adherenceId}/record`, payload)).data;
   }
 };
+

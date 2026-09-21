@@ -110,7 +110,7 @@ ChettinadDemo2026!
 | Role | Staff ID |
 | --- | --- |
 | Reception/Admin | `demo_admin` |
-| General Medicine doctor | `demo_doctor` |
+| General Medicine doctor | `dr_mohan_rao` |
 | General Medicine nurse | `demo_nurse` |
 | Cardiology doctor | `demo_cardiologist` |
 | Cardiology nurse | `demo_cardio_nurse` |

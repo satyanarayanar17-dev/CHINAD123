@@ -43,7 +43,7 @@ test('reception screens, keyboard dialogs, accessible layout and mobile reflow',
  await page.keyboard.press('Escape');
  await expect(page.getByRole('dialog')).toHaveCount(0);
  await page.setViewportSize({width:390,height:844});
- await page.getByRole('button',{name:'Open menu'}).click();
+ await page.getByRole('button',{name:'Open navigation'}).click();
  await nav(page,'Overview');
  await expect(page.locator('.sidebar')).not.toHaveClass(/open/);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -95,14 +95,14 @@ test('doctor edits and persists consultation, creates lab order, finalizes encou
  await page.getByRole('button',{name:'Save draft',exact:true}).click();
  await expect(page.locator('.workspace-toolbar')).toContainText('Version 3');
  await page.locator('.clinical-editor nav').getByRole('button',{name:'Laboratory',exact:true}).click();
- await page.getByLabel('Select a laboratory test').selectOption({label:'HbA1c (Demo) · DEMO-HBA1C'});
+ await page.getByLabel('Select a laboratory test').selectOption({label:'Haemoglobin (Demo) · DEMO-HB'});
  await page.getByRole('button',{name:'Order test',exact:true}).click();
  await expect(page.locator('.clinical-editor')).toContainText('HbA1c (Demo)');
  await page.locator('.clinical-editor nav').getByRole('button',{name:'Consultation',exact:true}).click();
  await page.getByRole('button',{name:'Issue prescription & complete',exact:true}).click();
  const confirmation=page.getByRole('dialog');
  await expect(confirmation).toBeVisible();
- await confirmation.getByRole('button',{name:'Issue prescription & complete',exact:true}).click();
+ await confirmation.getByRole('button',{name:'Confirm',exact:true}).click();
  await expect(confirmation).toHaveCount(0);
  await expect(page.locator('.workspace')).toHaveCount(0);
 });

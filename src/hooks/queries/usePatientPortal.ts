@@ -27,8 +27,24 @@ export function usePatientDashboardData() {
  */
 export function useMyAppointments() {
   return useQuery({
-    queryKey: ['myAppointments'],
-    queryFn: () => PatientPortalAPI.fetchMyAppointments(),
+    queryKey: ['portal', 'appointments'],
+    queryFn: () => PatientPortalAPI.fetchMyAppointments()
+  });
+}
+
+export function useCarePlanAdherence(patientId: string) {
+  return useQuery({
+    queryKey: ['portal', 'carePlanAdherence', patientId],
+    queryFn: () => PatientPortalAPI.fetchCarePlanAdherence(patientId),
+    enabled: !!patientId
+  });
+}
+
+export function useCarePlanTimeline(patientId: string) {
+  return useQuery({
+    queryKey: ['portal', 'carePlanTimeline', patientId],
+    queryFn: () => PatientPortalAPI.fetchCarePlanTimeline(patientId),
+    enabled: !!patientId
   });
 }
 

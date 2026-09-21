@@ -326,7 +326,7 @@ export function DataForm({
     ),
   });
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="form-stack">
+    <form onSubmit={(e) => { e.preventDefault(); handleSubmit(onSubmit)(e); }} className="form-stack">
       <Alert code={error || (Object.keys(errors).length ? "INVALID_INPUT" : "")} />
       <div className="form-grid">
         {fields.map((field) => {

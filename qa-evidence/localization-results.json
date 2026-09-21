@@ -76,7 +76,7 @@
         {
           "title": "Tamil",
           "file": "localization.spec.ts",
-          "line": 52,
+          "line": 86,
           "column": 7,
           "specs": [
             {
@@ -95,12 +95,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2406,
+                      "duration": 5889,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-15T12:02:36.864Z",
+                      "startTime": "2026-09-16T17:53:46.249Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -110,12 +110,12 @@
               ],
               "id": "ec9c160bd566307036e9-13bf773ad994ffef5ceb",
               "file": "localization.spec.ts",
-              "line": 54,
+              "line": 88,
               "column": 3
             },
             {
               "title": "reception screens and translated configuration forms",
-              "ok": false,
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -128,71 +128,23 @@
                     {
                       "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 6382,
-                      "error": {
-                        "message": "Error: ta admin-overview-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":351,\"width\":195,\"text\":\"Englishதமிழ்తెలుగు\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m351\u001b[39m",
-                        "stack": "Error: ta admin-overview-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":351,\"width\":195,\"text\":\"Englishதமிழ்తెలుగు\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m351\u001b[39m\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:69:49",
-                        "location": {
-                          "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                          "column": 130,
-                          "line": 31
-                        },
-                        "snippet": "  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                            "column": 130,
-                            "line": 31
-                          },
-                          "message": "Error: ta admin-overview-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":351,\"width\":195,\"text\":\"Englishதமிழ்తెలుగు\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m351\u001b[39m\n\n  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:69:49"
-                        },
-                        {
-                          "location": {
-                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                            "column": 130,
-                            "line": 31
-                          },
-                          "message": "Error: ta patient-registration-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":345,\"width\":195,\"text\":\"Englishதமிழ்తెలుగు\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m345\u001b[39m\n\n  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:72:108"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 22169,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-15T12:02:39.833Z",
+                      "startTime": "2026-09-16T17:53:52.482Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Tamil-recepti-a071b-nslated-configuration-forms/test-failed-1.png"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Tamil-recepti-a071b-nslated-configuration-forms/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Tamil-recepti-a071b-nslated-configuration-forms/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                        "column": 130,
-                        "line": 31
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
               "id": "ec9c160bd566307036e9-21bc16b0910c6ea2fa00",
               "file": "localization.spec.ts",
-              "line": 67,
+              "line": 102,
               "column": 3
             },
             {
@@ -208,15 +160,15 @@
                   "projectName": "",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3195,
+                      "duration": 8128,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-15T12:02:46.792Z",
+                      "startTime": "2026-09-16T17:54:14.656Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -226,12 +178,12 @@
               ],
               "id": "ec9c160bd566307036e9-436bfcdc1f786b312bf6",
               "file": "localization.spec.ts",
-              "line": 78,
+              "line": 113,
               "column": 3
             },
             {
               "title": "doctor consultation, prescription fields and record versions",
-              "ok": false,
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -242,81 +194,30 @@
                   "projectName": "",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 530896,
-                      "error": {
-                        "message": "Error: ta doctor-consultation-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":340,\"width\":195,\"text\":\"Englishதமிழ்తెలుగు6\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m340\u001b[39m",
-                        "stack": "Error: ta doctor-consultation-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":340,\"width\":195,\"text\":\"Englishதமிழ்తెలుగు6\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m340\u001b[39m\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:94:109",
-                        "location": {
-                          "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                          "column": 130,
-                          "line": 31
-                        },
-                        "snippet": "  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                            "column": 130,
-                            "line": 31
-                          },
-                          "message": "Error: ta doctor-consultation-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":340,\"width\":195,\"text\":\"Englishதமிழ்తెలుగు6\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m340\u001b[39m\n\n  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:94:109"
-                        },
-                        {
-                          "message": "\u001b[31mTest timeout of 180000ms exceeded.\u001b[39m"
-                        },
-                        {
-                          "location": {
-                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                            "column": 158,
-                            "line": 98
-                          },
-                          "message": "Error: locator.click: Test ended.\nCall log:\n\u001b[2m  - waiting for locator('.clinical-editor nav').getByRole('button', { name: 'மருந்துகள்', exact: true })\u001b[22m\n\n\n   96 |    await page.getByRole('button',{name:t(language,'saveDraft'),exact:true}).click();await expect(page.getByRole('alert')).toHaveCount(0);\n   97 |    await expect(page.locator('.workspace-toolbar')).toContainText(t(language,'version'));await screen(page,language,'doctor-saved-draft');\n>  98 |    for(const key of ['medications','laboratory','journey']){await page.locator('.clinical-editor nav').getByRole('button',{name:t(language,key),exact:true}).click();await screen(page,language,`doctor-${key}`);if(key==='medications')await sizes(page,language,'prescription-builder-responsive');}\n      |                                                                                                                                                              ^\n   99 |    await page.getByRole('button',{name:t(language,'back'),exact:true}).click();\n  100 |    await page.getByRole('row').filter({hasText:'Karthik Srinivasan (Demo)'}).getByRole('button',{name:t(language,'openRecord'),exact:true}).click();\n  101 |    await page.locator('.tabs').getByRole('button',{name:t(language,'previousVisits'),exact:true}).click();await screen(page,language,'doctor-previous-visits');\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:98:158"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 12239,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-15T12:02:50.202Z",
+                      "startTime": "2026-09-16T17:54:22.795Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Tamil-doctor--7de15--fields-and-record-versions/test-failed-1.png"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Tamil-doctor--7de15--fields-and-record-versions/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Tamil-doctor--7de15--fields-and-record-versions/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                        "column": 130,
-                        "line": 31
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
               "id": "ec9c160bd566307036e9-7cbb5a849ec74b3db9cd",
               "file": "localization.spec.ts",
-              "line": 90,
+              "line": 125,
               "column": 3
             },
             {
               "title": "patient OTP, own portal, booking and released prescription",
-              "ok": false,
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -327,81 +228,25 @@
                   "projectName": "",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 3011,
-                      "error": {
-                        "message": "Error: ta patient-portal-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":352,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు9+\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m352\u001b[39m",
-                        "stack": "Error: ta patient-portal-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":352,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు9+\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m352\u001b[39m\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:112:106",
-                        "location": {
-                          "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                          "column": 130,
-                          "line": 31
-                        },
-                        "snippet": "  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                            "column": 130,
-                            "line": 31
-                          },
-                          "message": "Error: ta patient-portal-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":352,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు9+\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m352\u001b[39m\n\n  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:112:106"
-                        },
-                        {
-                          "location": {
-                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                            "column": 130,
-                            "line": 31
-                          },
-                          "message": "Error: ta patient-booking-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":352,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు9+\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m352\u001b[39m\n\n  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:113:131"
-                        },
-                        {
-                          "location": {
-                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                            "column": 130,
-                            "line": 31
-                          },
-                          "message": "Error: ta patient-prescription-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":331,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు9+\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m331\u001b[39m\n\n  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:116:115"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 77337,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-15T12:11:41.810Z",
+                      "startTime": "2026-09-16T17:54:35.039Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Tamil-patient-e992b-g-and-released-prescription/test-failed-1.png"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Tamil-patient-e992b-g-and-released-prescription/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Tamil-patient-e992b-g-and-released-prescription/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                        "column": 130,
-                        "line": 31
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
               "id": "ec9c160bd566307036e9-bdf147c3fa79e3470f96",
               "file": "localization.spec.ts",
-              "line": 105,
+              "line": 140,
               "column": 3
             }
           ]
@@ -409,7 +254,7 @@
         {
           "title": "Telugu",
           "file": "localization.spec.ts",
-          "line": 52,
+          "line": 86,
           "column": 7,
           "specs": [
             {
@@ -425,15 +270,15 @@
                   "projectName": "",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1237,
+                      "duration": 5098,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-15T12:11:45.528Z",
+                      "startTime": "2026-09-16T17:55:52.381Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -443,12 +288,12 @@
               ],
               "id": "ec9c160bd566307036e9-4bf46cad5b0df301e8f9",
               "file": "localization.spec.ts",
-              "line": 54,
+              "line": 88,
               "column": 3
             },
             {
               "title": "reception screens and translated configuration forms",
-              "ok": false,
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -459,65 +304,25 @@
                   "projectName": "",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 3333,
-                      "error": {
-                        "message": "Error: te admin-overview-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":331,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m331\u001b[39m",
-                        "stack": "Error: te admin-overview-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":331,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m331\u001b[39m\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:69:49",
-                        "location": {
-                          "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                          "column": 130,
-                          "line": 31
-                        },
-                        "snippet": "  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                            "column": 130,
-                            "line": 31
-                          },
-                          "message": "Error: te admin-overview-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":331,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m331\u001b[39m\n\n  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:69:49"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 22528,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-15T12:11:46.888Z",
+                      "startTime": "2026-09-16T17:55:57.485Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Telugu-recept-dd8d3-nslated-configuration-forms/test-failed-1.png"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Telugu-recept-dd8d3-nslated-configuration-forms/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Telugu-recept-dd8d3-nslated-configuration-forms/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                        "column": 130,
-                        "line": 31
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
               "id": "ec9c160bd566307036e9-4d38e5afcddf3afdc347",
               "file": "localization.spec.ts",
-              "line": 67,
+              "line": 102,
               "column": 3
             },
             {
@@ -533,15 +338,15 @@
                   "projectName": "",
                   "results": [
                     {
-                      "workerIndex": 4,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1421,
+                      "duration": 8332,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-15T12:11:50.496Z",
+                      "startTime": "2026-09-16T17:56:20.019Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -551,12 +356,12 @@
               ],
               "id": "ec9c160bd566307036e9-e7fedb665748ddb61579",
               "file": "localization.spec.ts",
-              "line": 78,
+              "line": 113,
               "column": 3
             },
             {
               "title": "doctor consultation, prescription fields and record versions",
-              "ok": false,
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -567,81 +372,30 @@
                   "projectName": "",
                   "results": [
                     {
-                      "workerIndex": 4,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 986172,
-                      "error": {
-                        "message": "Error: te doctor-consultation-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":333,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు6\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m333\u001b[39m",
-                        "stack": "Error: te doctor-consultation-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":333,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు6\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m333\u001b[39m\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:94:109",
-                        "location": {
-                          "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                          "column": 130,
-                          "line": 31
-                        },
-                        "snippet": "  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                            "column": 130,
-                            "line": 31
-                          },
-                          "message": "Error: te doctor-consultation-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":333,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు6\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m333\u001b[39m\n\n  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:94:109"
-                        },
-                        {
-                          "message": "\u001b[31mTest timeout of 180000ms exceeded.\u001b[39m"
-                        },
-                        {
-                          "location": {
-                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                            "column": 158,
-                            "line": 98
-                          },
-                          "message": "Error: locator.click: Test ended.\nCall log:\n\u001b[2m  - waiting for locator('.clinical-editor nav').getByRole('button', { name: 'మందులు', exact: true })\u001b[22m\n\n\n   96 |    await page.getByRole('button',{name:t(language,'saveDraft'),exact:true}).click();await expect(page.getByRole('alert')).toHaveCount(0);\n   97 |    await expect(page.locator('.workspace-toolbar')).toContainText(t(language,'version'));await screen(page,language,'doctor-saved-draft');\n>  98 |    for(const key of ['medications','laboratory','journey']){await page.locator('.clinical-editor nav').getByRole('button',{name:t(language,key),exact:true}).click();await screen(page,language,`doctor-${key}`);if(key==='medications')await sizes(page,language,'prescription-builder-responsive');}\n      |                                                                                                                                                              ^\n   99 |    await page.getByRole('button',{name:t(language,'back'),exact:true}).click();\n  100 |    await page.getByRole('row').filter({hasText:'Karthik Srinivasan (Demo)'}).getByRole('button',{name:t(language,'openRecord'),exact:true}).click();\n  101 |    await page.locator('.tabs').getByRole('button',{name:t(language,'previousVisits'),exact:true}).click();await screen(page,language,'doctor-previous-visits');\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:98:158"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 11882,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-15T12:11:51.993Z",
+                      "startTime": "2026-09-16T17:56:28.358Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Telugu-doctor-a91f6--fields-and-record-versions/test-failed-1.png"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Telugu-doctor-a91f6--fields-and-record-versions/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Telugu-doctor-a91f6--fields-and-record-versions/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                        "column": 130,
-                        "line": 31
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
               "id": "ec9c160bd566307036e9-dc611612686d3c39c81f",
               "file": "localization.spec.ts",
-              "line": 90,
+              "line": 125,
               "column": 3
             },
             {
               "title": "patient OTP, own portal, booking and released prescription",
-              "ok": false,
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -652,73 +406,25 @@
                   "projectName": "",
                   "results": [
                     {
-                      "workerIndex": 5,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 2724,
-                      "error": {
-                        "message": "Error: te patient-portal-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":331,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు9+\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m331\u001b[39m",
-                        "stack": "Error: te patient-portal-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":331,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు9+\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m331\u001b[39m\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:112:106",
-                        "location": {
-                          "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                          "column": 130,
-                          "line": 31
-                        },
-                        "snippet": "  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                            "column": 130,
-                            "line": 31
-                          },
-                          "message": "Error: te patient-portal-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":331,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు9+\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m331\u001b[39m\n\n  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:112:106"
-                        },
-                        {
-                          "location": {
-                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                            "column": 130,
-                            "line": 31
-                          },
-                          "message": "Error: te patient-booking-responsive document overflow at 320px; [{\"tag\":\"DIV\",\"classes\":\"topbar-actions\",\"right\":331,\"width\":196,\"text\":\"Englishதமிழ்తెలుగు9+\"}]\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m321\u001b[39m\nReceived:    \u001b[31m331\u001b[39m\n\n  29 |  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});\n  30 |  fs.writeFileSync('qa-evidence/localization-observations.json',JSON.stringify(observations,null,2));\n> 31 |  expect.soft(metrics.scroll,`${language} ${name} document overflow at ${metrics.width}px; ${JSON.stringify(metrics.offenders)}`).toBeLessThanOrEqual(metrics.width+1);\n     |                                                                                                                                  ^\n  32 |  expect.soft(untranslated,`${language} ${name} untranslated UI`).toEqual([]);\n  33 |  expect.soft(rawKeys,`${language} ${name} raw localization keys`).toEqual([]);\n  34 |  expect.soft(await page.locator('body').innerText()).not.toContain('\\uFFFD');\n    at screen (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:31:130)\n    at sizes (/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:36:132)\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts:113:131"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 16086,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-15T12:28:18.449Z",
+                      "startTime": "2026-09-16T17:56:40.244Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Telugu-patien-c4ea3-g-and-released-prescription/test-failed-1.png"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Telugu-patien-c4ea3-g-and-released-prescription/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/Users/siddwork/Desktop/chettinad-care-frontend/qa-evidence/localization-test-results/localization-Telugu-patien-c4ea3-g-and-released-prescription/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/localization.spec.ts",
-                        "column": 130,
-                        "line": 31
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
               "id": "ec9c160bd566307036e9-ff4e862270aee5b62c81",
               "file": "localization.spec.ts",
-              "line": 105,
+              "line": 140,
               "column": 3
             }
           ]
@@ -728,11 +434,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-09-15T12:02:29.799Z",
-    "duration": 1551510.801,
-    "expected": 4,
+    "startTime": "2026-09-16T17:53:39.134Z",
+    "duration": 197327.984,
+    "expected": 10,
     "skipped": 0,
-    "unexpected": 6,
+    "unexpected": 0,
     "flaky": 0
   }
 }

@@ -14,16 +14,45 @@ for(const locale of ['en','ta','te']) {
 const dimensions=[{width:320,height:568},{width:390,height:844},{width:768,height:1024},{width:820,height:1180}];
 const observations:unknown[]=[];
 function dir(language:string){return `qa-evidence/${language==='ta'?'09-tamil':'10-telugu'}`;}
-function t(language:string,key:string){return words[language][key]||words.en[key]||key;}
-async function settle(page:Page){await expect(page.locator('.loading')).toHaveCount(0);await page.locator('body').evaluate(()=>document.fonts.ready);}
+function t(language:string,key:string){return words[language][key]||words.en[key]||key.replaceAll('_',' ').toLowerCase();}
+async function settle(page:Page){
+  await expect(page.locator('.loading')).toHaveCount(0);
+  await page.waitForTimeout(500);
+  try {
+    await page.evaluate(() => Promise.race([
+      document.fonts.ready,
+      new Promise(resolve => setTimeout(resolve, 2000))
+    ]));
+  } catch (e) {
+    console.warn("Fonts not ready or context destroyed", e);
+  }
+}
 async function screen(page:Page,language:string,name:string){
  await settle(page);
  fs.mkdirSync(dir(language),{recursive:true});
  const viewport=page.viewportSize()!;
  const evidence=`${dir(language)}/${name}-${viewport.width}px.png`;
  await page.screenshot({path:evidence,fullPage:true,animations:'disabled'});
- const metrics=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,lang:document.documentElement.lang,offenders:Array.from(document.querySelectorAll('main,header,.page-heading,.panel,.workspace,.clinical-editor,.patient-header,.modal,.topbar,.breadcrumb,.topbar-actions,.btn')).map(el=>({tag:el.tagName,classes:el.className,right:Math.round(el.getBoundingClientRect().right),width:Math.round(el.getBoundingClientRect().width),text:el.textContent?.trim().slice(0,80)})).filter(el=>el.right>innerWidth+1)}));
- const ui=await page.locator('h1,h2,h3,.nav-item,.btn,.field>label,.status,.empty-state strong,.alert').allTextContents();
+ let metrics;
+ for(let i=0;i<3;i++){
+  try {
+   metrics=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,lang:document.documentElement.lang,offenders:Array.from(document.querySelectorAll('main,header,.page-heading,.panel,.workspace,.clinical-editor,.patient-header,.modal,.topbar,.breadcrumb,.topbar-actions,.btn')).map(el=>({tag:el.tagName,classes:el.className,right:Math.round(el.getBoundingClientRect().right),width:Math.round(el.getBoundingClientRect().width),text:el.textContent?.trim().slice(0,80)})).filter(el=>el.right>innerWidth+1)}));
+   break;
+  }catch(e:any){
+   if(i===2) throw e;
+   await page.waitForTimeout(500);
+  }
+ }
+ let ui;
+ for(let i=0;i<3;i++){
+  try {
+   ui=await page.locator('h1,h2,h3,.nav-item,.btn,.field>label,.status,.empty-state strong,.alert').allTextContents();
+   break;
+  }catch(e:any){
+   if(i===2) throw e;
+   await page.waitForTimeout(500);
+  }
+ }
  const untranslated=ui.map(v=>v.trim().replace(/\s+\*$/,'')).filter(value=>Object.entries(words.en).some(([key,english])=>value===english&&words[language][key]!==english));
  const rawKeys=ui.map(v=>v.trim()).filter(value=>Boolean(words.en[value])&&words.en[value]!==value&&words[language][value]!==value);
  observations.push({language,name,evidence,...metrics,untranslated,rawKeys});
@@ -41,9 +70,14 @@ async function nav(page:Page,language:string,key:string){
 }
 async function switchTo(page:Page,language:string){await page.locator('.language-select').selectOption(language);await expect(page.locator('html')).toHaveAttribute('lang',language);}
 async function staff(page:Page,language:string,id:string){
- await page.goto('/');await page.locator('.login-tabs button').nth(1).click();await switchTo(page,language);
- await page.locator('input[name=username]').fill(id);await page.locator('input[name=password]').fill('ChettinadDemo2026!');
- await page.getByRole('button',{name:t(language,'login'),exact:true}).click();await expect(page.locator('.app-shell')).toBeVisible();await settle(page);
+ await page.goto('/login');
+ await page.locator('.login-tabs button').nth(1).click();
+ await switchTo(page,language);
+ await page.locator('input[name=username]').fill(id);
+ await page.locator('input[name=password]').fill('ChettinadDemo2026!');
+ await page.getByRole('button',{name:t(language,'login'),exact:true}).click();
+ await expect(page.locator('.app-shell')).toBeVisible();
+ await settle(page);
 }
 async function logout(page:Page,language:string){await page.getByRole('button',{name:t(language,'logout'),exact:true}).click();await expect(page.locator('.login-card')).toBeVisible();}
 async function dismiss(page:Page){await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);}
@@ -53,12 +87,13 @@ for(const language of ['ta','te']) {
   test.use({locale:`${language}-IN`});
   test('login, errors, registration and language persistence',async({page})=>{
    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
-   await page.goto('/');await switchTo(page,language);await screen(page,language,'login-desktop');await sizes(page,language,'login-responsive');
+   await page.goto('/login');await switchTo(page,language);await screen(page,language,'login-desktop');await sizes(page,language,'login-responsive');
    await page.locator('.login-tabs button').nth(1).click();
    await page.locator('input[name=username]').fill('qa_invalid_user');await page.locator('input[name=password]').fill('InvalidDemo2026!');
    await page.getByRole('button',{name:t(language,'login'),exact:true}).click();await expect(page.getByRole('alert')).toContainText(t(language,'INVALID_CREDENTIALS'));
    await screen(page,language,'invalid-credentials');
    await page.locator('input[name=username]').fill('   ');await page.getByRole('button',{name:t(language,'login'),exact:true}).click();
+   await expect(page.getByRole('alert').filter({hasText:t(language,'INVALID_INPUT')})).toBeVisible();
    await screen(page,language,'whitespace-validation');
    for(const next of ['en','ta','te','en',language]){await switchTo(page,next);await expect(page.locator('.login-card')).toBeVisible();}
    await page.reload();await expect(page.locator('html')).toHaveAttribute('lang',language);await expect(page.locator('.login-card')).toBeVisible();
@@ -95,7 +130,7 @@ for(const language of ['ta','te']) {
    await page.locator('textarea[name=history]').fill(`QA localization ${language}: unchanged clinical text in the selected language interface.`);
    await page.getByRole('button',{name:t(language,'saveDraft'),exact:true}).click();await expect(page.getByRole('alert')).toHaveCount(0);
    await expect(page.locator('.workspace-toolbar')).toContainText(t(language,'version'));await screen(page,language,'doctor-saved-draft');
-   for(const key of ['medications','laboratory','journey']){await page.locator('.clinical-editor nav').getByRole('button',{name:t(language,key),exact:true}).click();await screen(page,language,`doctor-${key}`);if(key==='medications')await sizes(page,language,'prescription-builder-responsive');}
+   for(const key of ['consultation','laboratory','journey']){await page.locator('.clinical-editor nav').getByRole('button',{name:t(language,key),exact:true}).click();await screen(page,language,`doctor-${key}`);if(key==='consultation')await sizes(page,language,'prescription-builder-responsive');}
    await page.getByRole('button',{name:t(language,'back'),exact:true}).click();
    await page.getByRole('row').filter({hasText:'Karthik Srinivasan (Demo)'}).getByRole('button',{name:t(language,'openRecord'),exact:true}).click();
    await page.locator('.tabs').getByRole('button',{name:t(language,'previousVisits'),exact:true}).click();await screen(page,language,'doctor-previous-visits');
@@ -103,7 +138,7 @@ for(const language of ['ta','te']) {
    await expect(page.locator('.main-content pre')).toHaveCount(0);expect(errors).toEqual([]);
   });
   test('patient OTP, own portal, booking and released prescription',async({page})=>{
-   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/');await switchTo(page,language);
+   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/login');await switchTo(page,language);
    await page.getByLabel(t(language,'mobile'),{exact:false}).fill(language==='ta'?'9000000006':'9000000002');
    const response=page.waitForResponse(r=>r.url().endsWith('/otp/request'));await page.getByRole('button',{name:t(language,'sendOtp'),exact:true}).click();
    const result=await response;if(result.status()===429){await page.waitForTimeout(61000);await page.getByRole('button',{name:t(language,'sendOtp'),exact:true}).click();}

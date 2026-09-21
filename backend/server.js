@@ -152,6 +152,8 @@ const portalRouter = require('./routes/portal');
 const adminRouter = require('./routes/admin');
 const activationRouter = require('./routes/activation');
 const { router: sseRouter } = require('./routes/sse');
+const carePlansRouter = require('./routes/care_plans');
+const adherenceRouter = require('./routes/adherence');
 
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/auth/opd', require('./opd/auth.ts').authRouter);
@@ -168,6 +170,8 @@ app.use('/api/v1/notifications', notificationsRouter);
 app.use('/api/v1/drafts', draftsRouter);
 app.use('/api/v1/internal', internalRouter);
 app.use('/api/v1/my', portalRouter);
+app.use('/api/v1/opd/care-plans', carePlansRouter);
+app.use('/api/v1/opd/adherence', adherenceRouter);
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/activation', activationRouter);
 app.use('/api/v1/sse', sseRouter);

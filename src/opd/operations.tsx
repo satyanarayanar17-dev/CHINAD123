@@ -225,7 +225,7 @@ export function Overview(props: PageProps) {
                 </div>
                 <div className="two-column">
                   <Panel title="departmentFlow">
-                    <div className="table-scroll">
+                    <div className="table-scroll" tabIndex={0}>
                       <table>
                         <thead>
                           <tr>
@@ -394,7 +394,7 @@ export function AppointmentsPage(props: PageProps) {
         ) : q.isError ? (
           <Alert code="NETWORK_ERROR" />
         ) : q.data?.length ? (
-          <div className="table-scroll">
+          <div className="table-scroll" tabIndex={0}>
             <table>
               <thead>
                 <tr>
@@ -626,7 +626,7 @@ export function PatientsPage(props: PageProps) {
         ) : q.isError ? (
           <Alert code="NETWORK_ERROR" />
         ) : q.data?.length ? (
-          <div className="table-scroll">
+          <div className="table-scroll" tabIndex={0}>
             <table>
               <thead>
                 <tr>
@@ -739,7 +739,7 @@ export function QueueTable({
     <>
       <Alert code={action.error} />
       {entries.length ? (
-        <div className="table-scroll">
+        <div className="table-scroll" tabIndex={0}>
           <table>
             <thead>
               <tr>

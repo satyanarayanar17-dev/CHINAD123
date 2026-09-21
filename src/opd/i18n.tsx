@@ -222,7 +222,7 @@ const en = {
   completeEncounter: "Issue prescription & complete",
   completeHint:
     "Completing the encounter finalizes the consultation and issues the prescription. Later changes require an attributed amendment.",
-  previousVisits: "Previous encounters",
+  previousVisits: "Previous records",
   currentVitals: "Latest triage",
   noVitals: "Triage has not been recorded yet.",
   view: "View",

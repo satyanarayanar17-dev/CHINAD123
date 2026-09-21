@@ -23,7 +23,8 @@ const migrations = [
   patientActivationTokenHardening,
   authSecurityHardening,
   require('./012_connected_opd'),
-  require('./013_session_and_encounter_integrity')
+  require('./013_session_and_encounter_integrity'),
+  require('./014_care_plans')
 ];
 
 function migrationTableSql(dialect) {

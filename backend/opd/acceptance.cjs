@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const crypto=require('node:crypto'),jwt=require('jsonwebtoken');
 if(process.env.NODE_ENV==='production'||process.env.APP_ENV==='restricted_web_pilot')throw Error('Local tests only');
+if(process.env.OPD_TEST_POSTGRES==='true' && (!/^cc_validation_[a-f0-9]{32}$/.test(process.env.CC_ISOLATED_TEST_DB || '') || new URL(process.env.DATABASE_URL).pathname !== '/'+process.env.CC_ISOLATED_TEST_DB)) throw Error('PostgreSQL acceptance requires scripts/isolated-postgres.cjs');
 if(process.env.OPD_TEST_POSTGRES!=='true'){process.env.DB_DIALECT='sqlite';process.env.SQLITE_PATH=path.join(fs.mkdtempSync(path.join(os.tmpdir(),'cc-opd-test-')),'test.db');}
 process.env.OPD_DEMO_OTP='true';
 process.env.ENABLE_LEGACY_API='false';

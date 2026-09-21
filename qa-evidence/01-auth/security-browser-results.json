@@ -88,12 +88,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1603,
+                  "duration": 10513,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:25:42.225Z",
+                  "startTime": "2026-09-21T10:21:41.677Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -122,12 +122,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1441,
+                  "duration": 12201,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:25:45.448Z",
+                  "startTime": "2026-09-21T10:22:04.474Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -156,12 +156,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1552,
+                  "duration": 17505,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:25:46.904Z",
+                  "startTime": "2026-09-21T10:22:16.964Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -190,12 +190,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1349,
+                  "duration": 32894,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:25:48.467Z",
+                  "startTime": "2026-09-21T10:22:34.749Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -224,12 +224,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1363,
+                  "duration": 5597,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:25:49.822Z",
+                  "startTime": "2026-09-21T10:23:07.925Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -258,12 +258,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1748,
+                  "duration": 10432,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:25:51.195Z",
+                  "startTime": "2026-09-21T10:23:13.638Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -278,7 +278,7 @@
         },
         {
           "title": "network interruption is visible and retry restores service",
-          "ok": true,
+          "ok": false,
           "tags": [],
           "tests": [
             {
@@ -291,18 +291,58 @@
                 {
                   "workerIndex": 0,
                   "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 1065,
-                  "errors": [],
+                  "status": "failed",
+                  "duration": 10386,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('alert')\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" getByRole('alert') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('alert')\u001b[22m\n\u001b[2m    13 × locator resolved to 1 element\u001b[22m\n\u001b[2m       - unexpected value \"1\"\u001b[22m\n",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('alert')\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" getByRole('alert') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('alert')\u001b[22m\n\u001b[2m    13 × locator resolved to 1 element\u001b[22m\n\u001b[2m       - unexpected value \"1\"\u001b[22m\n\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts:200:41",
+                    "location": {
+                      "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                      "column": 41,
+                      "line": 200
+                    },
+                    "snippet": "  198 |   await page.unroute('**/api/v1/auth/refresh');\n  199 |   await page.getByRole('button', { name: 'Try again', exact: true }).click();\n> 200 |   await expect(page.getByRole('alert')).toHaveCount(0);\n      |                                         ^\n  201 |   await expect(page.getByRole('button', { name: 'Hospital staff', exact: true })).toBeVisible();\n  202 |   await capture(page, '11-errors/backend-recovery-after-retry-pass');\n  203 | });"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                        "column": 41,
+                        "line": 200
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('alert')\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" getByRole('alert') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('alert')\u001b[22m\n\u001b[2m    13 × locator resolved to 1 element\u001b[22m\n\u001b[2m       - unexpected value \"1\"\u001b[22m\n\n\n  198 |   await page.unroute('**/api/v1/auth/refresh');\n  199 |   await page.getByRole('button', { name: 'Try again', exact: true }).click();\n> 200 |   await expect(page.getByRole('alert')).toHaveCount(0);\n      |                                         ^\n  201 |   await expect(page.getByRole('button', { name: 'Hospital staff', exact: true })).toBeVisible();\n  202 |   await capture(page, '11-errors/backend-recovery-after-retry-pass');\n  203 | });\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts:200:41"
+                    }
+                  ],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:25:52.948Z",
+                  "startTime": "2026-09-21T10:23:24.120Z",
                   "annotations": [],
-                  "attachments": []
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-network-i-78d15--and-retry-restores-service/test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-network-i-78d15--and-retry-restores-service/error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-network-i-78d15--and-retry-restores-service/trace.zip"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                    "column": 41,
+                    "line": 200
+                  }
                 }
               ],
-              "status": "expected"
+              "status": "unexpected"
             }
           ],
           "id": "c6c23e8279f8a459c812-5610de8edf140763614a",
@@ -323,15 +363,15 @@
               "projectName": "",
               "results": [
                 {
-                  "workerIndex": 0,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2393,
+                  "duration": 4866,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:25:54.017Z",
+                  "startTime": "2026-09-21T10:23:41.168Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -357,15 +397,15 @@
               "projectName": "",
               "results": [
                 {
-                  "workerIndex": 0,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1884,
+                  "duration": 6306,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:25:56.415Z",
+                  "startTime": "2026-09-21T10:23:58.367Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -391,15 +431,15 @@
               "projectName": "",
               "results": [
                 {
-                  "workerIndex": 0,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1464,
+                  "duration": 16449,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:25:58.306Z",
+                  "startTime": "2026-09-21T10:24:04.762Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -425,15 +465,15 @@
               "projectName": "",
               "results": [
                 {
-                  "workerIndex": 0,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1987,
+                  "duration": 5838,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:25:59.776Z",
+                  "startTime": "2026-09-21T10:24:21.255Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -459,15 +499,15 @@
               "projectName": "",
               "results": [
                 {
-                  "workerIndex": 0,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1107,
+                  "duration": 4096,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:26:01.769Z",
+                  "startTime": "2026-09-21T10:24:27.117Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -493,15 +533,15 @@
               "projectName": "",
               "results": [
                 {
-                  "workerIndex": 0,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1112,
+                  "duration": 3962,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:26:02.883Z",
+                  "startTime": "2026-09-21T10:24:31.239Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -516,7 +556,7 @@
         },
         {
           "title": "invalid staff attempts hit a bounded rate limit",
-          "ok": true,
+          "ok": false,
           "tags": [],
           "tests": [
             {
@@ -527,20 +567,60 @@
               "projectName": "",
               "results": [
                 {
-                  "workerIndex": 0,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 713,
-                  "errors": [],
+                  "status": "failed",
+                  "duration": 2668,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts:326:19",
+                    "location": {
+                      "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                      "column": 19,
+                      "line": 326
+                    },
+                    "snippet": "  324 |     expect(result.status).toBe(401);\n  325 |   }\n> 326 |   expect(limited).toBe(true);\n      |                   ^\n  327 |   await page.getByRole('button',{name:'Hospital staff',exact:true}).click();\n  328 |   await page.locator('[name=username]').fill('qa_rate_limit_only');\n  329 |   await page.locator('[name=password]').fill('InvalidOnly2026!');"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                        "column": 19,
+                        "line": 326
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  324 |     expect(result.status).toBe(401);\n  325 |   }\n> 326 |   expect(limited).toBe(true);\n      |                   ^\n  327 |   await page.getByRole('button',{name:'Hospital staff',exact:true}).click();\n  328 |   await page.locator('[name=username]').fill('qa_rate_limit_only');\n  329 |   await page.locator('[name=password]').fill('InvalidOnly2026!');\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts:326:19"
+                    }
+                  ],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:26:04.001Z",
+                  "startTime": "2026-09-21T10:24:35.241Z",
                   "annotations": [],
-                  "attachments": []
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-invalid-s-ed027-ts-hit-a-bounded-rate-limit/test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-invalid-s-ed027-ts-hit-a-bounded-rate-limit/error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-invalid-s-ed027-ts-hit-a-bounded-rate-limit/trace.zip"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                    "column": 19,
+                    "line": 326
+                  }
                 }
               ],
-              "status": "expected"
+              "status": "unexpected"
             }
           ],
           "id": "c6c23e8279f8a459c812-bfe59da2f1337a482a33",
@@ -550,7 +630,7 @@
         },
         {
           "title": "spoofing the untrusted forwarded address cannot evade the client IP login limit",
-          "ok": true,
+          "ok": false,
           "tags": [],
           "tests": [
             {
@@ -561,20 +641,56 @@
               "projectName": "",
               "results": [
                 {
-                  "workerIndex": 0,
+                  "workerIndex": 2,
                   "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 789,
-                  "errors": [],
+                  "status": "failed",
+                  "duration": 0,
+                  "error": {
+                    "message": "Error: apiRequestContext._wrapApiCall: ENOENT: no such file or directory, copyfile '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c-recording1.network' -> '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c-recording1-pwnetcopy-1.network'",
+                    "stack": "Error: apiRequestContext._wrapApiCall: ENOENT: no such file or directory, copyfile '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c-recording1.network' -> '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c-recording1-pwnetcopy-1.network'\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts:30:17",
+                    "location": {
+                      "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                      "column": 17,
+                      "line": 30
+                    },
+                    "snippet": "  28 |   const queue = await fetchApi(page,token,'/opd/queue');\n  29 |   otherDepartmentEncounterId = queue.body.find((q:{patient_id:string})=>q.patient_id===otherDepartmentPatientId).encounter_id;\n> 30 |   await context.close();\n     |                 ^\n  31 | });\n  32 | const fixtureSigningKey = '9087a416cd21b1b746a211731b4a7099ecb073d9a16a4a44';\n  33 |"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                        "column": 17,
+                        "line": 30
+                      },
+                      "message": "Error: apiRequestContext._wrapApiCall: ENOENT: no such file or directory, copyfile '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c-recording1.network' -> '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c-recording1-pwnetcopy-1.network'\n\n  28 |   const queue = await fetchApi(page,token,'/opd/queue');\n  29 |   otherDepartmentEncounterId = queue.body.find((q:{patient_id:string})=>q.patient_id===otherDepartmentPatientId).encounter_id;\n> 30 |   await context.close();\n     |                 ^\n  31 | });\n  32 | const fixtureSigningKey = '9087a416cd21b1b746a211731b4a7099ecb073d9a16a4a44';\n  33 |\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts:30:17"
+                    },
+                    {
+                      "message": "Error: browserContext._wrapApiCall: ENOENT: no such file or directory, open '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c.trace'"
+                    },
+                    {
+                      "message": "Error: ENOENT: no such file or directory, open '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/a917ef74f0b9e49fd410536af7816e0f.zip'"
+                    }
+                  ],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:26:04.720Z",
+                  "startTime": "2026-09-21T10:24:39.084Z",
                   "annotations": [],
-                  "attachments": []
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-spoofing--4c021-e-the-client-IP-login-limit/test-failed-1.png"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                    "column": 17,
+                    "line": 30
+                  }
                 }
               ],
-              "status": "expected"
+              "status": "unexpected"
             }
           ],
           "id": "c6c23e8279f8a459c812-b699cef23e65f602715c",
@@ -595,20 +711,20 @@
               "projectName": "",
               "results": [
                 {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 4051,
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:26:05.514Z",
+                  "startTime": "2026-09-21T10:24:43.622Z",
                   "annotations": [],
                   "attachments": []
                 }
               ],
-              "status": "expected"
+              "status": "skipped"
             }
           ],
           "id": "c6c23e8279f8a459c812-44413e0130edde37bf1c",
@@ -629,20 +745,20 @@
               "projectName": "",
               "results": [
                 {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2434,
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-16T06:26:09.573Z",
+                  "startTime": "2026-09-21T10:24:43.623Z",
                   "annotations": [],
                   "attachments": []
                 }
               ],
-              "status": "expected"
+              "status": "skipped"
             }
           ],
           "id": "c6c23e8279f8a459c812-70a208dfe0a5e991bd08",
@@ -655,11 +771,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-09-16T06:25:34.138Z",
-    "duration": 37987.718,
-    "expected": 17,
-    "skipped": 0,
-    "unexpected": 0,
+    "startTime": "2026-09-21T10:20:57.545Z",
+    "duration": 226148.576,
+    "expected": 12,
+    "skipped": 2,
+    "unexpected": 3,
     "flaky": 0
   }
 }

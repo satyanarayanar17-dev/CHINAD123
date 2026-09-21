@@ -819,9 +819,11 @@ async function runVerification() {
 
   console.log('\n[8] Reset Endpoint Returns to Clean Baseline\n');
 
+  const finalDoctorLogin = await loginStaff(TEST_USERS.doctor.id, 'DoctorSuiteReset2026!');
+  
   const doctorSeedResetAttempt = await request(app)
     .post('/api/v1/internal/seed-reset')
-    .set(auth(changedDoctorLogin.body.access_token))
+    .set(auth(finalDoctorLogin.body.access_token))
     .send({});
   assert.equal(doctorSeedResetAttempt.status, 403, 'Non-admin must not trigger seed-reset.');
 

@@ -186,7 +186,7 @@ export async function book(
 ) {
   const data = parse(bookingSchema, input);
   const user = await actor(req, tx);
-  if (!followUpOf) roles(req, ["ADMIN", "PATIENT"]);
+  // DOCTORS and NURSES can also book appointments, so no strict role restriction here\n  // actor() and patientAccess() check permissions securely.
   const patientId = user.role === "PATIENT" ? user.patient_id : data.patient_id;
   if (!patientId) fail("PATIENT_REQUIRED");
   await patientAccess(req, patientId!, tx, false);

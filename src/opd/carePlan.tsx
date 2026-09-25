@@ -370,17 +370,29 @@ export function DoctorCarePlanManager({ patientId }: { patientId: string }) {
   const createPlanAndTask = async () => {
     let plan = planQuery.data?.plan;
     if (!plan) {
-      const res = await post(`/care-plans/${patientId}`, { start_date: startDate });
+      const res = await post<any>(`/care-plans/${patientId}`, { start_date: startDate });
       plan = res.care_plan;
     }
     
-    await post(`/care-plans/${patientId}/tasks`, {
+    const taskPayload: any = {
       task_type: taskType,
       title: observationType.replace(/_/g, " "),
-      observation_type: observationType,
       frequency_type: frequency,
       scheduled_time: scheduledTime,
       start_date: startDate,
+    };
+    
+    if (taskType === "MEASUREMENT") {
+      taskPayload.observation_type = observationType;
+      taskPayload.timing_relation = "FASTING";
+      taskPayload.target_unit = observationType === "WEIGHT" ? "kg" : observationType === "BLOOD_PRESSURE" ? "mmHg" : "mg/dL";
+    } else {
+      taskPayload.instruction = "Please perform this activity as prescribed.";
+    }
+
+    await post(`/care-plans/${patientId}/tasks`, {
+      __v: plan.__v,
+      task: taskPayload
     });
     
     planQuery.refetch();
@@ -399,7 +411,7 @@ export function DoctorCarePlanManager({ patientId }: { patientId: string }) {
                   <tr key={t.id}>
                     <td><b>{t.title}</b><br/><small>{t.task_type}</small></td>
                     <td>{t.frequency_type} at {t.scheduled_time}</td>
-                    <td><Status status={t.status} /></td>
+                    <td><Status value={t.status} /></td>
                   </tr>
                 ))}
               </tbody>

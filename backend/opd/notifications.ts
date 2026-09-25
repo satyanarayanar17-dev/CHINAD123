@@ -5,6 +5,7 @@ import { sendSms } from './auth.ts';
 
 const require = createRequire(import.meta.url);
 const { logEvent } = require('../lib/logger');
+const { dateInZone, addDays, scheduledOn, scheduledFor } = require('../lib/carePlanSchedule');
 const MAX_ATTEMPTS = 5;
 const LEASE_MS = 120_000;
 const REMINDER_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -36,9 +37,10 @@ function configured() {
 
 async function queueReminders(tx: DB, req: Req, at: Date) {
   const timestamp = at.toISOString();
+  const horizon = new Date(at.getTime() + REMINDER_WINDOW_MS).toISOString();
   const upcoming = await tx.all<Reminder>(
     "SELECT id,patient_id,scheduled_at,follow_up_of FROM appointments WHERE status='CONFIRMED' AND scheduled_at>? AND scheduled_at<=?",
-    [timestamp, new Date(at.getTime() + REMINDER_WINDOW_MS).toISOString()],
+    [timestamp, horizon],
   );
   let queued = 0;
   for (const appointment of upcoming) {
@@ -58,6 +60,30 @@ async function queueReminders(tx: DB, req: Req, at: Date) {
     if (inserted.changes) {
       queued++;
       await audit(tx, req, 'REMINDER_QUEUED', appointment.patient_id, { appointment_id: appointment.id, code });
+    }
+  }
+  const careTasks = await tx.all<any>(
+    `SELECT t.*,p.patient_id FROM care_plan_tasks t JOIN care_plans p ON p.id=t.plan_id
+     WHERE p.status='ACTIVE' AND t.status='ACTIVE' AND t.reminder_enabled=1`,
+  );
+  const firstDate = dateInZone(at);
+  for (const task of careTasks) {
+    for (const occurrenceDate of [firstDate, addDays(firstDate, 1)]) {
+      if (!scheduledOn(task, occurrenceDate)) continue;
+      const due = scheduledFor(occurrenceDate, task.scheduled_time);
+      if (due <= timestamp || due > horizon) continue;
+      if (await tx.get('SELECT id FROM care_plan_adherence WHERE task_id=? AND occurrence_date=?', [task.id, occurrenceDate])) continue;
+      const patientUser = await tx.get<{ id: string }>("SELECT id FROM users WHERE patient_id=? AND role='PATIENT' AND is_active=1", [task.patient_id]);
+      if (!patientUser) continue;
+      const dedupeKey = `CARE_TASK_REMINDER:${task.id}:${due}`;
+      const inserted = await tx.run(
+        'INSERT INTO opd_notifications (id,user_id,patient_id,code,context,created_at,dedupe_key) VALUES (?,?,?,?,?,?,?) ON CONFLICT(dedupe_key) DO NOTHING',
+        [id('notice'), patientUser.id, task.patient_id, 'CARE_TASK_REMINDER', JSON.stringify({ task_id: task.id, occurrence_date: occurrenceDate, scheduled_for: due, task_type: task.task_type, title: task.title }), timestamp, dedupeKey],
+      );
+      if (inserted.changes) {
+        queued++;
+        await audit(tx, req, 'CARE_TASK_REMINDER_QUEUED', task.patient_id, { task_id: task.id, occurrence_date: occurrenceDate });
+      }
     }
   }
   return queued;

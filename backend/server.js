@@ -35,7 +35,8 @@ const bootState = {
   checks: {
     database: 'unknown',
     migrations: 'unknown',
-    admin_access: 'unknown'
+    admin_access: 'unknown',
+    pilot_department: 'unknown'
   }
 };
 
@@ -154,10 +155,18 @@ const activationRouter = require('./routes/activation');
 const { router: sseRouter } = require('./routes/sse');
 const carePlansRouter = require('./routes/care_plans');
 const adherenceRouter = require('./routes/adherence');
+const patientDocumentsRouter = require('./routes/patient_documents');
+const patientSelfRecordsRouter = require('./routes/patient_self_records');
 
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/auth/opd', require('./opd/auth.ts').authRouter);
 app.use('/api/v1/opd', require('./opd/router.ts').router);
+// Care Plan is part of the canonical v2 OPD API and must remain available when
+// legacy routes are disabled in pilot/staging/production.
+app.use('/api/v1/opd/care-plans', carePlansRouter);
+app.use('/api/v1/opd/adherence', adherenceRouter);
+app.use('/api/v1/opd/patient-documents', patientDocumentsRouter);
+app.use('/api/v1/opd/patient-self-records', patientSelfRecordsRouter);
 app.get('/api/v1/openapi.json', (_req, res) => res.sendFile(require('node:path').join(__dirname, 'opd/openapi.json')));
 // Legacy write paths are isolated so they cannot bypass the v2 journey state machine.
 if (process.env.ENABLE_LEGACY_API === 'true' && !isLockedDeployment) {
@@ -170,8 +179,6 @@ app.use('/api/v1/notifications', notificationsRouter);
 app.use('/api/v1/drafts', draftsRouter);
 app.use('/api/v1/internal', internalRouter);
 app.use('/api/v1/my', portalRouter);
-app.use('/api/v1/opd/care-plans', carePlansRouter);
-app.use('/api/v1/opd/adherence', adherenceRouter);
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/activation', activationRouter);
 app.use('/api/v1/sse', sseRouter);
@@ -192,16 +199,21 @@ async function assessReadiness() {
     );
     const integrity = await scanDataIntegrity({ all }, { includeSnapshots: false });
     const adminState = await get(`SELECT COUNT(*) AS count FROM users WHERE role = 'ADMIN' AND is_active = 1`);
+    const pilotDepartmentState = runtimeConfig.ogPilotOnly
+      ? await get('SELECT COUNT(*) AS count FROM departments WHERE name=? AND prefix=?', ['Obstetrics & Gynaecology', runtimeConfig.pilotDepartmentPrefix])
+      : { count: 1 };
     const appliedMigrations = Number(migrationState?.count || 0);
     const activeAdmins = Number(adminState?.count || 0);
+    const pilotDepartments = Number(pilotDepartmentState?.count || 0);
     const upToDate = appliedMigrations >= migrations.length;
 
     bootState.checks = {
       database: 'ok',
       migrations: upToDate ? 'ok' : 'out_of_date',
-      admin_access: activeAdmins > 0 ? 'ok' : 'missing'
+      admin_access: activeAdmins > 0 ? 'ok' : 'missing',
+      pilot_department: pilotDepartments === 1 ? 'ok' : 'missing_or_ambiguous'
     };
-    bootState.ready = upToDate && activeAdmins > 0;
+    bootState.ready = upToDate && activeAdmins > 0 && pilotDepartments === 1;
 
     return {
       healthy: true,

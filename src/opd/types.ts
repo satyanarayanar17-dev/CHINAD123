@@ -303,6 +303,9 @@ export interface Notification {
   read_at: string | null;
 }
 export interface Dashboard {
+  requires_action?: number;
+  today_confirmed?: number;
+  upcoming?: number;
   date: string;
   appointments: number;
   checked_in: number;

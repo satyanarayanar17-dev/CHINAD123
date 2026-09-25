@@ -9,8 +9,10 @@ import {
   Printer,
   ShieldCheck,
 } from "lucide-react";
-import { get, Panel, Loading, Empty, Alert, Status, Button, Modal } from "./ui";
+import { get, Panel, Loading, Empty, Alert, Status, Button, Modal, Field, Select, Textarea } from "./ui";
 import { useI18n, formatDate } from "./i18n";
+import { api } from "../api/client";
+import type { CarePlanOccurrence } from "./carePlan";
 import type {
   RecordBundle,
   JourneyEvent,
@@ -18,6 +20,7 @@ import type {
   Prescription,
   LabOrder,
   Session,
+  Appointment,
 } from "./types";
 export function PatientHeader({ patient }: { patient: Patient }) {
   const { t } = useI18n();
@@ -375,6 +378,7 @@ export function PatientRecord({
   const { t, language } = useI18n();
   const [tab, setTab] = useState(initialTab);
   const [rx, setRx] = useState<Prescription | null>(null);
+  const documents = useQuery({ queryKey: ["opd", "patient-documents", patientId], queryFn: () => get<PatientDocument[]>(`/patient-documents/${patientId}`) });
   const q = useQuery({
     queryKey: ["opd", "record", patientId],
     queryFn: () => get<RecordBundle>(`/patients/${patientId}/record`),
@@ -396,6 +400,8 @@ export function PatientRecord({
           ["journey", Activity],
           ["visits", ClipboardList],
           ["prescriptions", FileText],
+          ["documents", FileText],
+          ...(session.role === "PATIENT" ? [] : [["carePlan", Activity]]),
           ...(session.role === "NURSE" ? [] : [["laboratory", FlaskConical]]),
         ].map(([name, Icon]) => {
           const key = String(name);
@@ -511,6 +517,8 @@ export function PatientRecord({
           )}
         </div>
       )}
+      {tab === "documents" && <DocumentsPanel patientId={patientId} documents={documents.data || []} patientCanUpload={session.role === "PATIENT"} onChanged={() => void documents.refetch()} />}
+      {tab === "carePlan" && <PatientCareDossierPanel patientId={patientId} />}
       {rx && (
         <PrescriptionView
           prescription={rx}
@@ -520,4 +528,45 @@ export function PatientRecord({
       )}
     </div>
   );
+}
+
+interface PatientDocument { id: string; patient_id: string; appointment_id: string | null; document_type: string; title: string; original_filename: string; mime_type: string; size_bytes: number; clinical_date: string; created_at: string; uploaded_by_name: string; content_url: string; }
+interface PatientSelfRecord { id: string; record_type: string; numeric_value: number | null; secondary_numeric_value: number | null; unit: string | null; activity_name: string | null; duration_minutes: number | null; observed_at: string; }
+
+function PatientCareDossierPanel({ patientId }: { patientId: string }) {
+  const tasks = useQuery({ queryKey: ["opd", "dossier-care-plan", patientId], queryFn: () => get<CarePlanOccurrence[]>(`/adherence/${patientId}/today`) });
+  const observations = useQuery({ queryKey: ["opd", "dossier-self-records", patientId], queryFn: () => get<PatientSelfRecord[]>(`/patient-self-records/${patientId}`) });
+  return <div className="page-stack"><Panel title="Today's Care Plan">{tasks.isLoading ? <Loading /> : tasks.data?.length ? tasks.data.map((task) => <div className="record-row" key={task.id}><span className="record-icon"><Activity size={20} /></span><span><strong>{task.title}</strong><small>{task.instruction} · {task.status}</small></span></div>) : <Empty title="No active Care Plan tasks" hint="The doctor has not assigned a task for today." />}</Panel><Panel title="Patient self-recorded observations">{observations.isLoading ? <Loading /> : observations.data?.length ? observations.data.map((record) => <div className="record-row" key={record.id}><span className="record-icon"><Activity size={20} /></span><span><strong>{record.record_type.replaceAll("_", " ")}</strong><small>{record.record_type === "ACTIVITY" ? `${record.activity_name} · ${record.duration_minutes} min` : record.record_type === "BLOOD_PRESSURE" ? `${record.numeric_value}/${record.secondary_numeric_value} mmHg` : `${record.numeric_value} ${record.unit || ""}`} · Patient self-recorded</small></span></div>) : <Empty title="No self-recorded observations" hint="Patient entries will appear here." />}</Panel></div>;
+}
+
+function DocumentsPanel({ patientId, documents, patientCanUpload, onChanged }: { patientId: string; documents: PatientDocument[]; patientCanUpload: boolean; onChanged: () => void }) {
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState("");
+  const [type, setType] = useState("OTHER_MEDICAL_RECORD");
+  const [clinicalDate, setClinicalDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [appointmentId, setAppointmentId] = useState("");
+  const [note, setNote] = useState("");
+  const appointments = useQuery({ queryKey: ["opd", "document-appointments", patientId], queryFn: () => get<Appointment[]>("/appointments"), enabled: patientCanUpload });
+  const upload = async () => {
+    if (!file) return;
+    setPending(true); setError("");
+    try { const body = new FormData(); body.append("document_type", type); body.append("title", title); body.append("clinical_date", clinicalDate); if (appointmentId) body.append("appointment_id", appointmentId); if (note) body.append("patient_note", note); body.append("file", file); await api.post(`/opd/patient-documents/${patientId}`, body, { headers: { "Content-Type": "multipart/form-data" } }); setFile(null); onChanged(); }
+    catch { setError("DOCUMENT_UPLOAD_FAILED"); } finally { setPending(false); }
+  };
+  const preview = async (document: PatientDocument) => {
+    try { const response = await api.get(document.content_url.replace(/^\/api\/v1/, ""), { responseType: "blob" }); const url = URL.createObjectURL(response.data); window.open(url, "_blank", "noopener,noreferrer"); setTimeout(() => URL.revokeObjectURL(url), 60000); }
+    catch { setError("DOCUMENT_PREVIEW_FAILED"); }
+  };
+  const linkAppointment = async (document: PatientDocument, nextAppointmentId: string) => {
+    setPending(true); setError("");
+    try { await api.patch(`/opd/patient-documents/${patientId}/${document.id}/appointment`, { appointment_id: nextAppointmentId || null }); onChanged(); }
+    catch { setError("DOCUMENT_APPOINTMENT_LINK_FAILED"); } finally { setPending(false); }
+  };
+  return <Panel title="Patient documents" action={patientCanUpload ? <label className="button primary">Upload Report<input hidden type="file" accept="application/pdf,image/jpeg,image/png" disabled={pending} onChange={(event) => { const selected = event.target.files?.[0]; if (selected) { setFile(selected); setTitle(selected.name.replace(/\.[^.]+$/, "")); } event.currentTarget.value = ""; }} /></label> : undefined}>
+    <Alert code={error} />
+    {documents.length ? documents.map((document) => <div className="record-row" key={document.id}><button className="record-row-main" type="button" onClick={() => void preview(document)}><span className="record-icon"><FileText size={22} /></span><span><strong>{document.title}</strong><small>{document.document_type.replaceAll("_", " ")} · report date {document.clinical_date} · Patient uploaded · {Math.ceil(document.size_bytes / 1024)} KB</small></span><ArrowRight size={18} /></button>{patientCanUpload && <Select label={`Appointment for ${document.title}`} value={document.appointment_id || ""} disabled={pending} onChange={(event) => void linkAppointment(document, event.target.value)}><option value="">Not attached</option>{appointments.data?.map((appointment) => <option key={appointment.id} value={appointment.id}>{appointment.id === document.appointment_id ? "Attached: " : "Attach: "}{appointment.scheduled_at.slice(0,10)} · {appointment.doctor_name}</option>)}</Select>}</div>) : <Empty title="No records uploaded yet" hint={patientCanUpload ? "Upload previous reports so your care team can review them before your appointment." : "The patient has not uploaded any documents."} />}
+    {file && <Modal title="Upload Report" onClose={() => setFile(null)}><form className="form-stack" onSubmit={(event) => { event.preventDefault(); void upload(); }}><p className="muted">{file.name}</p><Field label="Title" required value={title} onChange={(event) => setTitle(event.target.value)} /><Select label="Type" value={type} onChange={(event) => setType(event.target.value)}>{[["LAB_REPORT","Lab Report"],["SCAN","Scan"],["PRESCRIPTION","Prescription"],["DISCHARGE_SUMMARY","Discharge Summary"],["REFERRAL","Referral"],["OTHER_MEDICAL_RECORD","Other Medical Record"]].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</Select><Field label="Report date" type="date" required max={new Date().toISOString().slice(0,10)} value={clinicalDate} onChange={(event) => setClinicalDate(event.target.value)} /><Select label="Appointment (optional)" value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)}><option value="">No appointment</option>{appointments.data?.map((appointment) => <option key={appointment.id} value={appointment.id}>{appointment.scheduled_at.slice(0,10)} · {appointment.doctor_name}</option>)}</Select><Textarea label="Note (optional)" maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} /><Alert code={error} /><div className="form-actions"><Button type="button" variant="secondary" onClick={() => setFile(null)}>Cancel</Button><Button disabled={pending || !title || !clinicalDate}>{pending ? "Uploading…" : "Upload"}</Button></div></form></Modal>}
+  </Panel>;
 }

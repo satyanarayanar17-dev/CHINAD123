@@ -211,7 +211,14 @@ async function withTransaction(work) {
 }
 
 async function dropAllTables() {
+  if (dbDialect === 'sqlite') {
+    await run('PRAGMA foreign_keys = OFF;');
+  }
   const tables = [
+    'patient_document_appointments',
+    'patient_documents', 'patient_self_records',
+    'patient_observation_components', 'patient_observations', 'care_plan_adherence',
+    'care_plan_tasks', 'care_plans', 'prescription_items',
     'sms_outbox', 'opd_notifications', 'patient_otps', 'journey_events', 'lab_results', 'lab_orders',
     'lab_test_catalog', 'diagnosis_catalog', 'drug_catalog', 'clinical_versions', 'triage_records',
     'queue_entries', 'token_counters', 'appointments', 'practitioner_unavailability', 'practitioner_schedules', 'departments',
@@ -236,6 +243,9 @@ async function dropAllTables() {
     } else {
       await run(`DROP TABLE IF EXISTS ${table}`);
     }
+  }
+  if (dbDialect === 'sqlite') {
+    await run('PRAGMA foreign_keys = ON;');
   }
 }
 

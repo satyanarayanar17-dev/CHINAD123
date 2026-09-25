@@ -19,7 +19,8 @@ const SAFE_LOCAL_ONLY_DEFAULTS = {
   COOKIE_SECURE: 'false',
   ACTIVATION_OTP_DELIVERY: 'api_response',
   PILOT_AUTH_BYPASS: 'false',
-  ALLOW_SEED_RESET: 'false'
+  ALLOW_SEED_RESET: 'false',
+  OPD_OG_PILOT_ONLY: 'true'
 };
 
 const ENVIRONMENT_RULES = [
@@ -157,6 +158,18 @@ const ENVIRONMENT_RULES = [
     safeLocalDefault: SAFE_LOCAL_ONLY_DEFAULTS.ALLOW_SEED_RESET,
     localOnly: true,
     description: 'Local-only destructive seed reset switch.'
+  },
+  {
+    name: 'OPD_PILOT_DEPARTMENT_PREFIX',
+    required: false,
+    safeLocalDefault: 'OBST',
+    description: 'Canonical department prefix exposed by the restricted OG pilot.'
+  },
+  {
+    name: 'OPD_OG_PILOT_ONLY',
+    required: false,
+    safeLocalDefault: SAFE_LOCAL_ONLY_DEFAULTS.OPD_OG_PILOT_ONLY,
+    description: 'Restrict current OPD product surfaces to the canonical OBST department while preserving the multi-department schema.'
   }
 ];
 
@@ -270,7 +283,9 @@ function loadRuntimeConfig(env = process.env) {
       password: readString(env.BOOTSTRAP_ADMIN_PASSWORD)
     },
     pilotAuthBypass: readBoolean(env.PILOT_AUTH_BYPASS, false),
-    allowSeedReset: readBoolean(env.ALLOW_SEED_RESET, false)
+    allowSeedReset: readBoolean(env.ALLOW_SEED_RESET, false),
+    pilotDepartmentPrefix: readString(env.OPD_PILOT_DEPARTMENT_PREFIX, 'OBST'),
+    ogPilotOnly: readBoolean(env.OPD_OG_PILOT_ONLY, true)
   };
 }
 
@@ -306,6 +321,12 @@ function validateRuntimeConfig(config) {
     }
     if (config.enableLegacyApi) {
       errors.push('ENABLE_LEGACY_API must be false for restricted, staging, and production deployments.');
+    }
+    if (config.isPilot && config.pilotDepartmentPrefix !== 'OBST') {
+      errors.push('OPD_PILOT_DEPARTMENT_PREFIX must be OBST for the current OG pilot.');
+    }
+    if (config.isPilot && !config.ogPilotOnly) {
+      errors.push('OPD_OG_PILOT_ONLY must be true for the restricted OG pilot.');
     }
     if (config.cookieSecure !== 'true') {
       errors.push('COOKIE_SECURE must be true for restricted, staging, and production deployments.');
@@ -374,6 +395,8 @@ function describeRuntimeConfig(config) {
     opd_demo_otp: config.opdDemoOtp,
     sms_adapter_configured: Boolean(isValidSmsUrl(config.smsWebhookUrl) && config.smsWebhookToken),
     legacy_api_enabled: config.enableLegacyApi,
+    pilot_department_prefix: config.pilotDepartmentPrefix,
+    og_pilot_only: config.ogPilotOnly,
     has_jwt_secret: Boolean(config.jwtSecret),
     bootstrap_admin_configured: Boolean(
       config.bootstrapAdmin.id &&

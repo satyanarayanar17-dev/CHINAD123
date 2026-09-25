@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CalendarPlus, Clock3, MapPin } from "lucide-react";
 import { api } from "../api/client";
@@ -201,6 +201,9 @@ export function Booking({
   const [doctor, setDoctor] = useState(appointment?.doctor_id || "");
   const [slot, setSlot] = useState<Slot | null>(null);
   const [reason, setReason] = useState(appointment?.reason || "");
+  useEffect(() => {
+    if (!appointment && directory.data?.departments.length === 1 && !department) setDepartment(directory.data.departments[0].id);
+  }, [appointment, directory.data, department]);
   return (
     <Modal
       title={appointment ? "reschedule" : "bookFor"}
@@ -237,24 +240,7 @@ export function Booking({
           </div>
         )}
         <div className="form-grid">
-          <Select
-            label="chooseDepartment"
-            required
-            value={department}
-            disabled={!!appointment}
-            onChange={(e) => {
-              setDepartment(e.target.value);
-              setDoctor("");
-              setSlot(null);
-            }}
-          >
-            <option value="">{t("noSelection")}</option>
-            {directory.data?.departments.map((d) => (
-              <option value={d.id} key={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </Select>
+          <div className="measurement-unit"><span>{t("chooseDepartment")}</span><strong>{directory.data?.departments[0]?.name || "Obstetrics & Gynaecology"}</strong></div>
           <Select
             label="chooseDoctor"
             required
@@ -310,7 +296,7 @@ export function Booking({
           </Button>
           <Button disabled={action.pending || !slot?.scheduled_at}>
             <Clock3 size={16} />
-            {t(appointment ? "reschedule" : "confirmBooking")}
+            {appointment ? t("reschedule") : "Request Appointment"}
           </Button>
         </div>
       </form>

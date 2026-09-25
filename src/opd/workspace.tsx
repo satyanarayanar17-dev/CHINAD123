@@ -10,6 +10,7 @@ import {
   Trash2,
   Save,
   FlaskConical,
+  HeartPulse,
 } from "lucide-react";
 import { api } from "../api/client";
 import { useI18n, formatDate } from "./i18n";
@@ -29,6 +30,7 @@ import {
   Status,
 } from "./ui";
 import { PatientHeader, Vitals, Journey, ResultCard } from "./records";
+import { DoctorCarePlanManager } from "./carePlan";
 import { SlotPicker } from "./booking";
 import type { FormField } from "./ui";
 import type {
@@ -212,7 +214,7 @@ function ConsultationForm({
   session: Session;
   onDirtyChange: (dirty: boolean) => void;
 }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const action = useAction();
   const labAction = useAction();
   const note = record.notes.find((n) => n.encounter_id === encounterId);
@@ -359,6 +361,7 @@ function ConsultationForm({
               ["consultation", Activity],
               ["laboratory", FlaskConical],
               ["journey", Check],
+              ["carePlan", HeartPulse],
             ].map(([name, Icon]) => {
               const key = String(name);
               const I = Icon as typeof Activity;
@@ -648,6 +651,11 @@ function ConsultationForm({
               />
             </Panel>
           )}
+          {tab === "carePlan" && (
+            <div className="page-stack">
+              <DoctorCarePlanManager patientId={record.patient.id} />
+            </div>
+          )}
         </div>
       </div>
       {confirmComplete && (
@@ -656,6 +664,14 @@ function ConsultationForm({
           onClose={() => setConfirmComplete(false)}
         >
           <p>{t("completeHint")}</p>
+          <div className="follow-up-confirmation">
+            <strong>{t("nextAppointment")}</strong>
+            {selectedFollowUp ? (
+              <span>{formatDate(selectedFollowUp.scheduled_at, language, true)}</span>
+            ) : (
+              <span>{t("noFollowUpSelected")}</span>
+            )}
+          </div>
           <Alert code={action.error} />
           <div className="form-actions">
             <Button
@@ -668,7 +684,7 @@ function ConsultationForm({
               disabled={action.pending}
               onClick={() => save(getValues(), true)}
             >
-              {t("confirm")}
+              {t(selectedFollowUp ? "completeAndBookFollowUp" : "confirmComplete")}
             </Button>
           </div>
         </Modal>

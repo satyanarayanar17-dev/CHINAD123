@@ -60,6 +60,7 @@ import {
 } from "./admin";
 import { PatientRecord } from "./records";
 import { Consultation } from "./workspace";
+import { CarePlanPage } from "./carePlan";
 import type { Session, Notification } from "./types";
 import "./styles.css";
 
@@ -96,6 +97,7 @@ const navigation: Record<Session["role"], string[]> = {
   PATIENT: [
     "overview",
     "appointments",
+    "carePlan",
     "queue",
     "records",
     "laboratory",
@@ -113,11 +115,12 @@ const navigation: Record<Session["role"], string[]> = {
     "settings",
   ],
   NURSE: ["queue", "appointments", "settings"],
-  DOCTOR: ["overview", "queue", "appointments", "laboratory", "settings"],
+  DOCTOR: ["overview", "queue", "appointments", "laboratory", "schedules", "settings"],
 };
 const icons: Record<string, LucideIcon> = {
   overview: LayoutDashboard,
   appointments: CalendarDays,
+  carePlan: HeartPulse,
   queue: Activity,
   patients: Users,
   schedules: CalendarDays,
@@ -131,9 +134,7 @@ function Brand() {
   const { t } = useI18n();
   return (
     <div className="brand">
-      <span className="brand-mark">
-        <HeartPulse size={25} />
-      </span>
+      <span className="brand-mark brand-logo-slot" aria-label="Official logo asset required">LOGO</span>
       <div>
         <strong>{t("brand")}</strong>
         <small>{t("connected")}</small>
@@ -708,12 +709,14 @@ function WorkspaceApp() {
             <Overview {...props} />
           ) : actual === "appointments" ? (
             <AppointmentsPage {...props} />
+          ) : actual === "carePlan" ? (
+            <CarePlanPage patientId={session.patient_id!} />
           ) : actual === "queue" ? (
             <QueuePage {...props} />
           ) : actual === "patients" ? (
             <PatientsPage {...props} />
           ) : actual === "schedules" ? (
-            <SchedulesPage />
+            <SchedulesPage session={session} />
           ) : actual === "laboratory" ? (
             <LaboratoryPage {...props} />
           ) : actual === "records" ? (

@@ -24,7 +24,9 @@ const migrations = [
   authSecurityHardening,
   require('./012_connected_opd'),
   require('./013_session_and_encounter_integrity'),
-  require('./014_care_plans')
+  require('./014_care_plans'),
+  require('./015_patient_documents_and_self_records'),
+  require('./016_appointment_requests')
 ];
 
 function migrationTableSql(dialect) {

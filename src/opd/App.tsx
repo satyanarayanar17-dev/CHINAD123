@@ -134,7 +134,7 @@ function Brand() {
   const { t } = useI18n();
   return (
     <div className="brand">
-      <span className="brand-mark brand-logo-slot" aria-label="Official logo asset required">LOGO</span>
+      <img src="/logo.png" className="brand-logo" alt="Chettinad Health City" style={{ height: "40px", objectFit: "contain", marginRight: "12px" }} />
       <div>
         <strong>{t("brand")}</strong>
         <small>{t("connected")}</small>

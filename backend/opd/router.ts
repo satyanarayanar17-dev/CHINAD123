@@ -118,6 +118,30 @@ router.post('/staff',endpoint(async(req,res)=>{
     await audit(tx,req,'STAFF_CREATED',null,{id:data.id,role:data.role,department:data.department});
   });res.status(201).json({success:true});
 }));
+
+router.put('/staff/:id', endpoint(async (req, res) => {
+  roles(req, ['ADMIN']);
+  const data = parse(z.object({
+    name: text,
+    role: z.enum(['ADMIN', 'NURSE', 'DOCTOR']),
+    department: text
+  }), req.body);
+  
+  await transaction(async tx => {
+    const department = await tx.get('SELECT * FROM departments WHERE name=?', [data.department]);
+    if (!department) fail('INVALID_DEPARTMENT');
+    await enforcePilotDepartment(tx, department.id);
+    
+    const changed = await tx.run(
+      "UPDATE users SET name=?, role=?, department=?, updated_at=? WHERE id=? AND role!='PATIENT'",
+      [data.name, data.role, data.department, now(), req.params.id]
+    );
+    if (!changed.changes) fail('NOT_FOUND', 404);
+    await audit(tx, req, 'STAFF_PROFILE_UPDATED', null, { id: req.params.id, ...data });
+  });
+  res.json({ success: true });
+}));
+
 router.patch('/staff/:id',endpoint(async(req,res)=>{
   roles(req,['ADMIN']);const active=parse(z.boolean(),req.body.active);
   if(req.params.id===req.user.id) fail('CANNOT_DISABLE_SELF');

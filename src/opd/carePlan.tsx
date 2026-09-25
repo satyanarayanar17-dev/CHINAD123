@@ -396,7 +396,7 @@ export function DoctorCarePlanManager({ patientId }: { patientId: string }) {
     });
     
     planQuery.refetch();
-    action.reset();
+    action.setError("");
   };
 
   return (
@@ -422,33 +422,29 @@ export function DoctorCarePlanManager({ patientId }: { patientId: string }) {
       
       <Panel title="Push Care Plan Task">
         <form onSubmit={(e) => { e.preventDefault(); action.run(createPlanAndTask); }} className="form-grid">
-          <Field label="Task Type">
-            <select value={taskType} onChange={(e) => setTaskType(e.target.value as any)}>
-              <option value="MEASUREMENT">Measurement</option>
-              <option value="ACTIVITY">Activity</option>
-            </select>
-          </Field>
-          <Field label="Observation">
-            <select value={observationType} onChange={(e) => setObservationType(e.target.value)}>
-              <option value="BLOOD_GLUCOSE_FASTING">Fasting Blood Sugar</option>
-              <option value="BLOOD_GLUCOSE_PP">Post-Prandial Blood Sugar</option>
-              <option value="BLOOD_PRESSURE">Blood Pressure</option>
-              <option value="WEIGHT">Weight</option>
-              <option value="ACTIVITY">Exercise / Activity</option>
-            </select>
-          </Field>
-          <Field label="Frequency">
-            <select value={frequency} onChange={(e) => setFrequency(e.target.value)}>
-              <option value="DAILY">Daily</option>
-              <option value="WEEKLY">Weekly</option>
-            </select>
-          </Field>
-          <Field label="Scheduled Time">
-            <input type="time" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} required />
-          </Field>
-          <Field label="Start Date">
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
-          </Field>
+          <label className="field-label">Task Type
+    <select value={taskType} onChange={(e) => setTaskType(e.target.value as any)}>
+      <option value="MEASUREMENT">Measurement</option>
+      <option value="ACTIVITY">Activity</option>
+    </select>
+  </label>
+          <label className="field-label">Observation
+    <select value={observationType} onChange={(e) => setObservationType(e.target.value)}>
+      <option value="BLOOD_GLUCOSE_FASTING">Fasting Blood Sugar</option>
+      <option value="BLOOD_GLUCOSE_PP">Post-Prandial Blood Sugar</option>
+      <option value="BLOOD_PRESSURE">Blood Pressure</option>
+      <option value="WEIGHT">Weight</option>
+      <option value="ACTIVITY">Exercise / Activity</option>
+    </select>
+  </label>
+          <label className="field-label">Frequency
+    <select value={frequency} onChange={(e) => setFrequency(e.target.value)}>
+      <option value="DAILY">Daily</option>
+      <option value="WEEKLY">Weekly</option>
+    </select>
+  </label>
+          <Field label="Scheduled Time" type="time" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} required />
+          <Field label="Start Date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
           
           <div className="form-actions" style={{ gridColumn: "1 / -1" }}>
             <Button disabled={action.pending} type="submit">{action.pending ? "Pushing..." : "Push to Patient"}</Button>

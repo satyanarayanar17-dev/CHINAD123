@@ -1,3 +1,4 @@
+import { ErrorBoundary } from './ui';
 import { useEffect, useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
@@ -653,7 +654,7 @@ function ConsultationForm({
           )}
           {tab === "carePlan" && (
             <div className="page-stack">
-              <DoctorCarePlanManager patientId={record.patient.id} />
+              <ErrorBoundary><DoctorCarePlanManager patientId={record.patient.id} /></ErrorBoundary>
             </div>
           )}
         </div>

@@ -19,6 +19,9 @@
     "typecheck": "tsc -p tsconfig.json",
     "test:opd": "node opd/acceptance.cjs",
     "test:notifications": "node opd/notifications.test.cjs",
+    "test:care-plan": "node opd/care-plan.test.cjs",
+    "test:patient-portal": "node opd/patient-portal.test.cjs",
+    "test:og-pilot": "node scripts/isolated-postgres.cjs node opd/og-pilot.test.cjs",
     "demo:seed": "node opd/demo.cjs",
     "test:config": "node --test config.test.cjs",
     "test:auth-session": "node --test opd/auth-session.test.cjs"
@@ -35,6 +38,7 @@
     "express": "^5.2.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.4.0",
     "pg": "^8.20.0",
     "sqlite3": "^6.0.1",
     "supertest": "^7.2.2",

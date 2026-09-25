@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { z } from "zod";
 import {
   db,
@@ -32,6 +33,9 @@ import type {
   JourneyEvent,
 } from "../../src/opd/types.ts";
 import { book } from "./scheduling.ts";
+
+const require = createRequire(import.meta.url);
+const { writePrescriptionItems } = require("../lib/prescriptionItems.js");
 
 export const triageSchema = z
   .object({
@@ -104,7 +108,7 @@ export async function transition(
         ? ["WAITING"]
         : target === "DOCTOR_READY"
           ? ["WAITING_DOCTOR"]
-          : ["WAITING_DOCTOR", "DOCTOR_READY"];
+          : ["WAITING", "WAITING_DOCTOR", "DOCTOR_READY"];
     if (!permitted.includes(q.status)) fail("INVALID_TRANSITION", 409);
     if (target === "CONSULTATION") {
       if (tx.dialect === "postgres")
@@ -406,6 +410,13 @@ export async function saveConsultation(req: Req, complete: boolean) {
           issuedAt,
         ],
       );
+      await writePrescriptionItems(tx, {
+        prescriptionId: rxId,
+        prescriptionVersion: 1,
+        medications: data.medications,
+        actorId: req.user.id,
+        createdAt: issuedAt,
+      });
       await snapshot(
         tx,
         req,
@@ -526,10 +537,18 @@ export async function amend(req: Req) {
         content,
         reason,
       );
-      await tx.run("UPDATE prescriptions SET __v=__v+1 WHERE id=? AND __v=?", [
-        rx.id,
-        rx.__v,
-      ]);
+      const changed = await tx.run(
+        "UPDATE prescriptions SET rx_content=?,__v=__v+1 WHERE id=? AND __v=?",
+        [JSON.stringify(content), rx.id, rx.__v],
+      );
+      if (!changed.changes) fail("STALE_STATE", 409);
+      await writePrescriptionItems(tx, {
+        prescriptionId: rx.id,
+        prescriptionVersion: rx.__v + 1,
+        medications: data.medications,
+        actorId: req.user.id,
+        createdAt: issuedAt,
+      });
     }
     await event(
       tx,

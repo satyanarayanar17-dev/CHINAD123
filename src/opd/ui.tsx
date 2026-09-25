@@ -54,7 +54,10 @@ export function useAction() {
         after?.(result);
         return result;
       } catch (e) {
-        setError(errorCode(e));
+        const code = errorCode(e);
+        setError(code);
+        if (code === "STALE_STATE" || code === "TASK_NO_LONGER_ACTIVE")
+          await query.invalidateQueries({ queryKey: ["opd"] });
         return undefined;
       } finally {
         setPending(false);

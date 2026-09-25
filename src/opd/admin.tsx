@@ -34,7 +34,7 @@ import type {
 } from "./types";
 
 const weekdays = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
-export function SchedulesPage() {
+export function SchedulesPage({ session }: { session: any }) {
   const { t } = useI18n();
   const [actionType, setActionType] = useState<"schedule" | "leave" | null>(
     null,
@@ -53,7 +53,7 @@ export function SchedulesPage() {
         "/unavailability",
       ),
   });
-  const doctors = directory.data?.doctors || [];
+  const doctors = (directory.data?.doctors || []).filter(d => session.role === "ADMIN" || d.id === session.id);
   const fields: FormField[] = [
     {
       name: "doctor_id",
@@ -72,17 +72,6 @@ export function SchedulesPage() {
           { name: "reason", required: true },
         ]
       : [
-          {
-            name: "department_id",
-            label: "department",
-            required: true,
-            options:
-              directory.data?.departments.map((d) => ({
-                value: d.id,
-                label: d.name,
-                literal: true,
-              })) || [],
-          },
           {
             name: "weekday",
             required: true,
@@ -241,6 +230,7 @@ export function SchedulesPage() {
           title={actionType === "leave" ? "addLeave" : "addSchedule"}
           onClose={() => setActionType(null)}
         >
+          {actionType === "schedule" && <div className="measurement-unit"><span>{t("department")}</span><strong>{directory.data?.departments[0]?.name || "Obstetrics & Gynaecology"}</strong></div>}
           <DataForm
             fields={fields}
             initial={
@@ -257,6 +247,7 @@ export function SchedulesPage() {
                     ? post("/unavailability", v)
                     : post("/schedules", {
                         ...v,
+                        department_id: directory.data?.departments[0]?.id,
                         doctor_id: edit?.doctor_id || v.doctor_id,
                         weekday: edit?.weekday ?? Number(v.weekday),
                         slot_minutes: Number(v.slot_minutes),
@@ -277,7 +268,7 @@ export function Administration() {
   const { t } = useI18n();
   const [staffForm, setStaffForm] = useState(false);
   const [catalogueForm, setCatalogueForm] = useState(false);
-  const [kind, setKind] = useState("departments");
+  const [kind, setKind] = useState("drugs");
   const action = useAction();
   const staff = useQuery({
     queryKey: ["opd", "staff"],
@@ -386,7 +377,6 @@ export function Administration() {
       >
         <div className="catalogue-grid">
           {[
-            ["departments", directory.data?.departments],
             ["drugs", catalogues.data?.drugs],
             ["diagnoses", catalogues.data?.diagnoses],
             ["tests", catalogues.data?.tests],
@@ -411,6 +401,7 @@ export function Administration() {
       {staffForm && (
         <Modal title="addStaff" onClose={() => setStaffForm(false)}>
           <p className="muted">{t("staffPasswordHint")}</p>
+          <div className="measurement-unit"><span>{t("department")}</span><strong>{directory.data?.departments[0]?.name || "Obstetrics & Gynaecology"}</strong></div>
           <DataForm
             fields={[
               { name: "name", label: "staffName", required: true },
@@ -429,16 +420,6 @@ export function Administration() {
                 })),
               },
               {
-                name: "department",
-                required: true,
-                options:
-                  directory.data?.departments.map((d) => ({
-                    value: d.name,
-                    label: d.name,
-                    literal: true,
-                  })) || [],
-              },
-              {
                 name: "password",
                 label: "temporaryPassword",
                 type: "password",
@@ -450,7 +431,7 @@ export function Administration() {
             pending={action.pending}
             onSubmit={(v) =>
               void action.run(
-                () => post("/staff", v),
+                () => post("/staff", { ...v, department: directory.data?.departments[0]?.name || "Obstetrics & Gynaecology" }),
                 () => setStaffForm(false),
               )
             }
@@ -464,7 +445,7 @@ export function Administration() {
             value={kind}
             onChange={(e) => setKind(e.target.value)}
           >
-            {Object.keys(catalogFields).map((k) => (
+            {Object.keys(catalogFields).filter((key) => key !== "departments").map((k) => (
               <option key={k} value={k}>
                 {t(k)}
               </option>

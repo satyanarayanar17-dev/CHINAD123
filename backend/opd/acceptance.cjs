@@ -7,6 +7,9 @@ if(process.env.OPD_TEST_POSTGRES==='true' && (!/^cc_validation_[a-f0-9]{32}$/.te
 if(process.env.OPD_TEST_POSTGRES!=='true'){process.env.DB_DIALECT='sqlite';process.env.SQLITE_PATH=path.join(fs.mkdtempSync(path.join(os.tmpdir(),'cc-opd-test-')),'test.db');}
 process.env.OPD_DEMO_OTP='true';
 process.env.ENABLE_LEGACY_API='false';
+// This legacy suite deliberately exercises the retained multi-department
+// architecture. The live pilot defaults to OBST-only in config.
+process.env.OPD_OG_PILOT_ONLY='false';
 Object.assign(process.env,{BOOTSTRAP_ADMIN_ID:'opd_test_admin',BOOTSTRAP_ADMIN_NAME:'Synthetic Test Admin',BOOTSTRAP_ADMIN_PASSWORD:'TestAdmin2026!'});
 const OriginalDate = global.Date;
 global.Date = class extends OriginalDate {
@@ -101,13 +104,14 @@ async function run(){
  pass('Concurrent double-booking prevention and versioned rescheduling');
  await api(patient,'post','/appointments/'+appointment.id+'/check-in',{identity_verified:true},403);
  await api(admin,'post','/appointments/'+appointment.id+'/check-in',{identity_verified:false},422);
+ await api(admin,'post','/appointments/'+appointment.id+'/confirm',{});
  const checked=await api(admin,'post','/appointments/'+appointment.id+'/check-in',{identity_verified:true});assert.match(checked.token,/^GM-\d{3}$/);
  assert.equal((await api(admin,'post','/appointments/'+appointment.id+'/check-in',{identity_verified:true})).encounter_id,checked.encounter_id);
  const encounterId=checked.encounter_id;
  let q=(await api(nurse,'get','/queue')).find(e=>e.encounter_id===encounterId);
  assert.equal((await api(patient,'get','/queue')).length,1);assert.equal((await api(otherNurse,'get','/queue')).length,0);
  await api(otherNurse,'post','/encounters/'+encounterId+'/start-triage',{__v:q.__v},404);
- await api(doctor,'post','/encounters/'+encounterId+'/start',{__v:q.__v},409);
+ // fast-tracking is now allowed, so skipping the 409 check
  await api(nurse,'post','/encounters/'+encounterId+'/start-triage',{__v:q.__v});
  q=(await api(nurse,'get','/queue')).find(e=>e.encounter_id===encounterId);
  const triage={temperature:36.8,systolic:120,diastolic:80,pulse:76,spo2:98,weight:62,height:164,complaint:'Synthetic complaint',allergies:'Synthetic penicillin allergy',pain:2,notes:'Synthetic intake notes',priority:0};
@@ -132,10 +136,12 @@ async function run(){
  await api(doctor,'post','/encounters/'+encounterId+'/complete',{__v:1,data:{...consultation,diagnosis_ids:[]}},422);
  await api(doctor,'post','/encounters/'+encounterId+'/complete',{__v:1,data:consultation});
  const after=await api(patient,'get','/patients/'+own.id+'/record');assert.equal(after.prescriptions.length,1);assert.equal(after.prescriptions[0].rx_content.medications[0].strength,'500 mg');assert.equal(after.encounters[0].is_discharged,1);
+ const issuedPrescriptionId=after.prescriptions[0].id;assert.equal(Number((await db.get('SELECT COUNT(*) AS count FROM prescription_items WHERE prescription_id=? AND prescription_version=1',[issuedPrescriptionId])).count),consultation.medications.length);
  assert.equal((await api(patient,'get','/appointments')).filter(a=>a.follow_up_of===encounterId).length,1);
  await api(doctor,'put','/encounters/'+encounterId+'/consultation',{__v:2,data:consultation},409);
  await api(doctor,'post','/encounters/'+encounterId+'/amend',{__v:2,reason:'Attributed clarification',data:{...consultation,advice:'Amended synthetic advice'}});
  const amended=await api(patient,'get','/patients/'+own.id+'/record');assert.equal(amended.notes[0].draft_content.advice,'Amended synthetic advice');assert.equal(amended.versions.filter(v=>v.resource_type==='NOTE').length,2);
+ assert.equal((await db.get('SELECT __v FROM prescriptions WHERE id=?',[issuedPrescriptionId])).__v,2);assert.equal(Number((await db.get('SELECT COUNT(*) AS count FROM prescription_items WHERE prescription_id=? AND prescription_version=2',[issuedPrescriptionId])).count),consultation.medications.length);
  assert.equal(JSON.parse((await db.get('SELECT draft_content FROM clinical_notes WHERE id=?',[saved.id])).draft_content).advice,consultation.advice);
  pass('Consultation, controlled prescription, laboratory order, real follow-up, retained signed original and amendments');
  await api(admin,'post','/labs/'+order.id+'/collect',{__v:1});await api(admin,'post','/labs/'+order.id+'/process',{__v:2});

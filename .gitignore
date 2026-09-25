@@ -27,3 +27,4 @@ Thumbs.db
 test-results/
 playwright-report/
 backend/node_modules/
+backend/storage/

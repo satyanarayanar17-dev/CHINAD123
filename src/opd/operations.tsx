@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   CalendarPlus,
@@ -33,6 +33,7 @@ import {
 import { Booking, PatientForm } from "./booking";
 import { Journey, ResultCard } from "./records";
 import { Triage } from "./workspace";
+import { CarePlanSummary } from "./carePlan";
 import type {
   Session,
   Appointment,
@@ -41,6 +42,7 @@ import type {
   Dashboard,
   JourneyEvent,
   LabOrder,
+  RecordBundle,
 } from "./types";
 export interface PageProps {
   session: Session;
@@ -60,8 +62,7 @@ export function Overview(props: PageProps) {
   const appointments = useQuery({
     queryKey: ["opd", "appointments"],
     queryFn: () => get<Appointment[]>("/appointments"),
-    enabled: session.role === "PATIENT",
-    refetchInterval: 15000,
+    refetchInterval: 10000,
   });
   const queue = useQuery({
     queryKey: ["opd", "queue"],
@@ -75,12 +76,13 @@ export function Overview(props: PageProps) {
     enabled: session.role === "PATIENT" && !!session.patient_id,
     refetchInterval: 10000,
   });
+  const patientRecord = useQuery({ queryKey: ["opd", "home-record", session.patient_id], queryFn: () => get<RecordBundle>(`/patients/${session.patient_id}/record`), enabled: session.role === "PATIENT" && !!session.patient_id });
   const [booking, setBooking] = useState(false);
   const isPatient = session.role === "PATIENT";
   const upcoming = appointments.data
     ?.filter(
       (a) =>
-        a.status === "CONFIRMED" && a.scheduled_at > new Date().toISOString(),
+        (a.status === "CONFIRMED" || a.status === "PENDING_CONFIRMATION") && a.scheduled_at > new Date().toISOString(),
     )
     .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))[0];
   const d = dashboard.data;
@@ -126,6 +128,12 @@ export function Overview(props: PageProps) {
               <div />
             </div>
           </div>
+          <CarePlanSummary patientId={session.patient_id!} navigate={navigate} />
+          <Panel title="What do I need to do next?">
+            <div className="row-actions"><Button onClick={() => setBooking(true)}><CalendarPlus size={17} /> Book Appointment</Button><Button variant="secondary" onClick={() => navigate("records")}><ClipboardCheck size={17} /> Upload Report</Button><Button variant="ghost" onClick={() => navigate("carePlan")}><Activity size={17} /> Record a measurement</Button></div>
+            {patientRecord.data?.prescriptions[0] && <p className="muted">Latest prescription: {patientRecord.data.prescriptions[0].rx_content.medications?.map((medication) => medication.name).join(", ") || "Available in My Records"}</p>}
+            <p className="muted">Follow-up appointments and Care Plan reminders will appear here when your OBST care team schedules them.</p>
+          </Panel>
           <div className="two-column">
             <Panel
               title="nextAppointment"
@@ -183,9 +191,9 @@ export function Overview(props: PageProps) {
               <>
                 <div className="metrics">
                   {[
-                    ["appointmentCount", d.appointments, Users],
+                    ["requiresAction", d.requires_action ?? 0, Users],
+                    ["todayConfirmed", d.today_confirmed ?? 0, Clock3],
                     ["waiting", d.waiting, Clock3],
-                    ["inConsultation", d.consultation, Stethoscope],
                     ["completed", d.completed, CheckCircle2],
                   ].map(([key, value, Icon], i) => {
                     const I = Icon as typeof Users;
@@ -353,6 +361,13 @@ export function AppointmentsPage(props: PageProps) {
       get<Appointment[]>(`/appointments${filter ? `?date=${filter}` : ""}`),
     refetchInterval: 10000,
   });
+  const patientPeriod = (appointment: Appointment) =>
+    !["COMPLETED", "CANCELLED", "NO_SHOW"].includes(appointment.status) && new Date(appointment.scheduled_at).getTime() >= clockTime
+      ? "Upcoming"
+      : "Past";
+  const displayedAppointments = session.role === "PATIENT"
+    ? [...(q.data || [])].sort((a, b) => (patientPeriod(a) === "Upcoming" ? 0 : 1) - (patientPeriod(b) === "Upcoming" ? 0 : 1) || (patientPeriod(a) === "Upcoming" ? a.scheduled_at.localeCompare(b.scheduled_at) : b.scheduled_at.localeCompare(a.scheduled_at)))
+    : (q.data || []);
   return (
     <div className="page-stack">
       <PageHeader
@@ -406,7 +421,9 @@ export function AppointmentsPage(props: PageProps) {
                 </tr>
               </thead>
               <tbody>
-                {q.data.map((a) => (
+                {displayedAppointments.map((a, index) => (
+                  <Fragment key={a.id}>
+                  {session.role === "PATIENT" && (index === 0 || patientPeriod(displayedAppointments[index - 1]) !== patientPeriod(a)) && <tr className="appointment-group"><th colSpan={4}>{patientPeriod(a)}</th></tr>}
                   <tr key={a.id}>
                     <td>
                       <b>{formatDate(a.scheduled_at, language)}</b>
@@ -430,6 +447,16 @@ export function AppointmentsPage(props: PageProps) {
                     </td>
                     <td>
                       <div className="row-actions">
+                        {a.status === "PENDING_CONFIRMATION" && ["DOCTOR", "NURSE"].includes(session.role) && (
+                          <Button disabled={action.pending} onClick={() => void action.run(() => post(`/appointments/${a.id}/confirm`, {__v: a.__v}))}>
+                            Confirm
+                          </Button>
+                        )}
+                        {a.status === "PENDING_CONFIRMATION" && ["ADMIN", "PATIENT"].includes(session.role) && (
+                          <Button variant="ghost" onClick={() => setCancel(a)}>
+                            {t("cancel")}
+                          </Button>
+                        )}
                         {a.status === "CONFIRMED" &&
                           ["ADMIN", "PATIENT"].includes(session.role) && (
                             <>
@@ -474,22 +501,38 @@ export function AppointmentsPage(props: PageProps) {
                                 )}
                             </>
                           )}
-                        {a.encounter_id && session.role === "DOCTOR" && (
-                          <Button
-                            variant="secondary"
-                            onClick={() =>
-                              a.status === "COMPLETED"
-                                ? openConsultation(
-                                    a.patient_id,
-                                    a.encounter_id!,
-                                  )
-                                : openRecord(a.patient_id)
-                            }
-                          >
-                            {t(
-                              a.status === "COMPLETED" ? "amend" : "openRecord",
+                        {["DOCTOR", "NURSE"].includes(session.role) && (
+                          <>
+                            <Button
+                              variant="secondary"
+                              onClick={() =>
+                                a.status === "COMPLETED" && a.encounter_id
+                                  ? openConsultation(
+                                      a.patient_id,
+                                      a.encounter_id!,
+                                    )
+                                  : openRecord(a.patient_id)
+                              }
+                            >
+                              {t(
+                                a.status === "COMPLETED" && a.encounter_id ? "amend" : "openRecord",
+                              )}
+                            </Button>
+                            {session.role === "DOCTOR" && a.status === "CONFIRMED" && a.scheduled_at.slice(0, 10) <= today() && (
+                              <Button
+                                disabled={action.pending}
+                                onClick={() => {
+                                  void action.run(async () => {
+                                    const qEntry = await post<QueueEntry>(`/appointments/${a.id}/check-in`, { identity_verified: true });
+                                    await post(`/encounters/${qEntry.encounter_id}/start`, { __v: qEntry.__v });
+                                    openConsultation(a.patient_id, qEntry.encounter_id);
+                                  });
+                                }}
+                              >
+                                {t("startVisit", "Start Visit")}
+                              </Button>
                             )}
-                          </Button>
+                          </>
                         )}
                         {session.role === "PATIENT" && a.encounter_id && (
                           <Button
@@ -499,9 +542,13 @@ export function AppointmentsPage(props: PageProps) {
                             {t("viewJourney")}
                           </Button>
                         )}
+                        {session.role === "PATIENT" && patientPeriod(a) === "Upcoming" && (
+                          <Button variant="ghost" onClick={() => openRecord(a.patient_id, "documents")}>Add Records for this Appointment</Button>
+                        )}
                       </div>
                     </td>
                   </tr>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

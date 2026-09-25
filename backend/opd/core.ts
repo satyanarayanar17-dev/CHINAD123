@@ -10,6 +10,7 @@ import type {
 } from "../../src/opd/types.ts";
 const crypto = require("node:crypto") as typeof import("node:crypto");
 const z = (require("zod") as typeof import("zod")).z;
+const { runtimeConfig } = require("../config");
 
 export interface DB {
   dialect: string;
@@ -90,6 +91,25 @@ export async function actor(req: Req, tx = db): Promise<Session> {
 export function roles(req: Req, allowed: Session["role"][]) {
   if (!allowed.includes(req.user.role)) fail("FORBIDDEN_ROLE", 403);
 }
+export async function pilotDepartment(tx = db) {
+  if (!runtimeConfig.ogPilotOnly) return null;
+  const department = await tx.get<Department>(
+    "SELECT * FROM departments WHERE prefix=?",
+    [runtimeConfig.pilotDepartmentPrefix],
+  );
+  if (!department || department.name !== "Obstetrics & Gynaecology")
+    fail("OG_DEPARTMENT_NOT_CONFIGURED", 503);
+  return department;
+}
+export async function enforcePilotDepartment(
+  tx: DB,
+  departmentId: string,
+) {
+  const department = await pilotDepartment(tx);
+  if (department && department.id !== departmentId)
+    fail("PILOT_DEPARTMENT_ONLY", 422);
+  return department;
+}
 export async function patientAccess(
   req: Req,
   patientId: string,
@@ -105,15 +125,15 @@ export async function patientAccess(
     fail("NOT_FOUND", 404);
   if (user.role === "DOCTOR") {
     const linked = await tx.get(
-      "SELECT id FROM encounters WHERE patient_id = ? AND assigned_doctor_id = ? UNION SELECT id FROM appointments WHERE patient_id = ? AND doctor_id = ? AND status IN ('CONFIRMED','CHECKED_IN')",
+      "SELECT id FROM encounters WHERE patient_id = ? AND assigned_doctor_id = ? UNION SELECT id FROM appointments WHERE patient_id = ? AND doctor_id = ? AND status IN ('PENDING_CONFIRMATION','CONFIRMED','CHECKED_IN','IN_TRIAGE','READY_FOR_DOCTOR','IN_CONSULTATION')",
       [patientId, user.id, patientId, user.id],
     );
     if (!linked) fail("NOT_FOUND", 404);
   }
   if (user.role === "NURSE") {
     const linked = await tx.get(
-      `SELECT q.encounter_id FROM queue_entries q JOIN encounters e ON e.id=q.encounter_id JOIN departments d ON d.id=q.department_id WHERE e.patient_id=? AND d.name=? AND q.status != 'COMPLETED'`,
-      [patientId, user.department],
+      `SELECT q.encounter_id FROM queue_entries q JOIN encounters e ON e.id=q.encounter_id JOIN departments d ON d.id=q.department_id WHERE e.patient_id=? AND d.name=? AND q.status != 'COMPLETED' UNION SELECT id FROM appointments WHERE patient_id=? AND assigned_nurse_id=? AND status IN ('PENDING_CONFIRMATION','CONFIRMED','CHECKED_IN','IN_TRIAGE','READY_FOR_DOCTOR','IN_CONSULTATION')`,
+      [patientId, user.department, patientId, user.id],
     );
     if (!linked) fail("NOT_FOUND", 404);
   }

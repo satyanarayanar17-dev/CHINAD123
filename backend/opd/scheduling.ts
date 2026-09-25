@@ -12,6 +12,8 @@ import {
   roles,
   actor,
   patientAccess,
+  pilotDepartment,
+  enforcePilotDepartment,
   event,
   audit,
 } from "./core.ts";
@@ -86,12 +88,15 @@ export async function slots(
     [doctorId],
   );
   if (!doctor) return [];
+  const pilot = await pilotDepartment(tx);
+  if (pilot && doctor.department !== pilot.name) return [];
   const weekday = new Date(`${requestedDay}T12:00:00Z`).getUTCDay();
   const schedule = await tx.get<Schedule>(
     "SELECT * FROM practitioner_schedules WHERE doctor_id=? AND weekday=?",
     [doctorId, weekday],
   );
   if (!schedule) return [];
+  if (pilot && schedule.department_id !== pilot.id) return [];
   const occupied = await tx.all<Appointment>(
     "SELECT * FROM appointments WHERE doctor_id=? AND status NOT IN ('CANCELLED','NO_SHOW') AND id != ?",
     [doctorId, excludeAppointment],
@@ -127,10 +132,12 @@ export async function slots(
   return result;
 }
 export async function saveSchedule(req: Req) {
-  roles(req, ["ADMIN"]);
+  roles(req, ["ADMIN", "DOCTOR"]);
   const value = parse(scheduleSchema, req.body);
+  if (req.user.role === "DOCTOR" && req.user.id !== value.doctor_id) fail("UNAUTHORIZED", 403);
   return transaction(async (tx) => {
     await doctorLock(tx, value.doctor_id);
+    await enforcePilotDepartment(tx, value.department_id);
     const existing = await tx.get<Schedule>(
       "SELECT * FROM practitioner_schedules WHERE doctor_id=? AND weekday=?",
       [value.doctor_id, value.weekday],
@@ -201,9 +208,19 @@ export async function book(
     )
   )
     fail("PATIENT_BOOKING_CONFLICT", 409);
+  
+  const assignment = await tx.get<{nurse_id: string}>("SELECT nurse_id FROM doctor_nurse_assignments WHERE doctor_id=? LIMIT 1", [data.doctor_id]);
+  const assignedNurseId = assignment ? assignment.nurse_id : null;
   const appointmentId = id("apt");
+  
+  const isDoctor = req.user.role === 'DOCTOR';
+  const status = isDoctor ? 'CONFIRMED' : 'PENDING_CONFIRMATION';
+  const confirmedAt = isDoctor ? now() : null;
+  const confirmedBy = isDoctor ? req.user.id : null;
+  const confirmedRole = isDoctor ? req.user.role : null;
+  
   await tx.run(
-    "INSERT INTO appointments (id,patient_id,doctor_id,department_id,scheduled_at,ends_at,room,status,reason,created_by,created_at,follow_up_of) VALUES (?,?,?,?,?,?,?,'CONFIRMED',?,?,?,?)",
+    "INSERT INTO appointments (id,patient_id,doctor_id,department_id,scheduled_at,ends_at,room,status,reason,created_by,created_at,follow_up_of,requested_at,requested_by_patient_id,assigned_nurse_id,confirmed_at,confirmed_by_user_id,confirmed_by_role) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     [
       appointmentId,
       patientId,
@@ -212,24 +229,75 @@ export async function book(
       slot!.scheduled_at,
       slot!.ends_at,
       slot!.room,
+      status,
       data.reason,
       req.user.id,
       now(),
       followUpOf,
+      now(),
+      patientId,
+      assignedNurseId,
+      confirmedAt,
+      confirmedBy,
+      confirmedRole
     ],
   );
+  
+  let eventType = "APPOINTMENT_REQUESTED";
+  if (isDoctor) {
+    eventType = followUpOf ? "FOLLOW_UP_BOOKED" : "APPOINTMENT_CONFIRMED";
+  }
+  
   await event(
     tx,
     req,
     patientId!,
-    followUpOf ? "FOLLOW_UP_BOOKED" : "APPOINTMENT_CONFIRMED",
+    eventType,
     { scheduled_at: data.scheduled_at },
     followUpOf,
     appointmentId,
   );
+  
+  // Notify assigned Doctor and Nurse
+  const pData = await tx.get<{name: string}>("SELECT name FROM patients WHERE id=?", [patientId]);
+  const msg = `${pData!.name} has requested an appointment on ${data.scheduled_at}`;
+  await tx.run(
+    "INSERT INTO notifications (type,title,body,patient_id,actor_id,target_role,target_user_id,created_at) VALUES ('info','New appointment request',?,?,null,null,?,?)",
+    [msg, patientId, data.doctor_id, now()]
+  );
+  if (assignedNurseId) {
+    await tx.run(
+      "INSERT INTO notifications (type,title,body,patient_id,actor_id,target_role,target_user_id,created_at) VALUES ('info','New appointment request',?,?,null,null,?,?)",
+      [msg, patientId, assignedNurseId, now()]
+    );
+  }
+
   return (await tx.get<Appointment>(`${appointmentSelect} WHERE a.id=?`, [
     appointmentId,
   ]))!;
+}
+
+export async function confirmRequest(req: Req, appointmentId: string) {
+  roles(req, ["ADMIN", "DOCTOR", "NURSE"]);
+  return transaction(async (tx) => {
+    const user = await actor(req, tx);
+    const apt = await tx.get<Appointment>(`${appointmentSelect} WHERE a.id=?`, [appointmentId]);
+    if (!apt) fail("NOT_FOUND", 404);
+    if (apt.status !== "PENDING_CONFIRMATION") return apt; // Idempotent
+
+    if (user.role === "DOCTOR" && apt.doctor_id !== user.id) fail("UNAUTHORIZED", 403);
+    if (user.role === "NURSE" && apt.assigned_nurse_id !== user.id && apt.department_id !== user.department) fail("UNAUTHORIZED", 403);
+
+    const updated = await tx.run(
+      "UPDATE appointments SET status='CONFIRMED', confirmed_at=?, confirmed_by_user_id=?, confirmed_by_role=?, __v=__v+1 WHERE id=? AND status='PENDING_CONFIRMATION' AND __v=?",
+      [now(), user.id, user.role, appointmentId, apt.__v]
+    );
+
+    if (!updated.changes) return (await tx.get<Appointment>(`${appointmentSelect} WHERE a.id=?`, [appointmentId]))!;
+
+    await event(tx, req, apt.patient_id, "APPOINTMENT_CONFIRMED", {}, null, appointmentId);
+    return (await tx.get<Appointment>(`${appointmentSelect} WHERE a.id=?`, [appointmentId]))!;
+  });
 }
 export async function appointments(req: Req, dateOverride?: string) {
   const user = await actor(req);
@@ -246,6 +314,11 @@ export async function appointments(req: Req, dateOverride?: string) {
   if (user.role === "NURSE") {
     where = "d.name=?";
     values.push(user.department);
+  }
+  const pilot = await pilotDepartment(db);
+  if (pilot) {
+    where += " AND a.department_id=?";
+    values.push(pilot.id);
   }
   const requestedDate = dateOverride || req.query.date;
   if (typeof requestedDate === "string") {
@@ -276,7 +349,7 @@ export async function changeAppointment(req: Req, action: string) {
     await patientAccess(req, apt!.patient_id, tx, false);
     await doctorLock(tx, apt!.doctor_id);
     if (apt!.__v !== version) fail("STALE_STATE", 409);
-    if (apt!.status !== "CONFIRMED") fail("APPOINTMENT_LOCKED", 409);
+    if (apt!.status !== "CONFIRMED" && apt!.status !== "PENDING_CONFIRMATION") fail("APPOINTMENT_LOCKED", 409);
     if (action === "reschedule") {
       const requested = parse(z.iso.datetime(), req.body.scheduled_at);
       const offered = await slots(
@@ -345,7 +418,7 @@ export async function changeAppointment(req: Req, action: string) {
   });
 }
 export async function checkIn(req: Req) {
-  roles(req, ["ADMIN"]);
+  roles(req, ["ADMIN", "DOCTOR"]);
   if (req.body.identity_verified !== true) fail("VERIFY_IDENTITY");
   return transaction(async (tx) => {
     const apt = await tx.get<Appointment>(
@@ -353,6 +426,7 @@ export async function checkIn(req: Req) {
       [req.params.id],
     );
     if (!apt) fail("NOT_FOUND", 404);
+    await enforcePilotDepartment(tx, apt!.department_id);
     if (apt!.status === "CHECKED_IN")
       return tx.get<QueueEntry>(
         "SELECT * FROM queue_entries WHERE appointment_id=?",
@@ -435,17 +509,19 @@ export async function checkIn(req: Req) {
 }
 export async function queue(req: Req): Promise<QueueEntry[]> {
   const user = await actor(req);
+  const pilot = await pilotDepartment(db);
   // Compute positions against the whole doctor queue before scoping returned identities.
   const all = await db.all<QueueEntry & { ends_at: string }>(
-    `SELECT q.*, e.patient_id, p.name AS patient_name,p.mrn,p.dob,p.gender,e.chief_complaint,a.doctor_id,u.name AS doctor_name,d.name AS department_name,a.room,a.scheduled_at,a.ends_at FROM queue_entries q JOIN encounters e ON e.id=q.encounter_id JOIN patients p ON p.id=e.patient_id JOIN appointments a ON a.id=q.appointment_id JOIN users u ON u.id=a.doctor_id JOIN departments d ON d.id=q.department_id WHERE q.status!='COMPLETED' ORDER BY CASE q.status WHEN 'CONSULTATION' THEN 0 WHEN 'DOCTOR_READY' THEN 1 ELSE 2 END,q.priority DESC,q.checked_in_at,q.encounter_id`,
+    `SELECT q.*, e.patient_id, p.name AS patient_name,p.mrn,p.dob,p.gender,e.chief_complaint,a.doctor_id,u.name AS doctor_name,d.name AS department_name,a.room,a.scheduled_at,a.ends_at FROM queue_entries q JOIN encounters e ON e.id=q.encounter_id JOIN patients p ON p.id=e.patient_id JOIN appointments a ON a.id=q.appointment_id JOIN users u ON u.id=a.doctor_id JOIN departments d ON d.id=q.department_id WHERE q.status!='COMPLETED'${pilot ? ' AND q.department_id=?' : ''} ORDER BY CASE q.status WHEN 'CONSULTATION' THEN 0 WHEN 'DOCTOR_READY' THEN 1 ELSE 2 END,q.priority DESC,q.checked_in_at,q.encounter_id`,
+    pilot ? [pilot.id] : [],
   );
   const completed = await db.all<{
     doctor_id: string;
     consultation_started_at: string;
     completed_at: string;
   }>(
-    `SELECT a.doctor_id,q.consultation_started_at,e.completed_at FROM queue_entries q JOIN encounters e ON e.id=q.encounter_id JOIN appointments a ON a.id=q.appointment_id WHERE q.status='COMPLETED' AND q.date=?`,
-    [day()],
+    `SELECT a.doctor_id,q.consultation_started_at,e.completed_at FROM queue_entries q JOIN encounters e ON e.id=q.encounter_id JOIN appointments a ON a.id=q.appointment_id WHERE q.status='COMPLETED' AND q.date=?${pilot ? ' AND q.department_id=?' : ''}`,
+    pilot ? [day(), pilot.id] : [day()],
   );
   return all
     .map((entry, index) => {

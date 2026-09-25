@@ -135,10 +135,6 @@ function Brand() {
   return (
     <div className="brand">
       <img src="/logo.png" className="brand-logo" alt="Chettinad Health City" style={{ height: "40px", objectFit: "contain", marginRight: "12px" }} />
-      <div>
-        <strong>{t("brand")}</strong>
-        <small>{t("connected")}</small>
-      </div>
     </div>
   );
 }

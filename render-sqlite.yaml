@@ -8,6 +8,8 @@ services:
     startCommand: npm start
     healthCheckPath: /api/v1/health
     envVars:
+      - key: NODE_VERSION
+        value: "24.0.0"
       - key: NODE_ENV
         value: production
       - key: DB_DIALECT

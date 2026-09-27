@@ -282,20 +282,20 @@ export async function confirmRequest(req: Req, appointmentId: string) {
   return transaction(async (tx) => {
     const user = await actor(req, tx);
     const apt = await tx.get<Appointment>(`${appointmentSelect} WHERE a.id=?`, [appointmentId]);
-    if (!apt) fail("NOT_FOUND", 404);
-    if (apt.status !== "PENDING_CONFIRMATION") return apt; // Idempotent
+    if (!apt) return fail("NOT_FOUND", 404);
+    if (apt!.status !== ("PENDING_CONFIRMATION" as any)) return apt; // Idempotent
 
-    if (user.role === "DOCTOR" && apt.doctor_id !== user.id) fail("UNAUTHORIZED", 403);
-    if (user.role === "NURSE" && apt.assigned_nurse_id !== user.id && apt.department_id !== user.department) fail("UNAUTHORIZED", 403);
+    if (user.role === "DOCTOR" && apt!.doctor_id !== user.id) fail("UNAUTHORIZED", 403);
+    if (user.role === "NURSE" && (apt as any).assigned_nurse_id !== user.id && (apt as any).department_name !== user.department) fail("UNAUTHORIZED", 403);
 
     const updated = await tx.run(
       "UPDATE appointments SET status='CONFIRMED', confirmed_at=?, confirmed_by_user_id=?, confirmed_by_role=?, __v=__v+1 WHERE id=? AND status='PENDING_CONFIRMATION' AND __v=?",
-      [now(), user.id, user.role, appointmentId, apt.__v]
+      [now(), user.id, user.role, appointmentId, apt!.__v]
     );
 
     if (!updated.changes) return (await tx.get<Appointment>(`${appointmentSelect} WHERE a.id=?`, [appointmentId]))!;
 
-    await event(tx, req, apt.patient_id, "APPOINTMENT_CONFIRMED", {}, null, appointmentId);
+    await event(tx, req, apt!.patient_id, "APPOINTMENT_CONFIRMED", {}, null, appointmentId);
     return (await tx.get<Appointment>(`${appointmentSelect} WHERE a.id=?`, [appointmentId]))!;
   });
 }
@@ -348,8 +348,8 @@ export async function changeAppointment(req: Req, action: string) {
     if (!apt) fail("NOT_FOUND", 404);
     await patientAccess(req, apt!.patient_id, tx, false);
     await doctorLock(tx, apt!.doctor_id);
-    if (apt!.__v !== version) fail("STALE_STATE", 409);
-    if (apt!.status !== "CONFIRMED" && apt!.status !== "PENDING_CONFIRMATION") fail("APPOINTMENT_LOCKED", 409);
+    if (apt!.__v !== version) return fail("STALE_STATE", 409);
+    if (apt!.status !== "CONFIRMED" && apt!.status !== ("PENDING_CONFIRMATION" as any)) return fail("APPOINTMENT_LOCKED", 409);
     if (action === "reschedule") {
       const requested = parse(z.iso.datetime(), req.body.scheduled_at);
       const offered = await slots(
@@ -568,5 +568,16 @@ export async function queue(req: Req): Promise<QueueEntry[]> {
           : user.role === "DOCTOR"
             ? e.doctor_id === user.id
             : e.department_name === user.department),
-    );
+    )
+    .map(e => {
+      if (user.role === "ADMIN" && user.department !== "MEDICAL_RECORDS") {
+        return {
+          ...e,
+          mrn: e.mrn ? `***-${e.mrn.slice(-4)}` : e.mrn,
+          dob: e.dob ? e.dob.substring(0, 4) + '-**-**' : e.dob,
+          patient_name: e.patient_name ? `${e.patient_name.charAt(0)}***` : e.patient_name
+        };
+      }
+      return e;
+    });
 }

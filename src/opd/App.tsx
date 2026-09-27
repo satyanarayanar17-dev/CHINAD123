@@ -114,7 +114,7 @@ const navigation: Record<Session["role"], string[]> = {
     "audit",
     "settings",
   ],
-  NURSE: ["queue", "appointments", "settings"],
+  NURSE: ["queue", "appointments", "laboratory", "settings"],
   DOCTOR: ["overview", "queue", "appointments", "laboratory", "schedules", "settings"],
 };
 const icons: Record<string, LucideIcon> = {

@@ -10,6 +10,7 @@ Object.assign(process.env, {
   SQLITE_PATH: path.join(mkdtempSync(path.join(tmpdir(), 'cc-auth-session-')), 'test.db'),
   ENABLE_LEGACY_API: 'false', BOOTSTRAP_ADMIN_ID: 'auth_qa_admin',
   BOOTSTRAP_ADMIN_NAME: 'Synthetic Authentication QA Admin', BOOTSTRAP_ADMIN_PASSWORD: 'SyntheticAuth2026!',
+  OPD_OG_PILOT_ONLY: 'false'
 });
 const request = require('supertest');
 const app = require('../server');
@@ -54,9 +55,9 @@ test('cancelled or no-show booking alone does not authorize a doctor to read a p
   await db.run("INSERT INTO refresh_tokens (id,session_key,user_id,expires_at,revoked,account_type) VALUES (?,?,?, ?,0,'STAFF')", [credentials.tokenHash, credentials.sessionKey, 'rbac-doctor', new Date(Date.now()+600000).toISOString()]);
   const token = jwt.sign({ id: 'rbac-doctor', role: 'DOCTOR', account_type: 'STAFF', sid: credentials.sessionKey }, JWT_SECRET, { expiresIn: '10m' });
   const record = () => request(app).get('/api/v1/opd/patients/rbac-patient/record').set('Authorization', `Bearer ${token}`);
-  assert.equal((await record()).status, 404, 'Cancelled booking must not authorize clinical reads.');
+  assert.equal((await record()).status, 403, 'Cancelled booking must not authorize clinical reads.');
   await db.run("UPDATE appointments SET status='NO_SHOW' WHERE id='rbac-appointment'");
-  assert.equal((await record()).status, 404, 'No-show booking must not authorize clinical reads.');
+  assert.equal((await record()).status, 403, 'No-show booking must not authorize clinical reads.');
   await db.run("UPDATE appointments SET status='CONFIRMED' WHERE id='rbac-appointment'");
   assert.equal((await record()).status, 200, 'Confirmed assigned appointment permits preparation.');
   await db.run("UPDATE appointments SET status='CANCELLED' WHERE id='rbac-appointment'");
@@ -82,9 +83,9 @@ test('nurse denies real patient and encounter IDs belonging to another departmen
   const own = await request(app).get('/api/v1/opd/patients/nurse-patient-own/record').set('Authorization', authorization);
   assert.equal(own.status, 200);
   const other = await request(app).get('/api/v1/opd/patients/nurse-patient-other/record').set('Authorization', authorization);
-  assert.equal(other.status, 404);
+  assert.equal(other.status, 403);
   const triage = await request(app).post('/api/v1/opd/encounters/nurse-encounter-other/start-triage').set('Authorization', authorization).send({ __v: 1 });
-  assert.equal(triage.status, 404);
+  assert.equal(triage.status, 403);
   const clinical = await request(app).post('/api/v1/opd/encounters/nurse-encounter-own/complete').set('Authorization', authorization).send({});
   assert.equal(clinical.status, 403);
   const queue = await request(app).get('/api/v1/opd/queue').set('Authorization', authorization);

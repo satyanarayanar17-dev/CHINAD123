@@ -48,7 +48,7 @@ router.delete('/unavailability/:id',endpoint(async(req,res)=>{
   await transaction(async tx=>{
     const leave = await tx.get<{doctor_id: string}>('SELECT doctor_id FROM practitioner_unavailability WHERE id=?', [req.params.id]);
     if (!leave) fail('NOT_FOUND', 404);
-    if (req.user.role === 'DOCTOR' && req.user.id !== leave.doctor_id) fail('UNAUTHORIZED', 403);
+    if (req.user.role === 'DOCTOR' && req.user.id !== leave!.doctor_id) return fail('UNAUTHORIZED', 403);
     await tx.run('DELETE FROM practitioner_unavailability WHERE id=?',[req.params.id]);
     await audit(tx,req,'DOCTOR_AVAILABILITY_RESTORED',null,{resource:String(req.params.id)});
   });
@@ -59,7 +59,17 @@ router.get('/patients', endpoint(async(req,res)=>{
   await audit(db,req,'PATIENT_DIRECTORY_ACCESSED');
   const limit = Math.min(parseInt(String(req.query.limit)) || 100, 500);
   const offset = parseInt(String(req.query.offset)) || 0;
-  res.json(await db.all<Patient>('SELECT * FROM patients WHERE LOWER(name) LIKE LOWER(?) OR phone LIKE ? OR mrn LIKE ? ORDER BY name, id LIMIT ? OFFSET ?',[`%${search}%`,`%${search}%`,`%${search}%`, limit, offset]));
+  const results = await db.all<Patient>('SELECT * FROM patients WHERE LOWER(name) LIKE LOWER(?) OR phone LIKE ? OR mrn LIKE ? ORDER BY name, id LIMIT ? OFFSET ?',[`%${search}%`,`%${search}%`,`%${search}%`, limit, offset]);
+  if (req.user.department !== 'MEDICAL_RECORDS') {
+    res.json(results.map(p => ({
+      ...p,
+      phone: p.phone ? `***-***-${p.phone.slice(-4)}` : p.phone,
+      mrn: p.mrn ? `***-${p.mrn.slice(-4)}` : p.mrn,
+      dob: p.dob ? p.dob.substring(0, 4) + '-**-**' : p.dob
+    })));
+  } else {
+    res.json(results);
+  }
 }));
 router.post('/patients',endpoint(async(req,res)=>{roles(req,['ADMIN']);res.status(201).json(await transaction(async tx=>{const patient=await createPatient(tx,req,req.body);await event(tx,req,patient.id,'PATIENT_REGISTERED');return patient;}));}));
 router.get('/profile',endpoint(async(req,res)=>{roles(req,['PATIENT']);const user=await actor(req);res.json(await patientAccess(req,user.patient_id!));}));
@@ -130,7 +140,7 @@ router.put('/staff/:id', endpoint(async (req, res) => {
   await transaction(async tx => {
     const department = await tx.get('SELECT * FROM departments WHERE name=?', [data.department]);
     if (!department) fail('INVALID_DEPARTMENT');
-    await enforcePilotDepartment(tx, department.id);
+    await enforcePilotDepartment(tx, (department as any).id);
     
     const changed = await tx.run(
       "UPDATE users SET name=?, role=?, department=?, updated_at=? WHERE id=? AND role!='PATIENT'",
@@ -177,8 +187,8 @@ router.get('/dashboard',endpoint(async(req,res)=>{
   const todayStart = new Date(`${todayDate}T00:00:00+05:30`).getTime();
   const todayEnd = todayStart + 86400000;
   
-  const requiresAction = allAppointments.filter(a => a.status === 'PENDING_CONFIRMATION');
-  const todayConfirmed = allAppointments.filter(a => (a.status === 'CONFIRMED' || a.status === 'CHECKED_IN' || a.status === 'READY_FOR_DOCTOR' || a.status === 'IN_TRIAGE' || a.status === 'IN_CONSULTATION') && new Date(a.scheduled_at).getTime() >= todayStart && new Date(a.scheduled_at).getTime() < todayEnd);
+  const requiresAction = allAppointments.filter(a => (a.status as any) === 'PENDING_CONFIRMATION');
+  const todayConfirmed = allAppointments.filter(a => (a.status === 'CONFIRMED' || a.status === 'CHECKED_IN' || (a.status as any) === 'READY_FOR_DOCTOR' || (a.status as any) === 'IN_TRIAGE' || (a.status as any) === 'IN_CONSULTATION') && new Date(a.scheduled_at).getTime() >= todayStart && new Date(a.scheduled_at).getTime() < todayEnd);
   const upcoming = allAppointments.filter(a => a.status === 'CONFIRMED' && new Date(a.scheduled_at).getTime() >= todayEnd);
   const appointments = allAppointments.filter(a => new Date(a.scheduled_at).getTime() >= todayStart && new Date(a.scheduled_at).getTime() < todayEnd);
   
@@ -190,11 +200,18 @@ router.get('/dashboard',endpoint(async(req,res)=>{
   const departments=await db.all<Department>(`SELECT * FROM departments${pilot?' WHERE id=?':''} ORDER BY name`,pilot?[pilot.id]:[]);
   const doctors=await db.all<Staff>(`SELECT id,name FROM users WHERE role='DOCTOR' AND is_active=1${pilot?' AND department=?':''}`,pilot?[pilot.name]:[]);
   const labs=await clinical.labs(req);
-  const waitingForDoctor = queue.filter(q => q.status === 'READY_FOR_DOCTOR' || q.status === 'DOCTOR_READY').length;
+  const waitingForDoctor = queue.filter(q => (q.status as any) === 'READY_FOR_DOCTOR' || q.status === 'DOCTOR_READY').length;
+  
+  let securityAlerts = 0;
+  if (req.user.role === 'ADMIN') {
+    const alerts = await db.all(`SELECT id FROM audit_logs WHERE code = 'BREAK_GLASS_ACCESSED' AND timestamp >= ?`, [new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()]);
+    securityAlerts = alerts.length;
+  }
 
   const result:Dashboard={
     date:day(),
     requires_action: requiresAction.length,
+    security_alerts: securityAlerts,
     today_confirmed: todayConfirmed.length,
     upcoming: upcoming.length,
     appointments:appointments.length,

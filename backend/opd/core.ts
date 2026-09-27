@@ -11,6 +11,7 @@ import type {
 const crypto = require("node:crypto") as typeof import("node:crypto");
 const z = (require("zod") as typeof import("zod")).z;
 const { runtimeConfig } = require("../config");
+const { logEvent } = require('../lib/logger');
 
 export interface DB {
   dialect: string;
@@ -123,20 +124,41 @@ export async function patientAccess(
   if (!patient) fail("NOT_FOUND", 404);
   if (user.role === "PATIENT" && user.patient_id !== patientId)
     fail("NOT_FOUND", 404);
+  let authorized = false;
+  
+  if (user.role === "ADMIN" || user.role === "PATIENT") {
+    authorized = true;
+  }
+  
   if (user.role === "DOCTOR") {
     const linked = await tx.get(
       "SELECT id FROM encounters WHERE patient_id = ? AND assigned_doctor_id = ? UNION SELECT id FROM appointments WHERE patient_id = ? AND doctor_id = ? AND status IN ('PENDING_CONFIRMATION','CONFIRMED','CHECKED_IN','IN_TRIAGE','READY_FOR_DOCTOR','IN_CONSULTATION')",
       [patientId, user.id, patientId, user.id],
     );
-    if (!linked) fail("NOT_FOUND", 404);
+    if (linked) authorized = true;
   }
+  
   if (user.role === "NURSE") {
     const linked = await tx.get(
       `SELECT q.encounter_id FROM queue_entries q JOIN encounters e ON e.id=q.encounter_id JOIN departments d ON d.id=q.department_id WHERE e.patient_id=? AND d.name=? AND q.status != 'COMPLETED' UNION SELECT id FROM appointments WHERE patient_id=? AND assigned_nurse_id=? AND status IN ('PENDING_CONFIRMATION','CONFIRMED','CHECKED_IN','IN_TRIAGE','READY_FOR_DOCTOR','IN_CONSULTATION')`,
       [patientId, user.department, patientId, user.id],
     );
-    if (!linked) fail("NOT_FOUND", 404);
+    if (linked) authorized = true;
   }
+  
+  if (!authorized && (user.role === "DOCTOR" || user.role === "NURSE")) {
+    const breakGlassReason = req.headers['x-break-glass-reason'];
+    if (breakGlassReason) {
+      authorized = true;
+      await audit(tx, req, "BREAK_GLASS_ACCESSED", patientId, { reason: breakGlassReason });
+      logEvent('admin_alert', { type: 'BREAK_GLASS', patient_id: patientId, actor_id: user.id, reason: breakGlassReason });
+    } else {
+      fail("FORBIDDEN_RECORD", 403);
+    }
+  }
+
+  if (!authorized) fail("NOT_FOUND", 404);
+
   if (clinical && user.role === "ADMIN") fail("CLINICAL_ACCESS_DENIED", 403);
   return patient!;
 }

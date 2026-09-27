@@ -170,9 +170,29 @@ export async function triage(req: Req) {
       [encounter.id],
     );
     const reason = previous ? parse(text, req.body.reason) : "";
+    let ews = 0;
+    if (value.pulse > 110 || value.pulse < 50) ews += 2;
+    else if (value.pulse > 90 || value.pulse < 60) ews += 1;
+    if (value.systolic > 180 || value.systolic < 90) ews += 2;
+    else if (value.systolic > 160 || value.systolic < 100) ews += 1;
+    if (value.spo2 < 92) ews += 2;
+    else if (value.spo2 < 95) ews += 1;
+    if (value.temperature > 39 || value.temperature < 35) ews += 2;
+    else if (value.temperature > 38 || value.temperature < 36) ews += 1;
+
+    let priority = value.priority;
+    let autoElevated = false;
+    if (ews >= 4 && priority < 2) {
+      priority = 2;
+      autoElevated = true;
+    }
+
     const data = {
       ...value,
+      priority,
       bmi: Number((value.weight / (value.height / 100) ** 2).toFixed(1)),
+      ews,
+      ews_auto_elevated: autoElevated,
     };
     await tx.run(
       "INSERT INTO triage_records (id,encounter_id,version,data,nurse_id,created_at,amendment_reason) VALUES (?,?,?,?,?,?,?)",
@@ -213,12 +233,14 @@ export async function triage(req: Req) {
       data.allergies,
       encounter.patient_id,
     ]);
+    
+    const eventCode = autoElevated ? "CRITICAL_VITALS_ALERT" : (previous ? "TRIAGE_AMENDED" : "TRIAGE_COMPLETED");
     await event(
       tx,
       req,
       encounter.patient_id,
-      previous ? "TRIAGE_AMENDED" : "TRIAGE_COMPLETED",
-      { version: (previous?.version || 0) + 1, reason },
+      eventCode,
+      { version: (previous?.version || 0) + 1, reason, ews },
       encounter.id,
       q!.appointment_id,
     );
@@ -228,8 +250,8 @@ export async function triage(req: Req) {
         id("notice"),
         encounter.assigned_doctor_id,
         encounter.patient_id,
-        "TRIAGE_COMPLETED",
-        JSON.stringify({ token: q.token }),
+        autoElevated ? "CRITICAL_VITALS_ALERT" : "TRIAGE_COMPLETED",
+        JSON.stringify({ token: q.token, ews }),
         now(),
       ],
     );
@@ -323,6 +345,34 @@ export async function saveConsultation(req: Req, complete: boolean) {
     if ((existing?.__v || 0) !== req.body.__v) fail("STALE_STATE", 409);
     if (existing?.status === "FINALIZED") fail("ENCOUNTER_COMPLETED", 409);
     const data = await enrich(tx, value);
+    
+    // Medication Safety Checks
+    if (data.medications.length > 0) {
+      const patient = await tx.get<{ allergies: string }>("SELECT allergies FROM patients WHERE id=?", [encounter.patient_id]);
+      const allergies = (patient?.allergies || "").toLowerCase();
+      
+      // Simple duplicate check against past 30 days prescriptions (approx active duration)
+      const activeRx = await tx.all<{ rx_content: string }>("SELECT rx_content FROM prescriptions WHERE encounter_id IN (SELECT id FROM encounters WHERE patient_id=?) AND status='AUTHORIZED' AND created_at > datetime('now', '-30 days')", [encounter.patient_id]);
+      const activeMeds = new Set<string>();
+      for (const rx of activeRx) {
+        try {
+          const content = JSON.parse(rx.rx_content);
+          for (const med of content.medications || []) {
+            activeMeds.add(med.name.toLowerCase());
+          }
+        } catch (e) {}
+      }
+
+      for (const med of data.medications) {
+        const drugName = (med as any).name.toLowerCase();
+        if (allergies && allergies.includes(drugName)) {
+          throw { status: 409, code: "ALLERGY_WARNING", message: `Allergy warning: Patient may be allergic to ${(med as any).name}.` };
+        }
+        if (activeMeds.has(drugName)) {
+          throw { status: 409, code: "DUPLICATE_MEDICATION", message: `Duplicate warning: Patient already has an active prescription for ${(med as any).name}.` };
+        }
+      }
+    }
     const noteId = existing?.id || id("note");
     const version = (existing?.__v || 0) + 1;
     if (existing) {
@@ -493,6 +543,33 @@ export async function amend(req: Req) {
     if (JSON.stringify(value.follow_up ?? null) !== JSON.stringify(original.follow_up ?? null))
       fail("FOLLOW_UP_AMENDMENT", 409);
     const data = await enrich(tx, value);
+
+    // Medication Safety Checks
+    if (data.medications.length > 0) {
+      const patient = await tx.get<{ allergies: string }>("SELECT allergies FROM patients WHERE id=?", [encounter.patient_id]);
+      const allergies = (patient?.allergies || "").toLowerCase();
+      
+      const activeRx = await tx.all<{ rx_content: string }>("SELECT rx_content FROM prescriptions WHERE encounter_id IN (SELECT id FROM encounters WHERE patient_id=?) AND status='AUTHORIZED' AND created_at > datetime('now', '-30 days') AND encounter_id != ?", [encounter.patient_id, encounter.id]);
+      const activeMeds = new Set<string>();
+      for (const rx of activeRx) {
+        try {
+          const content = JSON.parse(rx.rx_content);
+          for (const med of content.medications || []) {
+            activeMeds.add(med.name.toLowerCase());
+          }
+        } catch (e) {}
+      }
+
+      for (const med of data.medications) {
+        const drugName = (med as any).name.toLowerCase();
+        if (allergies && allergies.includes(drugName)) {
+          throw { status: 409, code: "ALLERGY_WARNING", message: `Allergy warning: Patient may be allergic to ${(med as any).name}.` };
+        }
+        if (activeMeds.has(drugName)) {
+          throw { status: 409, code: "DUPLICATE_MEDICATION", message: `Duplicate warning: Patient already has an active prescription for ${(med as any).name}.` };
+        }
+      }
+    }
     // Append a version; signed source content remains immutable.
     await snapshot(
       tx,
@@ -628,7 +705,9 @@ export async function labs(
     where += " AND e.assigned_doctor_id=?";
     params.push(user.id);
   }
-  if (user.role === "NURSE") fail("FORBIDDEN_ROLE", 403);
+  if (user.role === "NURSE") {
+    // Nurses can view all lab orders to mark them as collected
+  }
   const limit = Math.min(parseInt(String(req.query?.limit)) || 500, 1000);
   const offset = parseInt(String(req.query?.offset)) || 0;
   const rows = await tx.all<LabOrder>(
@@ -645,7 +724,7 @@ export async function labs(
   return rows;
 }
 export async function changeLab(req: Req, action: string) {
-  roles(req, action === "review" ? ["DOCTOR"] : ["ADMIN"]);
+  roles(req, action === "review" ? ["DOCTOR"] : ["NURSE"]);
   return transaction(async (tx) => {
     const lab = await tx.get<
       LabOrder & { patient_id: string; assigned_doctor_id: string }

@@ -144,11 +144,11 @@ async function run(){
  assert.equal((await db.get('SELECT __v FROM prescriptions WHERE id=?',[issuedPrescriptionId])).__v,2);assert.equal(Number((await db.get('SELECT COUNT(*) AS count FROM prescription_items WHERE prescription_id=? AND prescription_version=2',[issuedPrescriptionId])).count),consultation.medications.length);
  assert.equal(JSON.parse((await db.get('SELECT draft_content FROM clinical_notes WHERE id=?',[saved.id])).draft_content).advice,consultation.advice);
  pass('Consultation, controlled prescription, laboratory order, real follow-up, retained signed original and amendments');
- await api(admin,'post','/labs/'+order.id+'/collect',{__v:1});await api(admin,'post','/labs/'+order.id+'/process',{__v:2});
+ await api(nurse,'post','/labs/'+order.id+'/collect',{__v:1});await api(nurse,'post','/labs/'+order.id+'/process',{__v:2});
  const result={value:'13.2',unit:'g/dL',reference_range:'Configured demonstration range',flag:'NORMAL',verified:true,released:false,reason:'Verified synthetic source'};
- await api(admin,'post','/labs/'+order.id+'/result',{__v:3,data:result});
+ await api(nurse,'post','/labs/'+order.id+'/result',{__v:3,data:result});
  assert.equal((await api(patient,'get','/labs')).find(l=>l.id===order.id).result,null);
- await api(admin,'post','/labs/'+order.id+'/result',{__v:4,data:{...result,released:true,reason:'Release verified synthetic result'}});
+ await api(nurse,'post','/labs/'+order.id+'/result',{__v:4,data:{...result,released:true,reason:'Release verified synthetic result'}});
  assert.equal((await api(patient,'get','/labs')).find(l=>l.id===order.id).result.version,2);
  await api(otherDoctor,'post','/labs/'+order.id+'/review',{__v:5},403);await api(doctor,'post','/labs/'+order.id+'/review',{__v:5});
  const timeline=await api(patient,'get','/patients/'+own.id+'/journey');

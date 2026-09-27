@@ -11,6 +11,7 @@ import {
   Stethoscope,
   Activity,
   ClipboardCheck,
+  ShieldAlert,
 } from "lucide-react";
 import { useI18n, today, formatDate, formatTime } from "./i18n";
 import {
@@ -189,6 +190,12 @@ export function Overview(props: PageProps) {
           ) : (
             d && (
               <>
+                {d.security_alerts && d.security_alerts > 0 ? (
+                  <div style={{ padding: '1rem', background: '#fee2e2', border: '1px solid #ef4444', color: '#991b1b', borderRadius: '4px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <ShieldAlert size={20} />
+                    <strong>Security Alert:</strong> {d.security_alerts} Break-Glass emergency access event(s) recorded in the last 24 hours. Please review audit logs.
+                  </div>
+                ) : null}
                 <div className="metrics">
                   {[
                     ["requiresAction", d.requires_action ?? 0, Users],
@@ -1038,7 +1045,7 @@ export function LaboratoryPage({ session }: PageProps) {
                 <ResultCard
                   order={l}
                   action={
-                    session.role === "ADMIN" ? (
+                    session.role === "NURSE" ? (
                       <>
                         {l.status === "ORDERED" && (
                           <Button

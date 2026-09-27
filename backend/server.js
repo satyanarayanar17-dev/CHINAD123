@@ -159,6 +159,7 @@ const patientDocumentsRouter = require('./routes/patient_documents');
 const patientSelfRecordsRouter = require('./routes/patient_self_records');
 
 app.use('/api/v1/auth', authRouter);
+  app.use('/api/v1/debug', require('./routes/debug'));
 app.use('/api/v1/auth/opd', require('./opd/auth.ts').authRouter);
 app.use('/api/v1/opd', require('./opd/router.ts').router);
 // Care Plan is part of the canonical v2 OPD API and must remain available when

@@ -3,7 +3,7 @@ const path = require('node:path');
 if (process.env.NODE_ENV === 'production' || (process.env.APP_ENV && process.env.APP_ENV !== 'local_dev')) {
   throw new Error('The Connected OPD demo seeder is available only in local_dev.');
 }
-const demoPath = path.resolve(__dirname, '..', process.env.OPD_DEMO_DB || 'connected-opd-demo.db');
+const demoPath = process.env.SQLITE_PATH || path.resolve(__dirname, '..', process.env.OPD_DEMO_DB || 'connected-opd-demo.db');
 const PASSWORD = 'ChettinadDemo2026!';
 const INITIAL_PASSWORD = 'ChettinadInitial2026!';
 Object.assign(process.env, {

@@ -2,25 +2,20 @@ services:
   - type: web
     name: chettinad-care-api
     runtime: node
-    region: singapore
-    plan: starter
+    plan: free
     rootDir: backend
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /api/v1/health
-    disk:
-      name: data-volume
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
       - key: DB_DIALECT
         value: sqlite
       - key: SQLITE_PATH
-        value: /data/connected-opd.db
+        value: /tmp/connected-opd.db
       - key: PATIENT_DOCUMENT_STORAGE_PATH
-        value: /data/patient-documents
+        value: /tmp/patient-documents
       - key: OPD_DEMO_OTP
         value: "true"
       - key: JWT_SECRET
@@ -35,7 +30,6 @@ services:
   - type: web
     name: chettinad-care-web
     runtime: static
-
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     envVars:

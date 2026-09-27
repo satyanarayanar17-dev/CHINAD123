@@ -11,7 +11,7 @@ services:
       - key: NODE_VERSION
         value: "24.0.0"
       - key: NODE_ENV
-        value: production
+        value: development
       - key: DB_DIALECT
         value: sqlite
       - key: SQLITE_PATH

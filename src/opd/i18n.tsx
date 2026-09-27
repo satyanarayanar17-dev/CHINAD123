@@ -484,7 +484,7 @@ const en = {
   SESSION_REVOKED: "Your session expired or was revoked. Sign in again.",
   TOKEN_REVOKED: "Your access was revoked. Contact the hospital administrator.",
 };
-const ta: Record<keyof typeof en, string> = {
+const ta: Partial<Record<keyof typeof en, string>> = {
   LOGOUT_PENDING: "இந்த உலாவியில் வெளியேறிவிட்டீர்கள். சேவையக வெளியேற்றம் நிலுவையில் உள்ளது. மீண்டும் உள்நுழைவதற்கு முன் இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயலவும்.",
   LOGOUT_FAILED: "சேவையக வெளியேற்றத்தை உறுதிப்படுத்த முடியவில்லை. மீண்டும் முயலவும்.",
   discardChanges: "மருத்துவ ஆலோசனை மாற்றங்கள் சேமிக்கப்படவில்லை. சேமிக்காமல் வெளியேறவா?",
@@ -935,7 +935,7 @@ const ta: Record<keyof typeof en, string> = {
   "SESSION_REVOKED": "உங்கள் அமர்வு காலாவதியானது அல்லது ரத்து செய்யப்பட்டது. மீண்டும் உள்நுழையவும்.",
   "TOKEN_REVOKED": "உங்கள் அணுகல் ரத்து செய்யப்பட்டது. மருத்துவமனை நிர்வாகியைத் தொடர்பு கொள்ளவும்."
 };
-const te: Record<keyof typeof en, string> = {
+const te: Partial<Record<keyof typeof en, string>> = {
   LOGOUT_PENDING: "ఈ బ్రౌజర్‌లో సైన్ అవుట్ అయ్యారు. సర్వర్ సైన్ అవుట్ పెండింగ్‌లో ఉంది. మళ్లీ సైన్ ఇన్ చేసే ముందు కనెక్షన్‌ను పునరుద్ధరించి ప్రయత్నించండి.",
   LOGOUT_FAILED: "సర్వర్ సైన్ అవుట్‌ను నిర్ధారించలేకపోయాము. మళ్లీ ప్రయత్నించండి.",
   discardChanges: "సంప్రదింపు మార్పులు సేవ్ చేయలేదు. సేవ్ చేయకుండా వెళ్లాలా?",

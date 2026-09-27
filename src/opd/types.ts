@@ -76,7 +76,7 @@ export interface Appointment {
   scheduled_at: string;
   ends_at: string;
   room: string;
-  status: "CONFIRMED" | "CHECKED_IN" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
+  status: "PENDING_CONFIRMATION" | "CONFIRMED" | "CHECKED_IN" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
   reason: string;
   encounter_id: string | null;
   follow_up_of: string | null;

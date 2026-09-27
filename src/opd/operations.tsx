@@ -536,7 +536,7 @@ export function AppointmentsPage(props: PageProps) {
                                   });
                                 }}
                               >
-                                {t("startVisit", "Start Visit")}
+                                {t("startVisit")}
                               </Button>
                             )}
                           </>

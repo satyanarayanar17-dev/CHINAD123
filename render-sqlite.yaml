@@ -37,7 +37,7 @@ services:
     env: static
     region: singapore
     buildCommand: npm ci && npm run build
-    publishPath: dist
+    staticPublishPath: dist
     envVars:
       - key: VITE_API_BASE_URL
         value: "https://chettinad-care-api.onrender.com/api/v1"

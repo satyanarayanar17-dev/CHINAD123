@@ -152,7 +152,7 @@ async function run() {
     
     // Auto-confirm and check-in the appointment so it appears in the doctor's live queue today
     await api('admin', 'post', `/appointments/${appointment.id}/confirm`, {});
-    appointment = await api('admin', 'post', `/appointments/${appointment.id}/check-in`, { identity_verified: true });
+    try { appointment = await api('admin', 'post', `/appointments/${appointment.id}/check-in`, { identity_verified: true }); } catch (err) { console.warn('Skipping check-in for tomorrow appointment'); }
     
     const db = database;
     

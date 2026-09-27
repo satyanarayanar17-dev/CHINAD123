@@ -264,6 +264,14 @@ function ConsultationForm({
   const meds = useFieldArray({ control, name: "medications" });
   const selectedDiagnoses = watch("diagnosis_ids");
   const selectedFollowUp = watch("follow_up");
+  const currentMedications = watch("medications");
+  
+  const checkAllergy = (drugId: string) => {
+    if (!drugId || !record.patient.allergies) return false;
+    const drug = catalogue.drugs.find((d) => d.id === drugId);
+    return drug && record.patient.allergies.toLowerCase().includes(drug.name.toLowerCase());
+  };
+
   const complete = !!encounter?.is_discharged;
   const save = (data: ConsultationData, finalize = false) =>
     void action.run(
@@ -468,6 +476,11 @@ function ConsultationForm({
                             </option>
                           ))}
                         </Select>
+                        {checkAllergy(currentMedications[index]?.drug_id) && (
+                          <div className="full alert info" style={{ backgroundColor: "var(--bg-error)", color: "var(--fg-error)", marginTop: -10 }}>
+                            Warning: Patient may be allergic to this medication based on their reported allergies ({record.patient.allergies}).
+                          </div>
+                        )}
                         <Field
                           label="dose"
                           required

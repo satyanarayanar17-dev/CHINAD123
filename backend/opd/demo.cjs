@@ -49,7 +49,7 @@ async function call(token, method, url, data, expected = 200) {
     const detail = response.body?.error?.message || response.body?.message || '';
     throw new Error(`${method.toUpperCase()} ${url}: HTTP ${response.status} ${code} ${detail}`);
   }
-  return response.body;
+  console.log("RESPONSE BODY:", response.body); return response.body;
 }
 const api = (who, method, url, data) => call(tokens.get(who), method, `/api/v1/opd${url}`, data);
 
@@ -71,8 +71,8 @@ async function ensurePatient(scenario) {
   tokens.set(scenario.phone, login.access_token);
   
   const patients = await api('admin', 'get', '/patients');
-  const patient = patients.find(p => p.phone === scenario.phone);
-  return patient;
+  const patient = patients.find(p => p.name === scenario.name);
+  console.log("PATIENTS:", patients); return patient;
 }
 
 function departmentFor(scenario) {
@@ -131,19 +131,23 @@ async function run() {
   const catalogue = await configure();
   
   for (const scenario of scenarios) {
-    scenario.patient = await ensurePatient(scenario);
+    scenario.patient = await ensurePatient(scenario); console.log("SCENARIO PATIENT IS:", scenario.patient);
     const department = departmentFor(scenario);
     
     // Create Demo Appointment
-    const slots = await api('admin', 'get', `/slots?doctor_id=${department.doctor}&date=${day(new Date(Date.now() + 86400000))}`);
+    const slots = await api('admin', 'get', `/slots?doctor_id=${department.doctor}&date=${day(new Date())}`);
     const slot = slots[0];
     if (!slot) throw new Error('No slots available for demo appointment');
     
-    const appointment = await api(scenario.phone, 'post', '/appointments', {
+    let appointment = await api(scenario.phone, 'post', '/appointments', {
       doctor_id: department.doctor,
       scheduled_at: slot.scheduled_at,
       reason: scenario.complaint
     });
+    
+    // Auto-confirm and check-in the appointment so it appears in the doctor's live queue today
+    await api('admin', 'post', `/appointments/${appointment.id}/confirm`, {});
+    appointment = await api('admin', 'post', `/appointments/${appointment.id}/check-in`, { identity_verified: true });
     
     const db = database;
     
@@ -154,7 +158,7 @@ async function run() {
     ];
     for (const d of docs) {
       // Find user id for the patient
-      const u = await db.get('SELECT id FROM users WHERE patient_id = ? LIMIT 1', [scenario.patient.id]);
+      const u = await db.get("SELECT id FROM users WHERE patient_id = ? LIMIT 1", [scenario.patient.id]); console.log("SCENARIO PATIENT ID:", scenario.patient.id, "USER IS:", u);
       await db.run('INSERT INTO patient_documents (id, patient_id, appointment_id, document_type, title, original_filename, mime_type, size_bytes, storage_provider, storage_key, uploaded_by, clinical_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [d.id, d.patient_id, d.appointment_id, d.document_type, d.title, d.original_filename, d.mime_type, d.size_bytes, d.storage_provider, d.storage_key, u.id, d.clinical_date, d.created_at, d.created_at]);
     }
     
@@ -205,6 +209,6 @@ async function run() {
 }
 
 run().then(() => process.exit(0)).catch(error => {
-  console.error(`Demo setup stopped: ${error.message}`);
+  console.error(error);
   process.exit(1);
 });

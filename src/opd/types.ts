@@ -304,6 +304,7 @@ export interface Notification {
 }
 export interface Dashboard {
   requires_action?: number;
+  security_alerts?: number;
   today_confirmed?: number;
   upcoming?: number;
   date: string;

@@ -1,0 +1,781 @@
+{
+  "config": {
+    "argv": [
+      "/Users/siddwork/.nvm/versions/node/v24.15.0/bin/node",
+      "/Users/siddwork/Desktop/chettinad-care-frontend/node_modules/.bin/playwright",
+      "test",
+      "--config",
+      "playwright.security.config.ts"
+    ],
+    "configFile": "/Users/siddwork/Desktop/chettinad-care-frontend/playwright.security.config.ts",
+    "rootDir": "/Users/siddwork/Desktop/chettinad-care-frontend/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/Users/siddwork/Desktop/chettinad-care-frontend/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "security-browser.spec.ts"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "qa-evidence/01-auth/security-browser-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "security-browser.spec.ts",
+      "file": "security-browser.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "unauthenticated protected URLs, invalid route and accessible credential validation",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 10513,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:21:41.677Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-5c053d70d1edd3fdf7d6",
+          "file": "security-browser.spec.ts",
+          "line": 61,
+          "column": 1
+        },
+        {
+          "title": "doctor RBAC rejects administrative mutations and tampered patient IDs from browser",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 12201,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:22:04.474Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-896efc85911756a2bdcf",
+          "file": "security-browser.spec.ts",
+          "line": 84,
+          "column": 1
+        },
+        {
+          "title": "nurse department restrictions and malicious clinical writes are denied",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 17505,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:22:16.964Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-a9be58a8812f865a9052",
+          "file": "security-browser.spec.ts",
+          "line": 102,
+          "column": 1
+        },
+        {
+          "title": "patient OTP browser registration, own-record boundary and protected routes",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 32894,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:22:34.749Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-568542eb52fdbc5cd94f",
+          "file": "security-browser.spec.ts",
+          "line": 118,
+          "column": 1
+        },
+        {
+          "title": "browser reload restores session; expired access rotates secret and public IDs cannot refresh",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 5597,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:23:07.925Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-b6b7cbc1e4401ad8e679",
+          "file": "security-browser.spec.ts",
+          "line": 147,
+          "column": 1
+        },
+        {
+          "title": "session revocation invalidates browser access and signing out survives reload",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 10432,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:23:13.638Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-4f6bacfeaa72e3b58be7",
+          "file": "security-browser.spec.ts",
+          "line": 172,
+          "column": 1
+        },
+        {
+          "title": "network interruption is visible and retry restores service",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 10386,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('alert')\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" getByRole('alert') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('alert')\u001b[22m\n\u001b[2m    13 × locator resolved to 1 element\u001b[22m\n\u001b[2m       - unexpected value \"1\"\u001b[22m\n",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('alert')\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" getByRole('alert') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('alert')\u001b[22m\n\u001b[2m    13 × locator resolved to 1 element\u001b[22m\n\u001b[2m       - unexpected value \"1\"\u001b[22m\n\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts:200:41",
+                    "location": {
+                      "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                      "column": 41,
+                      "line": 200
+                    },
+                    "snippet": "  198 |   await page.unroute('**/api/v1/auth/refresh');\n  199 |   await page.getByRole('button', { name: 'Try again', exact: true }).click();\n> 200 |   await expect(page.getByRole('alert')).toHaveCount(0);\n      |                                         ^\n  201 |   await expect(page.getByRole('button', { name: 'Hospital staff', exact: true })).toBeVisible();\n  202 |   await capture(page, '11-errors/backend-recovery-after-retry-pass');\n  203 | });"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                        "column": 41,
+                        "line": 200
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('alert')\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" getByRole('alert') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('alert')\u001b[22m\n\u001b[2m    13 × locator resolved to 1 element\u001b[22m\n\u001b[2m       - unexpected value \"1\"\u001b[22m\n\n\n  198 |   await page.unroute('**/api/v1/auth/refresh');\n  199 |   await page.getByRole('button', { name: 'Try again', exact: true }).click();\n> 200 |   await expect(page.getByRole('alert')).toHaveCount(0);\n      |                                         ^\n  201 |   await expect(page.getByRole('button', { name: 'Hospital staff', exact: true })).toBeVisible();\n  202 |   await capture(page, '11-errors/backend-recovery-after-retry-pass');\n  203 | });\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts:200:41"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:23:24.120Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-network-i-78d15--and-retry-restores-service/test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-network-i-78d15--and-retry-restores-service/error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-network-i-78d15--and-retry-restores-service/trace.zip"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                    "column": 41,
+                    "line": 200
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-5610de8edf140763614a",
+          "file": "security-browser.spec.ts",
+          "line": 192,
+          "column": 1
+        },
+        {
+          "title": "logout during network failure cannot silently restore a session on reload",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 4866,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:23:41.168Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-7e693a1d568eab43001c",
+          "file": "security-browser.spec.ts",
+          "line": 205,
+          "column": 1
+        },
+        {
+          "title": "admin access is operational only; bearer and refresh secrets stay out of UI storage",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 6306,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:23:58.367Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-8555e34acc37b02582d9",
+          "file": "security-browser.spec.ts",
+          "line": 220,
+          "column": 1
+        },
+        {
+          "title": "logout clears other open browser tabs and prevents late refresh from restoring access",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 16449,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:24:04.762Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-a059c89d7d650a5a29e9",
+          "file": "security-browser.spec.ts",
+          "line": 242,
+          "column": 1
+        },
+        {
+          "title": "server logout failure stays visible, cannot auto-restore, and retry allows an explicit new login",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 5838,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:24:21.255Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-1aaab39024fb9ad1f086",
+          "file": "security-browser.spec.ts",
+          "line": 273,
+          "column": 1
+        },
+        {
+          "title": "missing refresh credential expires browser session without a reload loop",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 4096,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:24:27.117Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-afad1724643196c2b11b",
+          "file": "security-browser.spec.ts",
+          "line": 290,
+          "column": 1
+        },
+        {
+          "title": "patient OTP resend cooldown and invalid-attempt lockout are enforced",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3962,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:24:31.239Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-8f1315f51c77bb1806fc",
+          "file": "security-browser.spec.ts",
+          "line": 302,
+          "column": 1
+        },
+        {
+          "title": "invalid staff attempts hit a bounded rate limit",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 2668,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts:326:19",
+                    "location": {
+                      "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                      "column": 19,
+                      "line": 326
+                    },
+                    "snippet": "  324 |     expect(result.status).toBe(401);\n  325 |   }\n> 326 |   expect(limited).toBe(true);\n      |                   ^\n  327 |   await page.getByRole('button',{name:'Hospital staff',exact:true}).click();\n  328 |   await page.locator('[name=username]').fill('qa_rate_limit_only');\n  329 |   await page.locator('[name=password]').fill('InvalidOnly2026!');"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                        "column": 19,
+                        "line": 326
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  324 |     expect(result.status).toBe(401);\n  325 |   }\n> 326 |   expect(limited).toBe(true);\n      |                   ^\n  327 |   await page.getByRole('button',{name:'Hospital staff',exact:true}).click();\n  328 |   await page.locator('[name=username]').fill('qa_rate_limit_only');\n  329 |   await page.locator('[name=password]').fill('InvalidOnly2026!');\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts:326:19"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:24:35.241Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-invalid-s-ed027-ts-hit-a-bounded-rate-limit/test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-invalid-s-ed027-ts-hit-a-bounded-rate-limit/error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-invalid-s-ed027-ts-hit-a-bounded-rate-limit/trace.zip"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                    "column": 19,
+                    "line": 326
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-bfe59da2f1337a482a33",
+          "file": "security-browser.spec.ts",
+          "line": 318,
+          "column": 1
+        },
+        {
+          "title": "spoofing the untrusted forwarded address cannot evade the client IP login limit",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 0,
+                  "error": {
+                    "message": "Error: apiRequestContext._wrapApiCall: ENOENT: no such file or directory, copyfile '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c-recording1.network' -> '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c-recording1-pwnetcopy-1.network'",
+                    "stack": "Error: apiRequestContext._wrapApiCall: ENOENT: no such file or directory, copyfile '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c-recording1.network' -> '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c-recording1-pwnetcopy-1.network'\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts:30:17",
+                    "location": {
+                      "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                      "column": 17,
+                      "line": 30
+                    },
+                    "snippet": "  28 |   const queue = await fetchApi(page,token,'/opd/queue');\n  29 |   otherDepartmentEncounterId = queue.body.find((q:{patient_id:string})=>q.patient_id===otherDepartmentPatientId).encounter_id;\n> 30 |   await context.close();\n     |                 ^\n  31 | });\n  32 | const fixtureSigningKey = '9087a416cd21b1b746a211731b4a7099ecb073d9a16a4a44';\n  33 |"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                        "column": 17,
+                        "line": 30
+                      },
+                      "message": "Error: apiRequestContext._wrapApiCall: ENOENT: no such file or directory, copyfile '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c-recording1.network' -> '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c-recording1-pwnetcopy-1.network'\n\n  28 |   const queue = await fetchApi(page,token,'/opd/queue');\n  29 |   otherDepartmentEncounterId = queue.body.find((q:{patient_id:string})=>q.patient_id===otherDepartmentPatientId).encounter_id;\n> 30 |   await context.close();\n     |                 ^\n  31 | });\n  32 | const fixtureSigningKey = '9087a416cd21b1b746a211731b4a7099ecb073d9a16a4a44';\n  33 |\n    at /Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts:30:17"
+                    },
+                    {
+                      "message": "Error: browserContext._wrapApiCall: ENOENT: no such file or directory, open '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/traces/c6c23e8279f8a459c812-b699cef23e65f602715c.trace'"
+                    },
+                    {
+                      "message": "Error: ENOENT: no such file or directory, open '/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/.playwright-artifacts-2/a917ef74f0b9e49fd410536af7816e0f.zip'"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:24:39.084Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results/security/security-browser-spoofing--4c021-e-the-client-IP-login-limit/test-failed-1.png"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/security-browser.spec.ts",
+                    "column": 17,
+                    "line": 30
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-b699cef23e65f602715c",
+          "file": "security-browser.spec.ts",
+          "line": 335,
+          "column": 1
+        },
+        {
+          "title": "new staff must change password and deactivation immediately revokes access",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:24:43.622Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-44413e0130edde37bf1c",
+          "file": "security-browser.spec.ts",
+          "line": 356,
+          "column": 1
+        },
+        {
+          "title": "a delayed bootstrap session response cannot reopen a tab after another tab signs out",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T10:24:43.623Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "c6c23e8279f8a459c812-70a208dfe0a5e991bd08",
+          "file": "security-browser.spec.ts",
+          "line": 415,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-09-21T10:20:57.545Z",
+    "duration": 226148.576,
+    "expected": 12,
+    "skipped": 2,
+    "unexpected": 3,
+    "flaky": 0
+  }
+}

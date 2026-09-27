@@ -1,0 +1,86 @@
+ M qa-evidence/02-doctor/clinical-note-editor-pass.png
+ M qa-evidence/02-doctor/doctor-dashboard-desktop-pass.png
+ M qa-evidence/04-admin/appointments-pass.png
+ M qa-evidence/04-admin/laboratory-pass.png
+ M qa-evidence/04-admin/live-queue-pass.png
+ M qa-evidence/04-admin/patients-pass.png
+ M qa-evidence/06-mobile/doctor-builder-1366x768-pass.png
+ M qa-evidence/06-mobile/doctor-builder-1440x900-pass.png
+ M qa-evidence/06-mobile/doctor-builder-1920x1080-pass.png
+ M qa-evidence/07-prescription/multi-medicine-builder-desktop-pass.png
+ M scratch/pgdata/base/18498/1259
+ M scratch/pgdata/base/18498/18509
+ M scratch/pgdata/base/18498/18521
+ M scratch/pgdata/base/18498/18555
+ M scratch/pgdata/base/18498/18570
+ M scratch/pgdata/base/18498/18649
+ M scratch/pgdata/base/18498/18650
+ M scratch/pgdata/base/18498/18660
+ M scratch/pgdata/base/18498/18672
+ M scratch/pgdata/base/18498/18672_fsm
+ M scratch/pgdata/base/18498/18682
+ M scratch/pgdata/base/18498/18689
+ M scratch/pgdata/base/18498/18690
+ M scratch/pgdata/base/18498/18694
+ M scratch/pgdata/base/18498/18695
+ M scratch/pgdata/base/18498/18700
+ M scratch/pgdata/base/18498/18701
+ M scratch/pgdata/base/18498/18702
+ M scratch/pgdata/base/18498/18728
+ M scratch/pgdata/base/18498/18735
+ M scratch/pgdata/base/18498/18748
+ M scratch/pgdata/base/18498/18811
+ M scratch/pgdata/base/18498/18830
+ M scratch/pgdata/base/18498/18832
+ M scratch/pgdata/base/18498/18864
+ M scratch/pgdata/base/18498/18865
+ M scratch/pgdata/base/18498/18866
+ M scratch/pgdata/base/18498/18874
+ M scratch/pgdata/base/18498/18881
+ M scratch/pgdata/base/18498/18902
+ M scratch/pgdata/base/18498/18904
+ M scratch/pgdata/base/18498/18906
+ M scratch/pgdata/base/18498/19097
+ M scratch/pgdata/base/18498/19108
+ M scratch/pgdata/base/18498/19130
+ M scratch/pgdata/base/18498/19131
+ M scratch/pgdata/base/18498/19146
+ M scratch/pgdata/base/18498/19146_fsm
+ M scratch/pgdata/base/18498/19156
+ M scratch/pgdata/base/18498/19158
+ M scratch/pgdata/base/18498/19170
+ M scratch/pgdata/base/18498/19185
+ M scratch/pgdata/base/18498/19187
+ M scratch/pgdata/base/18498/19194
+ M scratch/pgdata/base/18498/19195
+ M scratch/pgdata/base/18498/19196
+ M scratch/pgdata/base/18498/2604
+ M scratch/pgdata/base/18498/2619
+ M scratch/pgdata/base/18498/2619_fsm
+ M scratch/pgdata/base/18498/2696
+ M scratch/pgdata/base/18498/2840
+ M scratch/pgdata/base/18498/2840_fsm
+ M scratch/pgdata/base/18498/2841
+ M scratch/pgdata/base/18498/pg_internal.init
+ M scratch/pgdata/global/1262
+ M scratch/pgdata/global/2671
+ M scratch/pgdata/global/2672
+ M scratch/pgdata/global/pg_control
+ M scratch/pgdata/global/pg_internal.init
+ M scratch/pgdata/pg_wal/000000010000000000000003
+ M scratch/pgdata/pg_xact/0000
+?? BACKEND_ANTIGRAVITY_HANDOFF.md
+?? qa-evidence/04-admin/administration-pass.png
+?? qa-evidence/04-admin/audit-trail-pass.png
+?? qa-evidence/04-admin/my-profile-&-sessions-pass.png
+?? qa-evidence/06-mobile/doctor-builder-320x568-pass.png
+?? qa-evidence/06-mobile/doctor-builder-360x800-pass.png
+?? qa-evidence/06-mobile/doctor-builder-375x812-pass.png
+?? qa-evidence/06-mobile/doctor-builder-390x844-pass.png
+?? qa-evidence/06-mobile/doctor-builder-412x915-pass.png
+?? qa-evidence/06-mobile/doctor-builder-768x1024-pass.png
+?? qa-evidence/06-mobile/doctor-builder-820x1180-pass.png
+?? qa-evidence/06-mobile/doctor-builder-844x390-pass.png
+?? scratch/pgdata/base/19208/
+?? validation-evidence/
+6beddc2156ba5c45558c5ad77ac17ee27a357eaf HEAD -> fix/pre-pilot-blockers-v2, origin/fix/pre-pilot-blockers-v2

@@ -10,15 +10,20 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
-    server: hasExplicitApiBase
-      ? undefined
-      : {
-          proxy: {
-            '/api/v1': {
-              target: proxyTarget,
-              changeOrigin: true
+    server: {
+      hmr: false,
+      watch: { ignored: ['**/qa-evidence/**', 'qa-evidence/**'] },
+      allowedHosts: ['.trycloudflare.com'],
+      ...(hasExplicitApiBase
+        ? {}
+        : {
+            proxy: {
+              '/api/v1': {
+                target: proxyTarget,
+                changeOrigin: true
+              }
             }
-          }
-        }
+          })
+    }
   }
 })

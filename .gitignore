@@ -13,6 +13,7 @@ dist/
 Thumbs.db
 
 *.log
+!qa-evidence/**/*.log
 
 *.sqlite
 *.sqlite3
@@ -23,4 +24,7 @@ Thumbs.db
 .gemini/
 
 .vite/
+test-results/
+playwright-report/
 backend/node_modules/
+backend/storage/

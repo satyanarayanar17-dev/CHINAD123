@@ -81,7 +81,7 @@ export const UserManagement = () => {
         adminApi.getDepartments()
       ]);
       setUsers(userData);
-      setDepartments(departmentData);
+      setDepartments(departmentData.filter((d: string) => d === 'Obstetrics & Gynaecology'));
     } catch (error: unknown) {
       push('error', 'Failed to load users', getErrorMessage(error));
     } finally {

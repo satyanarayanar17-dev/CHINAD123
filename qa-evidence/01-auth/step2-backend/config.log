@@ -1,0 +1,17 @@
+✔ local v2 development works without SMS or legacy activation configuration (0.660792ms)
+✔ production and restricted deployments require PostgreSQL, JWT, explicit origins and SMS (0.286667ms)
+✔ valid locked v2 configuration defaults to secure cookies and needs no legacy activation (0.165584ms)
+✔ insecure refresh cookies and malformed cookie options are rejected (0.991417ms)
+✔ locked CORS permits only explicit HTTPS origins (0.185833ms)
+✔ locked patient OTP requires a credentialed HTTPS SMS adapter (0.120333ms)
+✔ development bypass and reset flags cannot enter locked deployments (0.120834ms)
+✔ legacy activation validation applies only to explicitly enabled local legacy APIs (0.0655ms)
+✔ startup diagnostics never expose configured credentials or SMS endpoint details (0.139041ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 56.899458

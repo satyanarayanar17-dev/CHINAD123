@@ -1,176 +1,144 @@
 import axios from 'axios';
+import type { InternalAxiosRequestConfig } from 'axios';
 import { shouldAttemptTokenRefresh, shouldRedirectToLoginPath } from '../auth/roleBoundary';
 import { API_BASE_URL, buildApiUrl } from './config';
 
+const LOGOUT_KEY = 'cc-session-signed-out';
+export const SESSION_ENDED_EVENT = 'cc-session-ended';
 let accessToken: string | null = null;
-
-// Deduplicates concurrent token refresh attempts.
-// Multiple 401s share a single in-flight refresh promise.
+let sessionGeneration = 0;
 let refreshPromise: Promise<string> | null = null;
+let logoutPromise: Promise<void> | null = null;
+let signedOut = false;
 
-export function getAccessToken() {
-  return accessToken;
+export function isSessionRestoreBlocked() {
+  try {
+    return signedOut || localStorage.getItem(LOGOUT_KEY) !== null;
+  } catch {
+    // An explicit sign-in may use memory while storage is unavailable, but a
+    // reload starts without an access token and must never restore implicitly.
+    return signedOut || accessToken === null;
+  }
 }
-
-export function setAccessToken(token: string | null) {
-  accessToken = token;
-}
-
+export function getAccessToken() { return accessToken; }
+export function getSessionGeneration() { return sessionGeneration; }
+export function setAccessToken(token: string | null) { accessToken = token; }
 export function clearAccessToken() {
   accessToken = null;
+  sessionGeneration++;
+}
+export function acceptBrowserSession(token: string) {
+  sessionGeneration++;
+  signedOut = false;
+  try { localStorage.removeItem(LOGOUT_KEY); } catch { /* Memory-only explicit login. */ }
+  accessToken = token;
+}
+export function beginBrowserLogout() {
+  signedOut = true;
+  clearAccessToken();
+  // Non-secret marker only: never persist a token or patient information.
+  try { localStorage.setItem(LOGOUT_KEY, String(Date.now())); } catch { /* Fail closed on next restore. */ }
+  window.dispatchEvent(new Event(SESSION_ENDED_EVENT));
+}
+export class LogoutPendingError extends Error {
+  readonly code = 'LOGOUT_PENDING';
+  constructor() { super('Server sign-out could not be confirmed.'); }
+}
+export function finishBrowserLogout(): Promise<void> {
+  if (!logoutPromise) {
+    // A rotating refresh may still set a cookie. Revoke after that request finishes,
+    // and do not allow a new sign-in to race with this cleanup.
+    const inFlightRefresh = refreshPromise;
+    logoutPromise = (async () => {
+      await inFlightRefresh?.catch(() => {});
+      try {
+        await axios.post(buildApiUrl('/auth/logout'), {}, { withCredentials: true, timeout: 10000 });
+      } catch {
+        throw new LogoutPendingError();
+      }
+    })().finally(() => { logoutPromise = null; });
+  }
+  return logoutPromise;
+}
+export async function prepareBrowserSignIn() {
+  if (isSessionRestoreBlocked()) await finishBrowserLogout();
 }
 
 const SESSION_RESET_CODES = new Set([
-  'ACCOUNT_TYPE_MISMATCH',
-  'FORBIDDEN_ROLE',
-  'INVALID_SESSION_SCOPE',
-  'INVALID_TOKEN_SCOPE',
-  'REFRESH_SCOPE_INVALID'
+  'ACCOUNT_TYPE_MISMATCH', 'INVALID_SESSION_SCOPE', 'INVALID_TOKEN_SCOPE', 'REFRESH_SCOPE_INVALID',
 ]);
-
-function extractErrorCode(error: any): string | null {
-  const payload = error?.response?.data?.error;
-  if (typeof payload === 'string') {
-    return payload;
-  }
-
-  if (payload && typeof payload.code === 'string') {
-    return payload.code;
-  }
-
-  return null;
+function extractErrorCode(error: unknown): string | null {
+  const payload = (error as { response?: { data?: { error?: string | { code?: string } } } }).response?.data?.error;
+  return typeof payload === 'string' ? payload : payload?.code || null;
 }
-
 async function resetBrowserSession() {
-  clearAccessToken();
-
-  try {
-    await axios.post(buildApiUrl('/auth/logout'), {}, { withCredentials: true });
-  } catch {
-    // Best-effort cleanup only.
-  }
-
-  if (shouldRedirectToLoginPath(window.location.pathname)) {
-    window.location.href = '/login';
-  }
+  beginBrowserLogout();
+  try { await finishBrowserLogout(); } catch { /* Persistent marker keeps the browser signed out. */ }
+  if (shouldRedirectToLoginPath(window.location.pathname)) window.location.href = '/login';
 }
 
-/**
- * Base Axios instance with normalized configuration.
- */
 export const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 30000,
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  baseURL: API_BASE_URL, timeout: 30000, withCredentials: true,
+  headers: { 'Content-Type': 'application/json' },
 });
-
-/**
- * Request Interceptor: Securely attaches Bearer token if available.
- */
-api.interceptors.request.use((config) => {
-  if (config.headers) {
-    if (accessToken) {
-      config.headers.Authorization = `Bearer ${accessToken}`;
-    }
-    // Safety: Ensure every single request acts as a traceable audit thread
-    config.headers['X-Correlation-ID'] = typeof crypto !== 'undefined' && crypto.randomUUID 
-        ? crypto.randomUUID() 
-        : `uuid-fallback-${Date.now()}`;
-  }
-  
+type SessionRequest = InternalAxiosRequestConfig & { _retry?: boolean; _sessionGeneration?: number };
+api.interceptors.request.use((config: SessionRequest) => {
+  config._sessionGeneration = sessionGeneration;
+  if (accessToken) config.headers.Authorization = 'Bearer ' + accessToken;
+  else delete config.headers.Authorization;
+  config.headers['X-Correlation-ID'] = crypto.randomUUID();
   return config;
-}, (error) => Promise.reject(error));
-
-/**
- * Response Interceptor: Manages global error state, JSON validation, and Token Refresh.
- */
+});
 api.interceptors.response.use(
-  (response) => {
-    // SAFETY: Prevent SPAs/Vite from returning index.html for dead API routes.
+  response => {
     const contentType = response.headers['content-type'];
-    if (contentType && contentType.includes('text/html')) {
+    if (typeof contentType === 'string' && contentType.includes('text/html'))
       return Promise.reject(new Error('API_MISHAP: Received HTML instead of JSON.'));
-    }
     return response;
   },
-  async (error) => {
-    const originalRequest = error.config;
+  async error => {
+    const originalRequest = error.config as SessionRequest | undefined;
+    if (!originalRequest) return Promise.reject(error);
+    const generation = originalRequest._sessionGeneration ?? sessionGeneration;
+    if (generation !== sessionGeneration) return Promise.reject(error);
 
-    // 1. LIKELY CAUSE: originalRequest protection.
-    // If the error happens before the request or is a manual rejection, config can be undefined.
-    if (!originalRequest) {
-      return Promise.reject(error);
-    }
-
-    // 2. RECURSION GUARD: Never try to refresh if the request was the refresh endpoint itself.
     if (originalRequest.url?.includes('/auth/refresh')) {
-      // If refresh fails, we MUST logout and stop everything.
-      clearAccessToken();
-      if (shouldRedirectToLoginPath(window.location.pathname)) {
-        window.location.href = '/login';
-      }
+      // Bootstrap renders connection failures itself; do not reload into a loop.
+      if (error.response?.status === 401) clearAccessToken();
       return Promise.reject(error);
     }
-
-    // 3. 403 FORBIDDEN: Role Violation Guard.
     if (error.response?.status === 403 && SESSION_RESET_CODES.has(extractErrorCode(error) || '')) {
-      console.error(`[SECURITY] 403 Forbidden Role Violation. Correlation ID: ${error.response.headers?.['x-correlation-id'] || 'unknown'}`);
       await resetBrowserSession();
-      return Promise.reject(new Error('Unauthorized role action detected.'));
+      return Promise.reject(error);
     }
-
-    // 4. 5xx SERVER ERROR: Observability catch
-    if (error.response?.status >= 500) {
-      console.error(`[CRITICAL] 5xx Server Node Failure. Correlation ID: ${error.response.headers?.['x-correlation-id'] || 'unknown'}`);
-    }
-
-    // 5. 401 RECOVERY: Only authenticated requests should attempt refresh.
     if (shouldAttemptTokenRefresh({
-      status: error.response?.status,
-      url: originalRequest.url,
-      retried: Boolean(originalRequest._retry),
-      hasAccessToken: Boolean(accessToken),
-      hasAuthorizationHeader: Boolean(originalRequest.headers?.Authorization || originalRequest.headers?.authorization),
-    })) {
+      status: error.response?.status, url: originalRequest.url,
+      retried: Boolean(originalRequest._retry), hasAccessToken: Boolean(accessToken),
+      hasAuthorizationHeader: Boolean(originalRequest.headers.Authorization),
+    }) && !isSessionRestoreBlocked()) {
       originalRequest._retry = true;
-
       try {
-        // Deduplicate: if a refresh is already in flight, reuse it.
         if (!refreshPromise) {
-          refreshPromise = axios.post(
-            buildApiUrl('/auth/refresh'),
-            {},
-            { withCredentials: true }
-          ).then(res => {
+          refreshPromise = axios.post(buildApiUrl('/auth/refresh'), {}, {
+            withCredentials: true, timeout: 10000,
+          }).then(res => {
             const token = res.data?.access_token;
             if (!token) throw new Error('NO_TOKEN_RETURNED');
-            return token;
-          }).finally(() => {
-            refreshPromise = null;
-          });
+            return token as string;
+          }).finally(() => { refreshPromise = null; });
         }
-
         const newToken = await refreshPromise;
+        if (generation !== sessionGeneration || isSessionRestoreBlocked())
+          throw new axios.CanceledError('Session ended while refreshing.');
         setAccessToken(newToken);
-
-        if (!originalRequest.headers) {
-          originalRequest.headers = {};
-        }
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-
+        originalRequest.headers.Authorization = 'Bearer ' + newToken;
         return api(originalRequest);
-
       } catch (refreshError) {
-        // Hard boot on refresh failure
-        await resetBrowserSession();
+        if (generation === sessionGeneration && !isSessionRestoreBlocked())
+          await resetBrowserSession();
         return Promise.reject(refreshError);
       }
     }
-
-    // Standard fallthrough for non-401 or already-retried errors
     return Promise.reject(error);
-  }
+  },
 );

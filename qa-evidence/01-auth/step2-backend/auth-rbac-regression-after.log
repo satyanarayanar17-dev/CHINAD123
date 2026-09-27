@@ -1,0 +1,64 @@
+{"level":"warn","event":"boot_config_warning","timestamp":"2026-09-15T22:04:41.062Z","warning":"JWT_SECRET is not set. Local dev will fall back to an insecure default. Never use that outside local_dev."}
+[DB] Applied migration 001_initial_schema
+[DB] Applied migration 002_data_integrity_guards
+[DB] Applied migration 003_refresh_token_account_type
+[DB] Applied migration 004_encounter_lifecycle_contract
+[DB] Applied migration 005_patient_phone_identity
+[DB] Applied migration 006_users_must_change_password
+[DB] Applied migration 007_triage_doctor_assignment
+[DB] Applied migration 008_prescription_handover
+[DB] Applied migration 009_staff_user_profiles
+[DB] Applied migration 010_patient_activation_token_hardening
+[DB] Applied migration 011_auth_security_hardening
+[DB] Applied migration 012_connected_opd
+[DB] Applied migration 013_session_and_encounter_integrity
+{"level":"info","event":"bootstrap_admin_created","timestamp":"2026-09-15T22:04:41.281Z","userId":"auth_qa_admin"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.289Z","correlationId":"SERVER-e5de3466-1475-4786-8f96-49d3e100cdb0","method":"POST","path":"/api/v1/auth/login/staff","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.346Z","correlationId":"SERVER-e5de3466-1475-4786-8f96-49d3e100cdb0","method":"POST","path":"/api/v1/auth/login/staff","status":200,"duration_ms":57,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.348Z","correlationId":"SERVER-dc72c40a-dff4-440d-9672-c18956240ecd","method":"POST","path":"/api/v1/auth/logout","remote_ip":"::ffff:127.0.0.1"}
+{"level":"error","event":"refresh_token_revoke_failed","timestamp":"2026-09-15T22:04:41.349Z","error":"SQLITE_CONSTRAINT: synthetic revocation failure"}
+{"level":"error","event":"request_failed","timestamp":"2026-09-15T22:04:41.349Z","correlationId":"SERVER-dc72c40a-dff4-440d-9672-c18956240ecd","method":"POST","path":"/api/v1/auth/logout","actorId":null,"status":503,"code":"LOGOUT_FAILED","message":"Sign-out could not be confirmed. Please retry.","details":null}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.349Z","correlationId":"SERVER-dc72c40a-dff4-440d-9672-c18956240ecd","method":"POST","path":"/api/v1/auth/logout","status":503,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.350Z","correlationId":"SERVER-bac4952a-0763-49ca-96d7-5c748def8d5d","method":"GET","path":"/api/v1/opd/session","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.351Z","correlationId":"SERVER-bac4952a-0763-49ca-96d7-5c748def8d5d","method":"GET","path":"/api/v1/opd/session","status":200,"duration_ms":1,"actorId":"auth_qa_admin"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.352Z","correlationId":"SERVER-96d51138-d318-4155-a022-a2d7a650caee","method":"POST","path":"/api/v1/auth/logout","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.353Z","correlationId":"SERVER-96d51138-d318-4155-a022-a2d7a650caee","method":"POST","path":"/api/v1/auth/logout","status":200,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.354Z","correlationId":"SERVER-8f14fc03-40a2-4229-82b0-e9d1d9f9f801","method":"GET","path":"/api/v1/opd/session","remote_ip":"::ffff:127.0.0.1"}
+{"level":"warn","event":"request_failed","timestamp":"2026-09-15T22:04:41.354Z","correlationId":"SERVER-8f14fc03-40a2-4229-82b0-e9d1d9f9f801","method":"GET","path":"/api/v1/opd/session","actorId":null,"status":401,"code":"SESSION_REVOKED","message":"Session expired or revoked.","details":null}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.354Z","correlationId":"SERVER-8f14fc03-40a2-4229-82b0-e9d1d9f9f801","method":"GET","path":"/api/v1/opd/session","status":401,"duration_ms":0,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.355Z","correlationId":"SERVER-92ee6a6a-64fc-4e3e-aea9-f128b4f21032","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.356Z","correlationId":"SERVER-92ee6a6a-64fc-4e3e-aea9-f128b4f21032","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":1,"actorId":null}
+✔ failed server revocation reports failure, preserves retry credential, and successful retry invalidates access (177.495083ms)
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.358Z","correlationId":"SERVER-61d809f3-0214-40c3-be1f-1cd1e1e3d4b1","method":"GET","path":"/api/v1/opd/patients/rbac-patient/record","remote_ip":"::ffff:127.0.0.1"}
+{"level":"warn","event":"request_failed","timestamp":"2026-09-15T22:04:41.360Z","correlationId":"SERVER-61d809f3-0214-40c3-be1f-1cd1e1e3d4b1","method":"GET","path":"/api/v1/opd/patients/rbac-patient/record","actorId":"rbac-doctor","status":404,"code":"NOT_FOUND","message":"NOT_FOUND","details":null}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.360Z","correlationId":"SERVER-61d809f3-0214-40c3-be1f-1cd1e1e3d4b1","method":"GET","path":"/api/v1/opd/patients/rbac-patient/record","status":404,"duration_ms":2,"actorId":"rbac-doctor"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.361Z","correlationId":"SERVER-11ec6a01-5357-4c13-a990-9d8d193c2a79","method":"GET","path":"/api/v1/opd/patients/rbac-patient/record","remote_ip":"::ffff:127.0.0.1"}
+{"level":"warn","event":"request_failed","timestamp":"2026-09-15T22:04:41.361Z","correlationId":"SERVER-11ec6a01-5357-4c13-a990-9d8d193c2a79","method":"GET","path":"/api/v1/opd/patients/rbac-patient/record","actorId":"rbac-doctor","status":404,"code":"NOT_FOUND","message":"NOT_FOUND","details":null}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.361Z","correlationId":"SERVER-11ec6a01-5357-4c13-a990-9d8d193c2a79","method":"GET","path":"/api/v1/opd/patients/rbac-patient/record","status":404,"duration_ms":0,"actorId":"rbac-doctor"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.362Z","correlationId":"SERVER-5c9a834e-d2fa-42fd-8862-ccc014518310","method":"GET","path":"/api/v1/opd/patients/rbac-patient/record","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.363Z","correlationId":"SERVER-5c9a834e-d2fa-42fd-8862-ccc014518310","method":"GET","path":"/api/v1/opd/patients/rbac-patient/record","status":200,"duration_ms":1,"actorId":"rbac-doctor"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.365Z","correlationId":"SERVER-e90bc6ff-665d-48a6-8a91-6399a16b39a2","method":"GET","path":"/api/v1/opd/patients/rbac-patient/record","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.366Z","correlationId":"SERVER-e90bc6ff-665d-48a6-8a91-6399a16b39a2","method":"GET","path":"/api/v1/opd/patients/rbac-patient/record","status":200,"duration_ms":1,"actorId":"rbac-doctor"}
+✔ cancelled or no-show booking alone does not authorize a doctor to read a patient record (9.867917ms)
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.370Z","correlationId":"SERVER-14d9735a-6304-4a23-9b6e-1f55092eed77","method":"GET","path":"/api/v1/opd/patients/nurse-patient-own/record","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.371Z","correlationId":"SERVER-14d9735a-6304-4a23-9b6e-1f55092eed77","method":"GET","path":"/api/v1/opd/patients/nurse-patient-own/record","status":200,"duration_ms":1,"actorId":"rbac-nurse"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.372Z","correlationId":"SERVER-62e73bc9-3f52-478f-84fc-066cd3fab394","method":"GET","path":"/api/v1/opd/patients/nurse-patient-other/record","remote_ip":"::ffff:127.0.0.1"}
+{"level":"warn","event":"request_failed","timestamp":"2026-09-15T22:04:41.372Z","correlationId":"SERVER-62e73bc9-3f52-478f-84fc-066cd3fab394","method":"GET","path":"/api/v1/opd/patients/nurse-patient-other/record","actorId":"rbac-nurse","status":404,"code":"NOT_FOUND","message":"NOT_FOUND","details":null}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.373Z","correlationId":"SERVER-62e73bc9-3f52-478f-84fc-066cd3fab394","method":"GET","path":"/api/v1/opd/patients/nurse-patient-other/record","status":404,"duration_ms":1,"actorId":"rbac-nurse"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.373Z","correlationId":"SERVER-4ad42cdf-6bd1-4a93-b65e-d300096ae552","method":"POST","path":"/api/v1/opd/encounters/nurse-encounter-other/start-triage","remote_ip":"::ffff:127.0.0.1"}
+{"level":"warn","event":"request_failed","timestamp":"2026-09-15T22:04:41.374Z","correlationId":"SERVER-4ad42cdf-6bd1-4a93-b65e-d300096ae552","method":"POST","path":"/api/v1/opd/encounters/nurse-encounter-other/start-triage","actorId":"rbac-nurse","status":404,"code":"NOT_FOUND","message":"NOT_FOUND","details":null}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.374Z","correlationId":"SERVER-4ad42cdf-6bd1-4a93-b65e-d300096ae552","method":"POST","path":"/api/v1/opd/encounters/nurse-encounter-other/start-triage","status":404,"duration_ms":1,"actorId":"rbac-nurse"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.375Z","correlationId":"SERVER-8a1f2f7e-45a8-44c3-8f2d-155565cffb45","method":"POST","path":"/api/v1/opd/encounters/nurse-encounter-own/complete","remote_ip":"::ffff:127.0.0.1"}
+{"level":"warn","event":"request_failed","timestamp":"2026-09-15T22:04:41.375Z","correlationId":"SERVER-8a1f2f7e-45a8-44c3-8f2d-155565cffb45","method":"POST","path":"/api/v1/opd/encounters/nurse-encounter-own/complete","actorId":"rbac-nurse","status":403,"code":"FORBIDDEN_ROLE","message":"FORBIDDEN_ROLE","details":null}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.375Z","correlationId":"SERVER-8a1f2f7e-45a8-44c3-8f2d-155565cffb45","method":"POST","path":"/api/v1/opd/encounters/nurse-encounter-own/complete","status":403,"duration_ms":0,"actorId":"rbac-nurse"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:04:41.376Z","correlationId":"SERVER-ae372c00-9780-4c12-93e5-46230c062af9","method":"GET","path":"/api/v1/opd/queue","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:04:41.385Z","correlationId":"SERVER-ae372c00-9780-4c12-93e5-46230c062af9","method":"GET","path":"/api/v1/opd/queue","status":200,"duration_ms":9,"actorId":"rbac-nurse"}
+✔ nurse denies real patient and encounter IDs belonging to another department (19.291833ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 464.977375

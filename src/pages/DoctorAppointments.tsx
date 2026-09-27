@@ -8,7 +8,7 @@ import { useToast, ToastContainer } from '../components/ui/Toast';
 import type { AppointmentSlot } from '../types/clinical';
 import { useAuth } from '../hooks/useAuth';
 
-const SPECIALTIES = ['All', 'Cardiology', 'General Medicine', 'Orthopedics'];
+
 const FALLBACK_SLOT_STATUS = { cls: 'text-gray-500', border: 'border-l-gray-300' };
 const FALLBACK_LIFECYCLE = { label: 'Unknown', variant: 'surface' as const };
 
@@ -108,7 +108,8 @@ export const DoctorAppointments = () => {
               onChange={e => setFilterSpec(e.target.value)}
               className="pl-8 pr-8 py-2 text-sm border border-outline rounded-xl outline-none focus:border-primary bg-white appearance-none cursor-pointer"
             >
-              {SPECIALTIES.map(s => <option key={s}>{s}</option>)}
+              <option value="All Specialties">All Specialties</option>
+              <option value="Obstetrics & Gynaecology">Obstetrics & Gynaecology</option>
             </select>
             <ChevronDown size={13} className="absolute right-3 top-2.5 text-on-surface-variant pointer-events-none" />
           </div>

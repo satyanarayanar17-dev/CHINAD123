@@ -2,19 +2,22 @@ const fs = require('fs');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const { Pool } = require('pg');
+const { parse: parsePostgresUrl } = require('pg-connection-string');
 const { applyMigrations } = require('./migrations');
 const { seedDevelopmentDatabase } = require('./seed');
+const { runtimeConfig } = require('./config');
+const { logEvent } = require('./lib/logger');
 
-const dbDialect = (process.env.DB_DIALECT || 'sqlite').trim().toLowerCase();
-const sqlitePath = path.resolve(__dirname, process.env.SQLITE_PATH || 'verification.db');
-const useDatabaseSsl =
-  process.env.DATABASE_SSL === 'true' ||
+const dbDialect = runtimeConfig.dbDialect;
+const sqlitePath = path.resolve(__dirname, runtimeConfig.sqlitePath);
+const useDatabaseSsl = runtimeConfig.databaseSsl ||
   process.env.PGSSLMODE === 'require' ||
   process.env.PGSSLMODE === 'verify-ca' ||
   process.env.PGSSLMODE === 'verify-full';
 
 let db;
 let pgPool;
+let sqliteTransactionChain = Promise.resolve();
 
 function createPostgresQueryContext(client) {
   return {
@@ -39,15 +42,24 @@ function createPostgresQueryContext(client) {
 }
 
 if (dbDialect === 'postgres') {
-  console.log('[DB] Connecting to PostgreSQL pool...');
+  logEvent('info', 'db_pool_connecting', { dialect: 'postgres' });
+  // Parse before applying TLS policy: pg otherwise lets URL sslmode override ssl options.
+  const connection = parsePostgresUrl(runtimeConfig.databaseUrl);
+  const tlsEnabled = useDatabaseSsl || Boolean(connection.ssl) ||
+    Boolean(process.env.PGSSLMODE && process.env.PGSSLMODE !== 'disable');
   pgPool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    max: Number(process.env.PGPOOL_MAX || 10),
-    connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS || 10000),
-    ssl: useDatabaseSsl ? { rejectUnauthorized: false } : undefined
+    ...connection,
+    max: runtimeConfig.pgPoolMax,
+    connectionTimeoutMillis: runtimeConfig.pgConnectTimeoutMs,
+    ssl: tlsEnabled ? {
+      ...(typeof connection.ssl === 'object' ? connection.ssl : {}),
+      rejectUnauthorized: true,
+      checkServerIdentity: require('node:tls').checkServerIdentity,
+      ...(process.env.DATABASE_SSL_CA ? { ca: process.env.DATABASE_SSL_CA.replace(/\\n/g, '\n') } : {})
+    } : false
   });
   pgPool.on('error', (err) => {
-    console.error('[DB] PostgreSQL pool error:', err.message);
+    logEvent('error', 'db_pool_error', { dialect: 'postgres', error: err.message });
   });
 } else {
   fs.mkdirSync(path.dirname(sqlitePath), { recursive: true });
@@ -162,7 +174,7 @@ async function withTransaction(work) {
       try {
         await client.query('ROLLBACK');
       } catch (rollbackErr) {
-        console.error('[DB] PostgreSQL rollback failed:', rollbackErr.message);
+        logEvent('error', 'db_rollback_failed', { dialect: 'postgres', error: rollbackErr.message });
       }
       throw err;
     } finally {
@@ -170,23 +182,46 @@ async function withTransaction(work) {
     }
   }
 
-  await run('BEGIN IMMEDIATE');
-  try {
-    const result = await work({ run, get, all, dialect: dbDialect });
-    await run('COMMIT');
-    return result;
-  } catch (err) {
+  const executeSqliteTransaction = async () => {
+    await run('BEGIN IMMEDIATE');
     try {
-      await run('ROLLBACK');
-    } catch (rollbackErr) {
-      console.error('[DB] SQLite rollback failed:', rollbackErr.message);
+      const result = await work({ run, get, all, dialect: dbDialect });
+      await run('COMMIT');
+      return result;
+    } catch (err) {
+      try {
+        await run('ROLLBACK');
+      } catch (rollbackErr) {
+        logEvent('error', 'db_rollback_failed', { dialect: 'sqlite', error: rollbackErr.message });
+      }
+      throw err;
     }
-    throw err;
-  }
+  };
+
+  const queuedTransaction = sqliteTransactionChain.then(
+    executeSqliteTransaction,
+    executeSqliteTransaction
+  );
+  sqliteTransactionChain = queuedTransaction.then(
+    () => undefined,
+    () => undefined
+  );
+
+  return queuedTransaction;
 }
 
 async function dropAllTables() {
+  if (dbDialect === 'sqlite') {
+    await run('PRAGMA foreign_keys = OFF;');
+  }
   const tables = [
+    'patient_document_appointments',
+    'patient_documents', 'patient_self_records',
+    'patient_observation_components', 'patient_observations', 'care_plan_adherence',
+    'care_plan_tasks', 'care_plans', 'prescription_items',
+    'sms_outbox', 'opd_notifications', 'patient_otps', 'journey_events', 'lab_results', 'lab_orders',
+    'lab_test_catalog', 'diagnosis_catalog', 'drug_catalog', 'clinical_versions', 'triage_records',
+    'queue_entries', 'token_counters', 'appointments', 'practitioner_unavailability', 'practitioner_schedules', 'departments',
     'refresh_tokens',
     'revoked_tokens',
     'audit_logs',
@@ -209,6 +244,9 @@ async function dropAllTables() {
       await run(`DROP TABLE IF EXISTS ${table}`);
     }
   }
+  if (dbDialect === 'sqlite') {
+    await run('PRAGMA foreign_keys = ON;');
+  }
 }
 
 async function resetAndSeedDatabase(options = {}) {
@@ -217,7 +255,7 @@ async function resetAndSeedDatabase(options = {}) {
     seedMode = 'local-demo'
   } = options;
 
-  console.log(`[DB] Initiating destructive reset (${dbDialect})...`);
+  logEvent('warn', 'db_destructive_reset_start', { dialect: dbDialect });
 
   await dropAllTables();
   await migrateDatabase();
@@ -226,7 +264,7 @@ async function resetAndSeedDatabase(options = {}) {
     await seedDevelopmentDatabase({ run, dialect: dbDialect, mode: seedMode });
   }
 
-  console.log('[DB] Schema boot complete.');
+  logEvent('info', 'db_schema_boot_complete', { dialect: dbDialect });
 }
 
 module.exports = {

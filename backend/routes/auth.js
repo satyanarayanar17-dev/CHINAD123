@@ -3,9 +3,9 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { createRateLimiter } = require('../middleware/rateLimit');
-const { get, run } = require('../database');
+const { get, run, withTransaction } = require('../database');
 const { writeAuditDirect } = require('../middleware/audit');
-const { JWT_SECRET, requireAuth, requireRole } = require('../middleware/auth');
+const { JWT_SECRET, requireAuth, requireRole, hashRefreshToken, createSessionCredentials } = require('../middleware/auth');
 const { REFRESH_COOKIE_NAME, getRefreshCookieOptions } = require('../cookies');
 const {
   ACCOUNT_TYPES,
@@ -18,21 +18,70 @@ const { logEvent } = require('../lib/logger');
 
 const router = express.Router();
 
-const LOGIN_MAX_ATTEMPTS = 10;
+/**
+ * Builds a standard error envelope consistent with the global error handler shape.
+ * Includes correlation_id so every auth rejection is traceable in logs.
+ */
+function authErr(req, res, status, code, message, extra = {}) {
+  return res.status(status).json({
+    error: { code, message, ...extra },
+    meta: { correlation_id: req.correlationId || null }
+  });
+}
+
+const LOGIN_MAX_ATTEMPTS = process.env.NODE_ENV === 'development' ? 100 : 10;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const REFRESH_TOKEN_TTL_DAYS = 30;
 const ACCESS_TOKEN_TTL = '15m';
 const LOCKOUT_THRESHOLD = 5;
 const LOCKOUT_MINUTES = 15;
 const SSE_TOKEN_TTL = '60s';
-const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MIN_LENGTH = 12;
+const PASSWORD_MAX_LENGTH = 72;
 const BCRYPT_COST = 10;
 
-const loginRateLimit = createRateLimiter({
+function requestIp(req) {
+  // Express resolves the configured trusted proxy hop. Never trust the client-
+  // supplied leftmost value, which can precede the address added by our proxy.
+  return req.ip || 'unknown';
+}
+
+function normalizeLoginIdentity(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function staffLoginRateLimitKeys(req) {
+  const username = normalizeLoginIdentity(req.body?.username) || 'unknown-user';
+  const ip = requestIp(req);
+  return [
+    `auth:staff-login:ip:${ip}`,
+    `auth:staff-login:user:${username}`
+  ];
+}
+
+function patientLoginRateLimitKeys(req) {
+  const rawUsername = normalizeLoginIdentity(req.body?.username);
+  const normalizedPhone = normalizePatientPhone(rawUsername);
+  const patientIdentity = normalizedPhone || rawUsername || 'unknown-patient';
+  const ip = requestIp(req);
+  return [
+    `auth:patient-login:ip:${ip}`,
+    `auth:patient-login:patient:${patientIdentity}`
+  ];
+}
+
+const staffLoginRateLimit = createRateLimiter({
   max: LOGIN_MAX_ATTEMPTS,
   windowMs: LOGIN_WINDOW_MS,
-  keyFn: (req) => req.ip || req.headers['x-forwarded-for'] || 'unknown',
-  message: 'Too many login attempts. Please wait 15 minutes before trying again.'
+  keyFn: staffLoginRateLimitKeys,
+  message: 'Too many staff login attempts. Please wait 15 minutes before trying again.'
+});
+
+const patientLoginRateLimit = createRateLimiter({
+  max: LOGIN_MAX_ATTEMPTS,
+  windowMs: LOGIN_WINDOW_MS,
+  keyFn: patientLoginRateLimitKeys,
+  message: 'Too many patient login attempts. Please wait 15 minutes before trying again.'
 });
 
 function refreshTokenExpiresAt() {
@@ -54,9 +103,9 @@ function clearRefreshCookie(res) {
   res.clearCookie(REFRESH_COOKIE_NAME, getRefreshCookieOptions());
 }
 
-function signAccessToken({ actorId, role, accountType }) {
+function signAccessToken({ actorId, role, accountType, sessionId }) {
   return jwt.sign(
-    { id: actorId, role, account_type: accountType },
+    { id: actorId, role, account_type: accountType, sid: sessionId, session_iat_ms: Date.now() },
     JWT_SECRET,
     { expiresIn: ACCESS_TOKEN_TTL }
   );
@@ -77,7 +126,7 @@ async function writeBoundaryMismatchAudit({ req, userRow, username, attemptedAcc
       endpoint,
       attempted_account_type: attemptedAccountType,
       actual_role: userRow.role,
-      ip: req.ip || req.headers['x-forwarded-for'] || 'unknown'
+      ip: requestIp(req)
     })
   });
 
@@ -94,7 +143,7 @@ async function recordUnknownLogin({ req, username }) {
   logEvent('warn', 'auth_unknown_user', {
     correlationId: req.correlationId,
     username,
-    ip: req.ip || req.headers['x-forwarded-for'] || 'unknown'
+    ip: requestIp(req)
   });
 
   await writeAuditDirect({
@@ -103,7 +152,7 @@ async function recordUnknownLogin({ req, username }) {
     action: 'SYS_AUTH_DENIAL:UNKNOWN_USER',
     new_state: JSON.stringify({
       username,
-      ip: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+      ip: requestIp(req),
       outcome: 'failure'
     })
   });
@@ -209,9 +258,14 @@ async function verifyPasswordForUser(userRow, password, isPilotMode) {
 }
 
 async function handleLogin(req, res, next, accountType, endpoint) {
+  const allowLegacyPatientPasswords = process.env.ENABLE_LEGACY_API === 'true' &&
+    process.env.NODE_ENV !== 'production' && process.env.APP_ENV !== 'restricted_web_pilot';
+  if (accountType === ACCOUNT_TYPES.PATIENT && !allowLegacyPatientPasswords) {
+    return authErr(req, res, 403, 'PATIENT_OTP_REQUIRED', 'Use mobile OTP to sign in to the patient portal.');
+  }
   const { username, password } = req.body;
   const isPilotMode = process.env.PILOT_AUTH_BYPASS === 'true';
-  const ipKey = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+  const ipKey = requestIp(req);
 
   if (process.env.NODE_ENV === 'production' && isPilotMode) {
     return next({ status: 500, code: 'AUTH_ENVELOPE_BREACH', message: 'Deployment environment is misconfigured. Access halted.' });
@@ -233,12 +287,11 @@ async function handleLogin(req, res, next, accountType, endpoint) {
             endpoint
           });
 
-          return res.status(403).json({
-            error: 'ACCOUNT_TYPE_MISMATCH',
-            message: accountType === ACCOUNT_TYPES.PATIENT
+          return authErr(req, res, 403, 'ACCOUNT_TYPE_MISMATCH',
+            accountType === ACCOUNT_TYPES.PATIENT
               ? 'This account is not permitted on the patient login path.'
               : 'This account is not permitted on the staff login path.'
-          });
+          );
         }
 
         await recordFailedPassword({ req, userRow: alternateUser, username, ipKey });
@@ -246,7 +299,7 @@ async function handleLogin(req, res, next, accountType, endpoint) {
         await recordUnknownLogin({ req, username });
       }
 
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Invalid username or password.' });
+      return authErr(req, res, 401, 'INVALID_CREDENTIALS', 'Invalid username or password.');
     }
 
     const derivedAccountType = accountTypeForRole(userRow.role);
@@ -259,12 +312,11 @@ async function handleLogin(req, res, next, accountType, endpoint) {
         endpoint
       });
 
-      return res.status(403).json({
-        error: 'ACCOUNT_TYPE_MISMATCH',
-        message: accountType === ACCOUNT_TYPES.PATIENT
+      return authErr(req, res, 403, 'ACCOUNT_TYPE_MISMATCH',
+        accountType === ACCOUNT_TYPES.PATIENT
           ? 'This account is not permitted on the patient login path.'
           : 'This account is not permitted on the staff login path.'
-      });
+      );
     }
 
     // Account disabled
@@ -275,7 +327,7 @@ async function handleLogin(req, res, next, accountType, endpoint) {
         action: 'SYS_AUTH_FAILED:INACTIVE',
         new_state: JSON.stringify({ username, ip: ipKey, outcome: 'inactive' })
       });
-      return res.status(401).json({ error: 'ACCOUNT_DISABLED', message: 'This account has been disabled.' });
+      return authErr(req, res, 401, 'ACCOUNT_DISABLED', 'This account has been disabled.');
     }
 
     // Per-user DB lockout check
@@ -287,18 +339,17 @@ async function handleLogin(req, res, next, accountType, endpoint) {
         action: 'SYS_AUTH_FAILED:LOCKED',
         new_state: JSON.stringify({ username, ip: ipKey, outcome: 'locked', retry_after_seconds: retryAfter })
       });
-      return res.status(429).json({
-        error: 'ACCOUNT_LOCKED',
-        message: `Account temporarily locked. Try again in ${Math.ceil(retryAfter / 60)} minute(s).`,
-        retry_after_seconds: retryAfter
-      });
+      return authErr(req, res, 429, 'ACCOUNT_LOCKED',
+        `Account temporarily locked. Try again in ${Math.ceil(retryAfter / 60)} minute(s).`,
+        { retry_after_seconds: retryAfter }
+      );
     }
 
     const isValidPassword = await verifyPasswordForUser(userRow, password, isPilotMode);
 
     if (!isValidPassword) {
       await recordFailedPassword({ req, userRow, username, ipKey });
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Invalid username or password.' });
+      return authErr(req, res, 401, 'INVALID_CREDENTIALS', 'Invalid username or password.');
     }
 
     // Success — clear DB lockout state
@@ -307,14 +358,17 @@ async function handleLogin(req, res, next, accountType, endpoint) {
     const { id: actorId, role, name } = userRow;
     const resolvedAccountType = accountTypeForRole(role);
 
-    const accessToken = signAccessToken({ actorId, role, accountType: resolvedAccountType });
-
     // Issue refresh token
-    const refreshToken = crypto.randomUUID();
-    await run(
-      `INSERT INTO refresh_tokens (id, user_id, expires_at, revoked, account_type) VALUES (?, ?, ?, 0, ?)`,
-      [refreshToken, actorId, refreshTokenExpiresAt(), resolvedAccountType]
-    );
+    const credentials = createSessionCredentials();
+    const accessToken = signAccessToken({ actorId, role, accountType: resolvedAccountType, sessionId: credentials.sessionKey });
+    await withTransaction(async tx => {
+      const currentUser = await tx.get(`SELECT is_active, role FROM users WHERE id = ?${tx.dialect === 'postgres' ? ' FOR UPDATE' : ''}`, [actorId]);
+      if (!currentUser || !currentUser.is_active || currentUser.role !== role) throw { status: 401, code: 'ACCOUNT_DISABLED', message: 'Account is no longer available.' };
+      await tx.run(
+        `INSERT INTO refresh_tokens (id, session_key, user_id, expires_at, revoked, account_type, device_name, created_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)`,
+        [credentials.tokenHash, credentials.sessionKey, actorId, refreshTokenExpiresAt(), resolvedAccountType, (req.headers['user-agent'] || '').slice(0, 200), new Date().toISOString()]
+      );
+    });
 
     await writeAuditDirect({
       correlation_id: req.correlationId,
@@ -324,7 +378,7 @@ async function handleLogin(req, res, next, accountType, endpoint) {
       new_state: JSON.stringify({ role, ip: ipKey, outcome: 'success' })
     });
 
-    setRefreshCookie(res, refreshToken);
+    setRefreshCookie(res, credentials.secret);
     setNoStore(res);
 
     res.json({
@@ -345,15 +399,15 @@ async function handleLogin(req, res, next, accountType, endpoint) {
   }
 }
 
-router.post('/login/patient', loginRateLimit, async (req, res, next) => {
+router.post('/login/patient', patientLoginRateLimit, async (req, res, next) => {
   await handleLogin(req, res, next, ACCOUNT_TYPES.PATIENT, '/api/v1/auth/login/patient');
 });
 
-router.post('/login/staff', loginRateLimit, async (req, res, next) => {
+router.post('/login/staff', staffLoginRateLimit, async (req, res, next) => {
   await handleLogin(req, res, next, ACCOUNT_TYPES.STAFF, '/api/v1/auth/login/staff');
 });
 
-router.post('/login', loginRateLimit, async (req, res, next) => {
+router.post('/login', async (req, res, next) => {
   const accountType = normalizeAccountType(req.body?.account_type);
   if (!accountType) {
     return next({
@@ -363,27 +417,38 @@ router.post('/login', loginRateLimit, async (req, res, next) => {
     });
   }
 
-  await handleLogin(req, res, next, accountType, '/api/v1/auth/login');
+  const limiter = accountType === ACCOUNT_TYPES.PATIENT
+    ? patientLoginRateLimit
+    : staffLoginRateLimit;
+
+  return limiter(req, res, async (limitErr) => {
+    if (limitErr) {
+      return next(limitErr);
+    }
+
+    await handleLogin(req, res, next, accountType, '/api/v1/auth/login');
+  });
 });
 
 router.post('/refresh', async (req, res, next) => {
   const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refresh_token;
 
-  if (!refreshToken) {
-    return res.status(401).json({ error: 'REFRESH_REQUIRED', message: 'refresh_token is required.' });
+  if (typeof refreshToken !== 'string' || !refreshToken || refreshToken.length > 512) {
+    return authErr(req, res, 401, 'REFRESH_REQUIRED', 'refresh_token is required.');
   }
+  const refreshHash = hashRefreshToken(refreshToken);
 
   try {
     const tokenRow = await get(
-      `SELECT rt.*, u.role, u.is_active FROM refresh_tokens rt
+      `SELECT rt.*, u.role, u.is_active, u.must_change_password FROM refresh_tokens rt
        JOIN users u ON u.id = rt.user_id
        WHERE rt.id = ?`,
-      [refreshToken]
+      [refreshHash]
     );
 
     if (!tokenRow) {
       clearRefreshCookie(res);
-      return res.status(401).json({ error: 'REFRESH_INVALID', message: 'Invalid refresh token.' });
+      return authErr(req, res, 401, 'REFRESH_INVALID', 'Invalid refresh token.');
     }
 
     if (tokenRow.revoked === 1) {
@@ -391,21 +456,21 @@ router.post('/refresh', async (req, res, next) => {
         correlation_id: req.correlationId,
         actor_id: tokenRow.user_id,
         action: 'SYS_AUTH_REFRESH:REVOKED_TOKEN_REUSE',
-        new_state: JSON.stringify({ refresh_token_id: refreshToken })
+        new_state: JSON.stringify({ session_id: tokenRow.session_key })
       });
       clearRefreshCookie(res);
-      return res.status(401).json({ error: 'REFRESH_REVOKED', message: 'Refresh token has been revoked.' });
+      return authErr(req, res, 401, 'REFRESH_REVOKED', 'Refresh token has been revoked.');
     }
 
     if (new Date(tokenRow.expires_at) < new Date()) {
-      await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshToken]);
+      await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshHash]);
       clearRefreshCookie(res);
-      return res.status(401).json({ error: 'REFRESH_EXPIRED', message: 'Refresh token has expired. Please log in again.' });
+      return authErr(req, res, 401, 'REFRESH_EXPIRED', 'Refresh token has expired. Please log in again.');
     }
 
     if (tokenRow.is_active === 0) {
       clearRefreshCookie(res);
-      return res.status(401).json({ error: 'ACCOUNT_DISABLED', message: 'This account has been disabled.' });
+      return authErr(req, res, 401, 'ACCOUNT_DISABLED', 'This account has been disabled.');
     }
 
     const storedAccountType = normalizeAccountType(tokenRow.account_type);
@@ -416,38 +481,44 @@ router.post('/refresh', async (req, res, next) => {
         actor_id: tokenRow.user_id,
         action: 'SYS_AUTH_REFRESH:ACCOUNT_TYPE_MISMATCH',
         new_state: JSON.stringify({
-          refresh_token_id: refreshToken,
+          session_id: tokenRow.session_key,
           stored_account_type: tokenRow.account_type || null,
           actual_role: tokenRow.role
         })
       });
       clearRefreshCookie(res);
-      return res.status(401).json({
-        error: 'REFRESH_SCOPE_INVALID',
-        message: 'Session scope is invalid or outdated. Please log in again.'
-      });
+      return authErr(req, res, 401, 'REFRESH_SCOPE_INVALID', 'Session scope is invalid or outdated. Please log in again.');
     }
 
-    await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshToken]);
-    const replacementRefreshToken = crypto.randomUUID();
-    await run(
-      `INSERT INTO refresh_tokens (id, user_id, expires_at, revoked, account_type) VALUES (?, ?, ?, 0, ?)`,
-      [replacementRefreshToken, tokenRow.user_id, refreshTokenExpiresAt(), storedAccountType]
-    );
+    const credentials = createSessionCredentials(tokenRow.session_key);
+    await withTransaction(async tx => {
+      // Serialize against session revocation and account disable, including
+      // credentials inserted by a refresh that was already in flight.
+      const currentUser = await tx.get(`SELECT is_active, role FROM users WHERE id = ?${tx.dialect === 'postgres' ? ' FOR UPDATE' : ''}`, [tokenRow.user_id]);
+      if (!currentUser || !currentUser.is_active || accountTypeForRole(currentUser.role) !== storedAccountType) throw { status: 401, code: 'ACCOUNT_DISABLED', message: 'Account is no longer available.' };
+      const consumed = await tx.run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ? AND revoked = 0`, [refreshHash]);
+      if (!consumed.changes) throw { status: 401, code: 'REFRESH_REVOKED', message: 'Refresh token already used.' };
+      await tx.run(
+        `INSERT INTO refresh_tokens (id, session_key, user_id, expires_at, revoked, account_type, device_name, created_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)`,
+        [credentials.tokenHash, credentials.sessionKey, tokenRow.user_id, refreshTokenExpiresAt(), storedAccountType, tokenRow.device_name, tokenRow.created_at]
+      );
+    });
 
     const newAccessToken = signAccessToken({
       actorId: tokenRow.user_id,
       role: tokenRow.role,
-      accountType: storedAccountType
+      accountType: storedAccountType,
+      sessionId: credentials.sessionKey
     });
-    setRefreshCookie(res, replacementRefreshToken);
+    setRefreshCookie(res, credentials.secret);
     setNoStore(res);
 
     res.json({
       access_token: newAccessToken,
       token_type: 'bearer',
       role: tokenRow.role.toLowerCase(),
-      account_type: storedAccountType.toLowerCase()
+      account_type: storedAccountType.toLowerCase(),
+      must_change_password: serializeMustChangePassword(tokenRow.must_change_password)
     });
   } catch (err) {
     next(err);
@@ -455,18 +526,27 @@ router.post('/refresh', async (req, res, next) => {
 });
 
 router.post('/logout', async (req, res, next) => {
+  setNoStore(res);
   const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refresh_token;
-  if (refreshToken) {
+  if (typeof refreshToken === 'string' && refreshToken && refreshToken.length <= 512) {
     try {
-      await run(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`, [refreshToken]);
+      const refreshHash = hashRefreshToken(refreshToken);
+      const tokenRow = await get('SELECT user_id, session_key FROM refresh_tokens WHERE id = ?', [refreshHash]);
+      if (tokenRow) await withTransaction(async tx => {
+        if (tx.dialect === 'postgres') await tx.get('SELECT id FROM users WHERE id = ? FOR UPDATE', [tokenRow.user_id]);
+        await tx.run(`UPDATE refresh_tokens SET revoked = 1 WHERE session_key = ?`, [tokenRow.session_key]);
+      });
       await writeAuditDirect({
         correlation_id: req.correlationId,
-        actor_id: 'UNKNOWN',
+        actor_id: tokenRow?.user_id || 'UNKNOWN',
         action: 'SYS_AUTH_LOGOUT',
-        new_state: JSON.stringify({ refresh_token_id: refreshToken })
+        new_state: JSON.stringify({ session_id: tokenRow?.session_key || null })
       });
     } catch (err) {
-      console.error('[AUTH] Failed to revoke refresh token:', err.message);
+      logEvent('error', 'refresh_token_revoke_failed', { error: err.message });
+      // Keep the HttpOnly credential for a retry. Reporting success or clearing
+      // it here would strand a still-active server session after a DB failure.
+      return next({ status: 503, code: 'LOGOUT_FAILED', message: 'Sign-out could not be confirmed. Please retry.' });
     }
   }
   clearRefreshCookie(res);
@@ -478,7 +558,7 @@ router.get('/me', requireAuth, requireRole(['PATIENT', 'DOCTOR', 'NURSE', 'ADMIN
   try {
     const userRow = await get(`SELECT * FROM users WHERE id = ?`, [req.user.id]);
     if (!userRow || userRow.is_active === 0) {
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Identity not found or inactive.' });
+      return authErr(req, res, 401, 'INVALID_CREDENTIALS', 'Identity not found or inactive.');
     }
 
     const expectedAccountType = accountTypeForRole(userRow.role);
@@ -494,10 +574,7 @@ router.get('/me', requireAuth, requireRole(['PATIENT', 'DOCTOR', 'NURSE', 'ADMIN
           actual_role: userRow.role
         })
       });
-      return res.status(401).json({
-        error: 'INVALID_SESSION_SCOPE',
-        message: 'Session scope is invalid. Please log in again.'
-      });
+      return authErr(req, res, 401, 'INVALID_SESSION_SCOPE', 'Session scope is invalid. Please log in again.');
     }
 
     setNoStore(res);
@@ -516,7 +593,7 @@ router.get('/me', requireAuth, requireRole(['PATIENT', 'DOCTOR', 'NURSE', 'ADMIN
 router.post('/change-password', requireAuth, async (req, res, next) => {
   const { currentPassword, newPassword } = req.body || {};
 
-  if (!currentPassword || !newPassword) {
+  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || !currentPassword || !newPassword) {
     return next({
       status: 400,
       code: 'MISSING_FIELDS',
@@ -524,33 +601,29 @@ router.post('/change-password', requireAuth, async (req, res, next) => {
     });
   }
 
-  if (newPassword.length < PASSWORD_MIN_LENGTH) {
+  if (newPassword.length < PASSWORD_MIN_LENGTH || newPassword.length > PASSWORD_MAX_LENGTH ||
+      !/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword) ||
+      !/[0-9]/.test(newPassword) || !/[^a-zA-Z0-9]/.test(newPassword)) {
     return next({
       status: 400,
       code: 'WEAK_PASSWORD',
-      message: `New password must be at least ${PASSWORD_MIN_LENGTH} characters.`
+      message: `New password must have ${PASSWORD_MIN_LENGTH}-${PASSWORD_MAX_LENGTH} characters, including uppercase, lowercase, a number and a symbol.`
     });
   }
 
   try {
     const userRow = await get(`SELECT * FROM users WHERE id = ?`, [req.user.id]);
     if (!userRow || userRow.is_active === 0) {
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Identity not found or inactive.' });
+      return authErr(req, res, 401, 'INVALID_CREDENTIALS', 'Identity not found or inactive.');
     }
 
     if (!userRow.password_hash) {
-      return res.status(401).json({
-        error: 'INVALID_CREDENTIALS',
-        message: 'Current password is incorrect.'
-      });
+      return authErr(req, res, 401, 'INVALID_CREDENTIALS', 'Current password is incorrect.');
     }
 
     const isValidPassword = await bcrypt.compare(currentPassword, userRow.password_hash);
     if (!isValidPassword) {
-      return res.status(401).json({
-        error: 'INVALID_CREDENTIALS',
-        message: 'Current password is incorrect.'
-      });
+      return authErr(req, res, 401, 'INVALID_CREDENTIALS', 'Current password is incorrect.');
     }
 
     const newHash = await bcrypt.hash(newPassword, BCRYPT_COST);
@@ -582,7 +655,7 @@ router.post('/change-password', requireAuth, async (req, res, next) => {
 router.get('/sse-token', requireAuth, requireRole(['DOCTOR', 'NURSE', 'ADMIN']), async (req, res, next) => {
   try {
     const token = jwt.sign(
-      { id: req.user.id, role: req.user.role, account_type: req.user.account_type, purpose: 'sse' },
+      { id: req.user.id, role: req.user.role, account_type: req.user.account_type, sid: req.user.sid, session_iat_ms: req.user.session_iat_ms, purpose: 'sse' },
       JWT_SECRET,
       { expiresIn: SSE_TOKEN_TTL }
     );

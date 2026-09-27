@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     rootDir: backend
-    buildCommand: npm ci
+    buildCommand: npm ci && npm rebuild sqlite3 --build-from-source
     startCommand: npm start
     healthCheckPath: /api/v1/health
     envVars:
@@ -32,7 +32,7 @@ services:
   - type: web
     name: chettinad-care-web
     runtime: static
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci && npm rebuild sqlite3 --build-from-source && npm run build
     staticPublishPath: dist
     envVars:
       - key: VITE_API_BASE_URL

@@ -135,7 +135,12 @@ async function run() {
     const department = departmentFor(scenario);
     
     // Create Demo Appointment
-    const slots = await api('admin', 'get', `/slots?doctor_id=${department.doctor}&date=${day(new Date())}`);
+    let targetDate = new Date();
+    let slots = await api('admin', 'get', `/slots?doctor_id=${department.doctor}&date=${day(targetDate)}`);
+    if (slots.length === 0) {
+      targetDate = new Date(Date.now() + 86400000);
+      slots = await api('admin', 'get', `/slots?doctor_id=${department.doctor}&date=${day(targetDate)}`);
+    }
     const slot = slots[0];
     if (!slot) throw new Error('No slots available for demo appointment');
     

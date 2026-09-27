@@ -1,7 +1,7 @@
 services:
   - type: web
     name: chettinad-care-api
-    env: node
+    runtime: node
     region: singapore
     plan: starter
     rootDir: backend
@@ -34,7 +34,7 @@ services:
 
   - type: web
     name: chettinad-care-web
-    env: static
+    runtime: static
 
     buildCommand: npm ci && npm run build
     staticPublishPath: dist

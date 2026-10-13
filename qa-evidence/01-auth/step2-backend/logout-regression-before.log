@@ -1,0 +1,49 @@
+{"level":"warn","event":"boot_config_warning","timestamp":"2026-09-15T22:01:56.741Z","warning":"JWT_SECRET is not set. Local dev will fall back to an insecure default. Never use that outside local_dev."}
+[DB] Applied migration 001_initial_schema
+[DB] Applied migration 002_data_integrity_guards
+[DB] Applied migration 003_refresh_token_account_type
+[DB] Applied migration 004_encounter_lifecycle_contract
+[DB] Applied migration 005_patient_phone_identity
+[DB] Applied migration 006_users_must_change_password
+[DB] Applied migration 007_triage_doctor_assignment
+[DB] Applied migration 008_prescription_handover
+[DB] Applied migration 009_staff_user_profiles
+[DB] Applied migration 010_patient_activation_token_hardening
+[DB] Applied migration 011_auth_security_hardening
+[DB] Applied migration 012_connected_opd
+[DB] Applied migration 013_session_and_encounter_integrity
+{"level":"info","event":"bootstrap_admin_created","timestamp":"2026-09-15T22:01:56.996Z","userId":"auth_qa_admin"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:01:57.007Z","correlationId":"SERVER-e1373584-e670-4f52-ae37-fa8865f6d973","method":"POST","path":"/api/v1/auth/login/staff","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:01:57.065Z","correlationId":"SERVER-e1373584-e670-4f52-ae37-fa8865f6d973","method":"POST","path":"/api/v1/auth/login/staff","status":200,"duration_ms":58,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:01:57.067Z","correlationId":"SERVER-08feeae4-d160-47ac-ac8e-8c2bbbb5f89b","method":"POST","path":"/api/v1/auth/logout","remote_ip":"::ffff:127.0.0.1"}
+{"level":"error","event":"refresh_token_revoke_failed","timestamp":"2026-09-15T22:01:57.068Z","error":"SQLITE_CONSTRAINT: synthetic revocation failure"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:01:57.068Z","correlationId":"SERVER-08feeae4-d160-47ac-ac8e-8c2bbbb5f89b","method":"POST","path":"/api/v1/auth/logout","status":200,"duration_ms":1,"actorId":null}
+✖ failed server revocation reports failure, preserves retry credential, and successful retry invalidates access (176.244167ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 480.338791
+
+✖ failing tests:
+
+test at backend/opd/auth-session.test.cjs:19:1
+✖ failed server revocation reports failure, preserves retry credential, and successful retry invalidates access (176.244167ms)
+  AssertionError [ERR_ASSERTION]: A failed revocation must not be reported as successful logout.
+  
+  200 !== 503
+  
+      at TestContext.<anonymous> (/Users/siddwork/Desktop/chettinad-care-frontend/backend/opd/auth-session.test.cjs:29:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('node:crypto');
 const { get } = require('../database');
 const { accountTypeForRole, normalizeAccountType } = require('../lib/authBoundary');
 const { logEvent } = require('../lib/logger');
@@ -29,8 +30,17 @@ const REVOCATION_CACHE_TTL_MS = 60 * 1000;
 const MUST_CHANGE_PASSWORD_ALLOWED_PATHS = new Set([
   '/api/v1/auth/change-password',
   '/api/v1/auth/logout',
-  '/api/v1/auth/me'
+  '/api/v1/auth/me',
+  '/api/v1/opd/session'
 ]);
+
+const allowLegacySessions = process.env.ENABLE_LEGACY_API === 'true' &&
+  process.env.NODE_ENV !== 'production' && process.env.APP_ENV !== 'restricted_web_pilot';
+const hashRefreshToken = token => crypto.createHash('sha256').update(token).digest('hex');
+function createSessionCredentials(sessionKey = crypto.randomUUID()) {
+  const secret = crypto.randomBytes(32).toString('base64url');
+  return { secret, tokenHash: hashRefreshToken(secret), sessionKey };
+}
 
 function tokenError(status, code, message) {
   return { status, code, message };
@@ -43,6 +53,13 @@ function tokenError(status, code, message) {
  */
 function clearRevocationCache(userId) {
   revocationCache.delete(userId);
+}
+
+function setRevocationCache(userId, revokedAt) {
+  revocationCache.set(userId, {
+    revokedAt: revokedAt || null,
+    cachedAt: Date.now()
+  });
 }
 
 function extractBearerToken(req) {
@@ -93,7 +110,9 @@ async function enforceRevocation(decoded) {
   }
 
   const revokedAtMs = new Date(revokedAt).getTime();
-  const tokenIssuedAtMs = decoded.iat * 1000;
+  const tokenIssuedAtMs = Number.isFinite(decoded.session_iat_ms)
+    ? decoded.session_iat_ms
+    : decoded.iat * 1000;
 
   if (revokedAtMs > tokenIssuedAtMs) {
     throw tokenError(
@@ -145,7 +164,9 @@ async function authenticateToken(token, options = {}) {
       // to allow it through.
       if (staleEntry.revokedAt) {
         const revokedAtMs = new Date(staleEntry.revokedAt).getTime();
-        const tokenIssuedAtMs = decoded.iat * 1000;
+        const tokenIssuedAtMs = Number.isFinite(decoded.session_iat_ms)
+          ? decoded.session_iat_ms
+          : decoded.iat * 1000;
         if (revokedAtMs > tokenIssuedAtMs) {
           throw tokenError(401, 'TOKEN_REVOKED', 'Your session has been revoked. Please contact support.');
         }
@@ -161,11 +182,18 @@ async function authenticateToken(token, options = {}) {
     }
   }
 
-  if (options.expectedPurpose && decoded.purpose !== options.expectedPurpose) {
+  if (options.expectedPurpose ? decoded.purpose !== options.expectedPurpose : decoded.purpose !== undefined) {
     throw tokenError(401, 'INVALID_TOKEN_PURPOSE', 'Token is not valid for this operation.');
   }
 
   enforceTokenScope(decoded);
+
+  if (typeof decoded.sid === 'string' && decoded.sid) {
+    const session = await get('SELECT id FROM refresh_tokens WHERE session_key = ? AND user_id = ? AND account_type = ? AND revoked = 0 AND expires_at > ?', [decoded.sid, decoded.id, accountTypeForRole(decoded.role), new Date().toISOString()]);
+    if (!session) throw tokenError(401, 'SESSION_REVOKED', 'Session expired or revoked.');
+  } else if (!allowLegacySessions) {
+    throw tokenError(401, 'SESSION_REQUIRED', 'Session binding is required. Please log in again.');
+  }
 
   if (options.allowedRoles && !options.allowedRoles.includes(decoded.role)) {
     throw tokenError(403, 'FORBIDDEN_ROLE', `Action requires one of: ${options.allowedRoles.join(', ')}`);
@@ -263,6 +291,9 @@ module.exports = {
   requireRole,
   JWT_SECRET,
   clearRevocationCache,
+  setRevocationCache,
   authenticateToken,
-  extractBearerToken
+  extractBearerToken,
+  hashRefreshToken,
+  createSessionCredentials
 };

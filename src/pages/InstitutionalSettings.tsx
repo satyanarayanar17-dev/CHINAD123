@@ -116,7 +116,7 @@ export const InstitutionalSettings = () => {
                 <div>
                   <label className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant block mb-1">Current Facility</label>
                   <select className="w-full p-2 border border-outline rounded bg-white text-sm outline-none focus:border-primary">
-                    <option>Chettinad Hospital & Research Institute (Main Campus)</option>
+                    <option>Chettinad Hospital and Research Institute (Main Campus)</option>
                     <option>Chettinad Urban Health Center (Kelambakkam)</option>
                   </select>
                 </div>
@@ -124,7 +124,7 @@ export const InstitutionalSettings = () => {
                   <label className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant block mb-1">Default Department</label>
                   <select className="w-full p-2 border border-outline rounded bg-white text-sm outline-none focus:border-primary">
                     <option>General Medicine</option>
-                    <option>Cardiology</option>
+                    <option>Cardiology</option><option>General Medicine</option><option>Paediatrics</option>
                     <option>Emergency Room</option>
                   </select>
                 </div>

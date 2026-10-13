@@ -1,0 +1,18 @@
+{
+  "copied_from": "/Users/siddwork/Desktop/chettinad-care-frontend",
+  "clean_copy": "/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project",
+  "system": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "node": "v24.15.0",
+  "npm": "11.12.1",
+  "excluded": [
+    "node_modules",
+    ".git",
+    "dist",
+    "qa-evidence",
+    "databases",
+    "actual .env files",
+    "logs",
+    "test results"
+  ],
+  "database_policy": "Only generated synthetic SQLite or dedicated disposable tests; no original database copied."
+}

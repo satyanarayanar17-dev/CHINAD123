@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const helmet = require('helmet');
+const crypto = require('crypto');
 const {
   dbDialect,
   migrateDatabase,
@@ -10,6 +11,11 @@ const {
   get,
   all
 } = require('./database');
+const {
+  runtimeConfig,
+  validateRuntimeConfig,
+  describeRuntimeConfig
+} = require('./config');
 const {
   ensureBootstrapAdmin,
   ensureAdminAccessProvisioned
@@ -20,119 +26,44 @@ const { scanDataIntegrity } = require('./lib/dataIntegrityAudit');
 const { logEvent } = require('./lib/logger');
 
 const app = express();
+const bootState = {
+  started_at: new Date().toISOString(),
+  ready: false,
+  last_successful_boot_at: null,
+  boot_error: null,
+  config: describeRuntimeConfig(runtimeConfig),
+  checks: {
+    database: 'unknown',
+    migrations: 'unknown',
+    admin_access: 'unknown',
+    pilot_department: 'unknown'
+  }
+};
 
 // ===========================================================================
 // 1. STARTUP ENVIRONMENT VALIDATOR — fail-fast on misconfiguration
 // ===========================================================================
-const isProduction = process.env.NODE_ENV === 'production';
-const isRestrictedPilot = process.env.APP_ENV === 'restricted_web_pilot';
-const isLockedDeployment = isProduction || isRestrictedPilot;
-const allowedOtpDeliveryModes = new Set(['console', 'api_response']);
+const isLockedDeployment = runtimeConfig.isPilot || runtimeConfig.isProduction || runtimeConfig.isStaging;
+const configValidation = validateRuntimeConfig(runtimeConfig);
 
-/**
- * Detect placeholder / weak JWT secrets that would pass a simple length check
- * but are not cryptographically suitable for production.
- *
- * Blocks:
- *   - Known hardcoded bad values (exact match)
- *   - Secrets containing obvious placeholder substrings
- *   - Secrets containing spaces (copy-paste artifacts)
- *
- * A properly generated secret (`openssl rand -hex 32`) is 64 lowercase hex
- * chars and will never trigger any of these checks.
- */
-function isWeakJwtSecret(secret) {
-  const KNOWN_BAD = new Set([
-    'pilot-beta-secure-secret-key',
-    'super_secure_crypto_secret_32_characters_long_for_test',
-    'changeme',
-    'secret',
-    'your-secret-here',
-    'jwt-secret',
-    'mysecret'
-  ]);
-
-  if (KNOWN_BAD.has(secret)) return true;
-
-  const lower = secret.toLowerCase();
-  const WEAK_SUBSTRINGS = ['test', 'dev', 'secret', 'secure', 'placeholder', 'example', 'change_me', 'your_', 'sample', 'default'];
-  if (WEAK_SUBSTRINGS.some((s) => lower.includes(s))) return true;
-
-  if (/\s/.test(secret)) return true;
-
-  return false;
-}
-
-/**
- * Validate that CORS_ORIGIN looks like a real URL origin.
- * Catches obviously malformed values like "https://http://localhost".
- */
-function isValidCorsOrigin(origin) {
-  try {
-    const url = new URL(origin);
-    return (url.protocol === 'http:' || url.protocol === 'https:') &&
-      !url.pathname.replace('/', '') &&
-      !url.search &&
-      !url.hash;
-  } catch {
-    return false;
+if (configValidation.warnings.length > 0) {
+  for (const warning of configValidation.warnings) {
+    logEvent('warn', 'boot_config_warning', { warning });
   }
 }
 
-if (isLockedDeployment) {
-  console.log('[BOOT] Initializing in RESTRICTED_WEB_PILOT deployment mode.');
+try {
+  getRefreshCookieOptions();
+} catch (err) {
+  configValidation.errors.push(err.message);
+}
 
-  const fatalErrors = [];
-  const configuredDialect = (process.env.DB_DIALECT || 'sqlite').trim().toLowerCase();
-
-  if (process.env.PILOT_AUTH_BYPASS === 'true') {
-    fatalErrors.push('PILOT_AUTH_BYPASS cannot be true in production deployment.');
-  }
-
-  if (configuredDialect !== 'postgres') {
-    fatalErrors.push('Restricted web pilot deployments must use DB_DIALECT=postgres. SQLite is local-dev only.');
-  }
-
-  if (!process.env.JWT_SECRET) {
-    fatalErrors.push('JWT_SECRET is not set. Generate one with: openssl rand -hex 32');
-  } else if (process.env.JWT_SECRET.length < 32) {
-    fatalErrors.push(`JWT_SECRET is too short (${process.env.JWT_SECRET.length} chars). Minimum 32 required.`);
-  } else if (isWeakJwtSecret(process.env.JWT_SECRET)) {
-    fatalErrors.push('JWT_SECRET appears to be a placeholder or weak value. Generate a real secret with: openssl rand -hex 32');
-  }
-
-  if (process.env.DB_DIALECT === 'postgres' && !process.env.DATABASE_URL) {
-    fatalErrors.push('DB_DIALECT=postgres but DATABASE_URL is not set.');
-  }
-
-  if (!process.env.CORS_ORIGIN) {
-    fatalErrors.push('CORS_ORIGIN must be explicitly set in production (no wildcard).');
-  } else if (!isValidCorsOrigin(process.env.CORS_ORIGIN.split(',')[0].trim())) {
-    fatalErrors.push(`CORS_ORIGIN "${process.env.CORS_ORIGIN}" is not a valid URL origin. Use the exact frontend origin, e.g. http://localhost or https://your-domain.com`);
-  }
-
-  if (process.env.ACTIVATION_OTP_DELIVERY && !allowedOtpDeliveryModes.has(process.env.ACTIVATION_OTP_DELIVERY)) {
-    fatalErrors.push('ACTIVATION_OTP_DELIVERY must be one of: console, api_response.');
-  }
-
-  try {
-    getRefreshCookieOptions();
-  } catch (err) {
-    fatalErrors.push(err.message);
-  }
-
-  if (fatalErrors.length > 0) {
-    console.error('[FATAL] Boot validation failed. The following configuration errors must be resolved:');
-    fatalErrors.forEach((e, i) => console.error(`  [${i + 1}] ${e}`));
-    process.exit(1);
-  }
-} else {
-  if (!process.env.JWT_SECRET) {
-    console.warn('[WARN] JWT_SECRET is not set. Using insecure development fallback. DO NOT use for pilot.');
-  }
-  if (process.env.PILOT_AUTH_BYPASS === 'true') {
-    console.warn('[WARN] PILOT_AUTH_BYPASS is enabled — passwords are not required for passwordless accounts. LOCAL DEV ONLY.');
-  }
+if (configValidation.errors.length > 0) {
+  logEvent('error', 'boot_config_invalid', {
+    errors: configValidation.errors,
+    config: describeRuntimeConfig(runtimeConfig)
+  });
+  process.exit(1);
 }
 
 // ===========================================================================
@@ -140,10 +71,7 @@ if (isLockedDeployment) {
 // ===========================================================================
 app.set('trust proxy', 1);
 
-const allowedOrigins = (process.env.CORS_ORIGIN || '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const allowedOrigins = runtimeConfig.corsOrigins;
 
 const corsOptions = {
   origin(origin, callback) {
@@ -179,13 +107,29 @@ app.use(express.urlencoded({ extended: true, limit: '50kb' }));
 // 3. CORRELATION LOGGING MIDDLEWARE
 // ===========================================================================
 app.use((req, res, next) => {
-  const correlationId = req.headers['x-correlation-id'] || 'SERVER-GENERATED-' + Date.now();
+  const requestStartedAt = Date.now();
+  const correlationId =
+    req.headers['x-correlation-id'] ||
+    req.headers['x-request-id'] ||
+    `SERVER-${crypto.randomUUID()}`;
   req.correlationId = correlationId;
   res.setHeader('x-correlation-id', correlationId);
+  res.setHeader('x-request-id', correlationId);
   logEvent('info', 'request_received', {
     correlationId,
     method: req.method,
-    path: req.path
+    path: req.originalUrl?.split('?')[0] || req.path,
+    remote_ip: req.ip
+  });
+  res.on('finish', () => {
+    logEvent('info', 'request_completed', {
+      correlationId,
+      method: req.method,
+      path: req.originalUrl?.split('?')[0] || req.path,
+      status: res.statusCode,
+      duration_ms: Date.now() - requestStartedAt,
+      actorId: req.user?.id || null
+    });
   });
   next();
 });
@@ -209,8 +153,24 @@ const portalRouter = require('./routes/portal');
 const adminRouter = require('./routes/admin');
 const activationRouter = require('./routes/activation');
 const { router: sseRouter } = require('./routes/sse');
+const carePlansRouter = require('./routes/care_plans');
+const adherenceRouter = require('./routes/adherence');
+const patientDocumentsRouter = require('./routes/patient_documents');
+const patientSelfRecordsRouter = require('./routes/patient_self_records');
 
 app.use('/api/v1/auth', authRouter);
+  app.use('/api/v1/debug', require('./routes/debug'));
+app.use('/api/v1/auth/opd', require('./opd/auth.ts').authRouter);
+app.use('/api/v1/opd', require('./opd/router.ts').router);
+// Care Plan is part of the canonical v2 OPD API and must remain available when
+// legacy routes are disabled in pilot/staging/production.
+app.use('/api/v1/opd/care-plans', carePlansRouter);
+app.use('/api/v1/opd/adherence', adherenceRouter);
+app.use('/api/v1/opd/patient-documents', patientDocumentsRouter);
+app.use('/api/v1/opd/patient-self-records', patientSelfRecordsRouter);
+app.get('/api/v1/openapi.json', (_req, res) => res.sendFile(require('node:path').join(__dirname, 'opd/openapi.json')));
+// Legacy write paths are isolated so they cannot bypass the v2 journey state machine.
+if (process.env.ENABLE_LEGACY_API === 'true' && !isLockedDeployment) {
 app.use('/api/v1/queue', queueRouter);
 app.use('/api/v1/notes', notesRouter);
 app.use('/api/v1/prescriptions', prescriptionsRouter);
@@ -223,11 +183,12 @@ app.use('/api/v1/my', portalRouter);
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/activation', activationRouter);
 app.use('/api/v1/sse', sseRouter);
+}
 
 // ===========================================================================
 // 5. HEALTH CHECK
 // ===========================================================================
-app.get('/api/v1/health', async (req, res) => {
+async function assessReadiness() {
   try {
     await pingDatabase();
     const migrationState = await get(`SELECT COUNT(*) AS count FROM schema_migrations`);
@@ -238,18 +199,36 @@ app.get('/api/v1/health', async (req, res) => {
        LIMIT 1`
     );
     const integrity = await scanDataIntegrity({ all }, { includeSnapshots: false });
+    const adminState = await get(`SELECT COUNT(*) AS count FROM users WHERE role = 'ADMIN' AND is_active = 1`);
+    const pilotDepartmentState = runtimeConfig.ogPilotOnly
+      ? await get('SELECT COUNT(*) AS count FROM departments WHERE name=? AND prefix=?', ['Obstetrics & Gynaecology', runtimeConfig.pilotDepartmentPrefix])
+      : { count: 1 };
+    const appliedMigrations = Number(migrationState?.count || 0);
+    const activeAdmins = Number(adminState?.count || 0);
+    const pilotDepartments = Number(pilotDepartmentState?.count || 0);
+    const upToDate = appliedMigrations >= migrations.length;
 
-    res.json({
-      status: 'ok',
-      env: process.env.NODE_ENV || 'development',
-      app_env: process.env.APP_ENV || 'local_dev',
-      db: dbDialect,
+    bootState.checks = {
+      database: 'ok',
+      migrations: upToDate ? 'ok' : 'out_of_date',
+      admin_access: activeAdmins > 0 ? 'ok' : 'missing',
+      pilot_department: pilotDepartments === 1 ? 'ok' : 'missing_or_ambiguous'
+    };
+    bootState.ready = upToDate && activeAdmins > 0 && pilotDepartments === 1;
+
+    return {
+      healthy: true,
+      status: bootState.ready ? 'ok' : 'degraded',
       db_status: 'ok',
       migrations: {
-        applied: Number(migrationState?.count || 0),
+        applied: appliedMigrations,
         expected: migrations.length,
         latest: latestMigration?.id || null,
-        up_to_date: Number(migrationState?.count || 0) >= migrations.length
+        up_to_date: upToDate
+      },
+      admin_access: {
+        active_admins: activeAdmins,
+        status: activeAdmins > 0 ? 'ok' : 'missing'
       },
       integrity: {
         status: integrity.counts.invalidPatients === 0 &&
@@ -261,20 +240,79 @@ app.get('/api/v1/health', async (req, res) => {
           ? 'clean'
           : 'issues_detected',
         counts: integrity.counts
-      },
-      correlation_id: req.correlationId
-    });
+      }
+    };
   } catch (err) {
-    res.status(503).json({
+    bootState.checks = {
+      database: 'unavailable',
+      migrations: 'unknown',
+      admin_access: 'unknown'
+    };
+    bootState.ready = false;
+
+    return {
+      healthy: false,
       status: 'degraded',
-      env: process.env.NODE_ENV || 'development',
-      app_env: process.env.APP_ENV || 'local_dev',
-      db: dbDialect,
       db_status: 'unavailable',
-      correlation_id: req.correlationId,
       error: err.message
-    });
+    };
   }
+}
+
+app.get('/api/v1/health', async (req, res) => {
+  const readiness = await assessReadiness();
+  const payload = {
+    status: readiness.status,
+    env: runtimeConfig.nodeEnv,
+    app_env: runtimeConfig.appEnv,
+    db: dbDialect,
+    db_status: readiness.db_status,
+    migrations: readiness.migrations || {
+      applied: 0,
+      expected: migrations.length,
+      latest: null,
+      up_to_date: false
+    },
+    admin_access: readiness.admin_access || {
+      active_admins: 0,
+      status: 'unknown'
+    },
+    integrity: readiness.integrity || {
+      status: 'unknown',
+      counts: null
+    },
+    boot: {
+      ready: bootState.ready,
+      started_at: bootState.started_at,
+      last_successful_boot_at: bootState.last_successful_boot_at,
+      checks: bootState.checks
+    },
+    correlation_id: req.correlationId
+  };
+
+  if (!readiness.healthy) {
+    payload.error = readiness.error;
+    return res.status(503).json(payload);
+  }
+
+  return res.json(payload);
+});
+
+app.get('/api/v1/ready', async (req, res) => {
+  const readiness = await assessReadiness();
+  const payload = {
+    status: readiness.status,
+    ready: readiness.healthy && bootState.ready,
+    db_status: readiness.db_status,
+    migrations_up_to_date: readiness.migrations?.up_to_date || false,
+    correlation_id: req.correlationId
+  };
+
+  if (!payload.ready) {
+    return res.status(503).json(payload);
+  }
+
+  return res.json(payload);
 });
 
 // ===========================================================================
@@ -317,16 +355,18 @@ app.use((err, req, res, next) => {
 setInterval(async () => {
   try {
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    await run(`DELETE FROM clinical_drafts WHERE updated_at < ?`, [cutoff]);
-    console.log('[CLEANUP] Pruned stale clinical drafts older than 48h');
+    const result = await run(`DELETE FROM clinical_drafts WHERE updated_at < ?`, [cutoff]);
+    logEvent('info', 'draft_cleanup_ran', { pruned: result.changes ?? 0, cutoff });
   } catch (err) {
-    console.error('[CLEANUP] Draft cleanup failed:', err.message);
+    logEvent('error', 'draft_cleanup_failed', { error: err.message });
   }
-}, 6 * 60 * 60 * 1000);
+}, 6 * 60 * 60 * 1000).unref();
 
 module.exports = app;
 
 if (require.main === module) {
+  let httpServer;
+
   async function startServer() {
     await migrateDatabase();
     await pingDatabase();
@@ -336,16 +376,51 @@ if (require.main === module) {
       await ensureAdminAccessProvisioned({ get });
     }
 
+    require('./opd/notifications.ts').startNotificationWorker();
+
     const PORT = process.env.PORT || 3001;
-    app.listen(PORT, () => {
-      console.log(`[BOOT] Chettinad Care Backend listening on port ${PORT}`);
-      console.log(`[BOOT] Environment: ${process.env.NODE_ENV || 'development'} / ${process.env.APP_ENV || 'local_dev'}`);
-      console.log(`[BOOT] DB Dialect: ${dbDialect}`);
+    const HOST = '0.0.0.0';
+    httpServer = app.listen(PORT, HOST, () => {
+      logEvent('info', 'server_listening', {
+        port: PORT,
+        host: HOST,
+        node_env: process.env.NODE_ENV || 'development',
+        app_env: process.env.APP_ENV || 'local_dev',
+        db_dialect: dbDialect
+      });
     });
   }
 
+  // Graceful shutdown: drain HTTP connections and close database pool.
+  function gracefulShutdown(signal) {
+    logEvent('info', 'shutdown_signal', { signal });
+    if (httpServer) {
+      httpServer.close(() => {
+        logEvent('info', 'http_server_closed');
+        if (require('./database').pgPool) {
+          require('./database').pgPool.end().then(() => {
+            logEvent('info', 'pg_pool_closed');
+            process.exit(0);
+          }).catch(() => process.exit(1));
+        } else {
+          process.exit(0);
+        }
+      });
+      // Force exit after 10 seconds if connections don't drain.
+      setTimeout(() => {
+        logEvent('warn', 'shutdown_forced');
+        process.exit(1);
+      }, 10000).unref();
+    } else {
+      process.exit(0);
+    }
+  }
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
   startServer().catch((err) => {
-    console.error('[FATAL] Startup failed:', err);
+    logEvent('error', 'server_start_fatal', { error: err.message, stack: err.stack });
     process.exit(1);
   });
 }

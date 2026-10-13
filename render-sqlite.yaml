@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: chettinad-care-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci && npm rebuild sqlite3 --build-from-source
+    startCommand: npm run migrate && node opd/demo.cjs && node server.js
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24.0.0"
+      - key: NODE_ENV
+        value: development
+      - key: DB_DIALECT
+        value: sqlite
+      - key: SQLITE_PATH
+        value: /tmp/connected-opd.db
+      - key: PATIENT_DOCUMENT_STORAGE_PATH
+        value: /tmp/patient-documents
+      - key: OPD_DEMO_OTP
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: "https://chettinad-care-web.onrender.com"
+      - key: COOKIE_SAME_SITE
+        value: "none"
+      - key: COOKIE_SECURE
+        value: "true"
+
+  - type: web
+    name: chettinad-care-web
+    runtime: static
+    buildCommand: npm ci && npm rebuild sqlite3 --build-from-source && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: "https://chettinad-care-api.onrender.com/api/v1"

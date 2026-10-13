@@ -1,0 +1,62 @@
+{"level":"warn","event":"boot_config_warning","timestamp":"2026-09-15T22:03:45.644Z","warning":"JWT_SECRET is not set. Local dev will fall back to an insecure default. Never use that outside local_dev."}
+[DB] Applied migration 001_initial_schema
+[DB] Applied migration 002_data_integrity_guards
+[DB] Applied migration 003_refresh_token_account_type
+[DB] Applied migration 004_encounter_lifecycle_contract
+[DB] Applied migration 005_patient_phone_identity
+[DB] Applied migration 006_users_must_change_password
+[DB] Applied migration 007_triage_doctor_assignment
+[DB] Applied migration 008_prescription_handover
+[DB] Applied migration 009_staff_user_profiles
+[DB] Applied migration 010_patient_activation_token_hardening
+[DB] Applied migration 011_auth_security_hardening
+[DB] Applied migration 012_connected_opd
+[DB] Applied migration 013_session_and_encounter_integrity
+{"level":"info","event":"bootstrap_admin_created","timestamp":"2026-09-15T22:03:45.882Z","userId":"auth_qa_admin"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:03:45.891Z","correlationId":"SERVER-699b06a6-7fd6-4608-a5de-c18733c56365","method":"POST","path":"/api/v1/auth/login/staff","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:03:45.949Z","correlationId":"SERVER-699b06a6-7fd6-4608-a5de-c18733c56365","method":"POST","path":"/api/v1/auth/login/staff","status":200,"duration_ms":58,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:03:45.951Z","correlationId":"SERVER-d113d986-4063-4029-b854-5cb011efcab9","method":"POST","path":"/api/v1/auth/logout","remote_ip":"::ffff:127.0.0.1"}
+{"level":"error","event":"refresh_token_revoke_failed","timestamp":"2026-09-15T22:03:45.952Z","error":"SQLITE_CONSTRAINT: synthetic revocation failure"}
+{"level":"error","event":"request_failed","timestamp":"2026-09-15T22:03:45.952Z","correlationId":"SERVER-d113d986-4063-4029-b854-5cb011efcab9","method":"POST","path":"/api/v1/auth/logout","actorId":null,"status":503,"code":"LOGOUT_FAILED","message":"Sign-out could not be confirmed. Please retry.","details":null}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:03:45.952Z","correlationId":"SERVER-d113d986-4063-4029-b854-5cb011efcab9","method":"POST","path":"/api/v1/auth/logout","status":503,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:03:45.953Z","correlationId":"SERVER-09fbebc5-3311-4725-b433-9045a34889d6","method":"GET","path":"/api/v1/opd/session","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:03:45.954Z","correlationId":"SERVER-09fbebc5-3311-4725-b433-9045a34889d6","method":"GET","path":"/api/v1/opd/session","status":200,"duration_ms":1,"actorId":"auth_qa_admin"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:03:45.955Z","correlationId":"SERVER-dc269a22-4d91-4ee5-8275-28a862d418d9","method":"POST","path":"/api/v1/auth/logout","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:03:45.956Z","correlationId":"SERVER-dc269a22-4d91-4ee5-8275-28a862d418d9","method":"POST","path":"/api/v1/auth/logout","status":200,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:03:45.957Z","correlationId":"SERVER-acbdcfff-ecc2-4b19-aea8-e1527f3841ba","method":"GET","path":"/api/v1/opd/session","remote_ip":"::ffff:127.0.0.1"}
+{"level":"warn","event":"request_failed","timestamp":"2026-09-15T22:03:45.958Z","correlationId":"SERVER-acbdcfff-ecc2-4b19-aea8-e1527f3841ba","method":"GET","path":"/api/v1/opd/session","actorId":null,"status":401,"code":"SESSION_REVOKED","message":"Session expired or revoked.","details":null}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:03:45.958Z","correlationId":"SERVER-acbdcfff-ecc2-4b19-aea8-e1527f3841ba","method":"GET","path":"/api/v1/opd/session","status":401,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:03:45.958Z","correlationId":"SERVER-90c11922-5c4a-4bee-b02c-71a4019d244a","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:03:45.959Z","correlationId":"SERVER-90c11922-5c4a-4bee-b02c-71a4019d244a","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":1,"actorId":null}
+✔ failed server revocation reports failure, preserves retry credential, and successful retry invalidates access (182.126083ms)
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:03:45.962Z","correlationId":"SERVER-7bf4079b-8d52-4bb0-9da8-d96a2e5649b2","method":"GET","path":"/api/v1/opd/patients/rbac-patient/record","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:03:45.964Z","correlationId":"SERVER-7bf4079b-8d52-4bb0-9da8-d96a2e5649b2","method":"GET","path":"/api/v1/opd/patients/rbac-patient/record","status":200,"duration_ms":2,"actorId":"rbac-doctor"}
+✖ cancelled or no-show booking alone does not authorize a doctor to read a patient record (4.987833ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 471.266583
+
+✖ failing tests:
+
+test at backend/opd/auth-session.test.cjs:46:1
+✖ cancelled or no-show booking alone does not authorize a doctor to read a patient record (4.987833ms)
+  AssertionError [ERR_ASSERTION]: Cancelled booking must not authorize clinical reads.
+  
+  200 !== 404
+  
+      at TestContext.<anonymous> (/Users/siddwork/Desktop/chettinad-care-frontend/backend/opd/auth-session.test.cjs:57:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 404,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

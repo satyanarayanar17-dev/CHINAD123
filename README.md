@@ -1,207 +1,73 @@
-# Chettinad Care Pilot App
+# Chettinad Care v2 — Connected OPD
 
-Chettinad Care is a pilot-grade, not production-grade, care continuity system for a restricted clinical pilot.
+A working outpatient application for **Patient → Reception/Admin → Nurse → Doctor**, with one shared patient record and journey timeline:
 
-This repo is focused on one hardened loop:
+**Appointment → Check-in → Queue → Triage → Consultation → Investigation → Prescription → Result → Follow-up.**
 
-- admin temporarily acts as the receptionist proxy to create or correct patient identity
-- nurse captures intake, triage, and pushes the patient into the doctor queue
-- the system guarantees a single valid active encounter
-- the patient activates portal access with a one-time code
-- the doctor opens the chart, writes the note, authorizes the prescription, and continues the timeline cleanly
+Patients register and sign in with a mobile OTP, book offered slots, track their visit, and view signed prescriptions and released laboratory results. Reception manages appointments, identity verification and tokens. Nurses perform department-scoped triage. Doctors consult their assigned patients, order tests, sign prescriptions, book follow-ups, and review results. Administration configures staff, departments, schedules and catalogues.
 
-The live deployment path is now PostgreSQL-backed. SQLite remains available only as a local development fallback.
+The implementation runs locally with synthetic data. A real deployment requires the hospital's SMS adapter, HTTPS endpoint, PostgreSQL and encrypted storage; these external services are not provisioned by the repository.
 
-## Repo Layout
+## Run the complete local demo
 
-- `src/`: Vite + React frontend
-- `backend/`: Express API, auth, RBAC, audit logging, OCC, seeding, migrations
-- `docker-compose.yml`: local all-in-one stack with Nginx + backend + PostgreSQL
+Use **Node.js 24 or newer**. From the repository root:
 
-## Current Architecture
+```sh
+npm ci
+npm --prefix backend ci
+npm run demo:seed
+npm run dev:demo
+```
 
-- Frontend: Vite/React SPA with configurable `VITE_API_BASE_URL`
-- Backend: Express API mounted under `/api/v1`
-- Database access: raw SQL through `backend/database.js`, with one dialect switch for SQLite vs PostgreSQL
-- Persistence for live pilot: PostgreSQL only
-- Local development fallback: SQLite file at `backend/verification.db` unless `SQLITE_PATH` overrides it
-- Auth/session: in-memory access token + `httpOnly` refresh cookie, bcrypt password hashes, refresh rotation, RBAC middleware, token revocation table
-- Auth boundaries: patient and staff login paths are separated, JWTs carry a role-bound `account_type`, refresh rotation preserves that scope, and mismatched sessions are rejected during bootstrap and route entry
-- Data integrity: OCC/version checks on queue, notes, prescriptions, and draft ETag protection
-- Backend write invariants: SQLite foreign keys enabled, queue transitions limited to active phases, discharge normalized to `DISCHARGED`, canonical patient/note/prescription validation shared across routes
-- Legacy-data tooling: `diagnose:data` and `repair:data` scripts for pilot data audits, deterministic fixes, and quarantine of unusable rows
-- Health visibility: `/api/v1/health` now reports database reachability, migration alignment, and a basic integrity summary
-- Audit logging: sensitive actions continue to write to `audit_logs`
-- Upload/storage: no file upload or object storage pipeline is implemented in this repo today
+Open [the app](http://localhost:5173). The seeder creates a separate `backend/connected-opd-demo.db` through the real API, including six synthetic patients, three departments, active queues, prior visits, prescriptions, laboratory results and a follow-up. It preserves existing demo records on rerun. It does not reset the regular development database.
 
-## Local Development
+| Role | Login |
+| --- | --- |
+| Reception/Admin | `demo_admin` |
+| General Medicine doctor | `demo_doctor` |
+| General Medicine nurse | `demo_nurse` |
+| Patient | Mobile `9000000001` through `9000000006` |
 
-1. Install frontend dependencies:
-   `npm install`
-2. Install backend dependencies:
-   `cd backend && npm install`
-3. Bootstrap the local SQLite development dataset:
-   `cd backend && npm run seed:reset`
-4. Diagnose local data integrity before testing:
-   `cd backend && npm run diagnose:data`
-5. Start the local stack:
-   `npm run dev`
+Demo staff password: **`ChettinadDemo2026!`**. Patient sign-in displays a fresh development OTP after requesting it; no SMS is sent in demo mode. See [the complete demonstration guide](docs/V2_DEMO.md) for all accounts, scenarios and a walkthrough. Demo appointments use the actual India date; use a new `OPD_DEMO_DB` file for a fresh walkthrough on a later day.
 
-`npm run dev` now starts both the Vite frontend and the Express backend together. The frontend proxy continues to use `http://localhost:3001` unless `VITE_API_BASE_URL` is explicitly set.
+## Develop and verify
 
-Default local URLs:
+```sh
+npm run dev                 # Vite + API against your configured database
+npm run build               # Frontend TypeScript and production assets
+npm run check:backend       # Strict backend TypeScript check
+npm run test:v2             # Isolated configuration, API, notification and auth regressions
+npm run test:security-browser # Chromium authentication and role-access browser tests
+npm run lint
+```
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:3001/api/v1`
+The Vite development proxy sends `/api/v1` to `http://localhost:3001`. Set `VITE_API_BASE_URL` for a separate API host, or `VITE_DEV_API_PROXY_TARGET` to change the local proxy. The backend reads environment variables supplied by your shell or host; it does not automatically load `backend/.env`.
 
-Local bootstrap account after `npm run seed:reset`:
+The API acceptance suite uses a fresh temporary SQLite database by default. To test PostgreSQL, point `DATABASE_URL` at a dedicated disposable test database and set `OPD_TEST_POSTGRES=true DB_DIALECT=postgres` when running `npm run test:opd`. Never point acceptance tests at a hospital or demonstration database. Notification tests always use isolated SQLite and an injected fake transport.
 
-- `admin_qa` / `Password123!`
+The authentication browser suite requires `npx playwright install chromium`. It creates a fresh synthetic SQLite fixture, starts its own API on port 3003 and frontend on port 5175, and records screenshots and JSON results under `qa-evidence/01-auth/` and `qa-evidence/11-errors/`. Keep those ports free. It tests development OTP handling; it does not send hospital SMS or verify production HTTPS.
 
-All doctor, nurse, and patient accounts must be created through the application after first login.
+## Code and API contract
 
-## Clean Bootstrap State
+| Location | Purpose |
+| --- | --- |
+| `src/opd/` | React/TypeScript application, role workspaces, localization and shared types |
+| `backend/opd/` | TypeScript authentication, scheduling, clinical workflow, notification worker and tests |
+| `backend/migrations/` | Additive SQLite/PostgreSQL migrations, including the v2 schema and session integrity |
+| `backend/database.js` | Transactional database adapter and PostgreSQL TLS configuration |
+| `backend/opd/openapi.json` | OpenAPI 3.1 contract for implemented v2 workflow routes |
+| `docs/V2_ARCHITECTURE.md` | Data model, access boundaries, deployment and operational limits |
 
-Use this when you need a deterministic local bootstrap environment from scratch:
+The API retains the `/api/v1` prefix; the v2 workflow routes are under `/api/v1/opd` and patient OTP routes under `/api/v1/auth/opd`. Staff authentication remains under `/api/v1/auth`. The [OpenAPI document](backend/opd/openapi.json) is also served at [the local API contract endpoint](http://localhost:3001/api/v1/openapi.json).
 
-`cd backend && npm run seed:reset`
+Legacy clinical routes remain in the source for reference and are disabled by default. `ENABLE_LEGACY_API=true` only enables them in local development. They are not the v2 application contract.
 
-What `seed:reset` guarantees locally:
+## Deployment
 
-- 1 bootstrap admin account with a bcrypt-hashed password
-- no preloaded staff, patient, encounter, note, or prescription records
-- a clean schema ready for real onboarding flows
+Build the frontend with `npm run build` and serve `dist/` through an HTTPS reverse proxy with SPA fallback. Run the API with Node.js 24+ and `npm --prefix backend start`, or use its Node 24 container. Configure PostgreSQL with `DB_DIALECT=postgres`, `DATABASE_URL`, and verified database TLS for remote connections. Use a secret manager for `JWT_SECRET`, bootstrap credentials and `SMS_WEBHOOK_TOKEN`.
 
-This command is for local development only and should not be enabled in the live pilot.
+Locked deployments (`NODE_ENV=production` or `APP_ENV=restricted_web_pilot`) require PostgreSQL, secure cookies, an explicit HTTPS frontend origin, disabled demo helpers, and a configured HTTPS SMS adapter. First startup uses `BOOTSTRAP_ADMIN_ID`, `BOOTSTRAP_ADMIN_NAME` and `BOOTSTRAP_ADMIN_PASSWORD` only when no administrator exists. Create the hospital's departments, catalogues, staff and schedules through the administration workspace.
 
-## Pilot Deployment
+The included Compose/Nginx files are infrastructure scaffolding. They do not provision a public TLS certificate, SMS service, encrypted volumes or backups. Read [the v2 deployment and operational requirements](docs/V2_ARCHITECTURE.md) before using patient data. Older pilot documents describe earlier workflows and should not override this v2 guide.
 
-The recommended deployment split is:
-
-- Backend on Railway or Render
-- Managed PostgreSQL on Railway or Render
-- Frontend on Vercel
-
-High-level backend deployment settings:
-
-- Root directory: `backend`
-- Build command: `npm install`
-- Start command: `npm start`
-- Health check path: `/api/v1/health`
-
-High-level frontend deployment settings:
-
-- Root directory: repo root
-- Build command: `npm run build`
-- Output directory: `dist`
-- Environment variable: `VITE_API_BASE_URL=https://YOUR-BACKEND-DOMAIN/api/v1`
-
-Important:
-
-- Do not deploy the restricted web pilot with `DB_DIALECT=sqlite`
-- Do not enable `PILOT_AUTH_BYPASS`
-- Do set `BOOTSTRAP_ADMIN_*` for the first live deploy
-- Do set cookie envs correctly for your deployment shape:
-  `COOKIE_SAME_SITE=none` for different frontend/backend sites
-  `COOKIE_SAME_SITE=lax` for same-site custom domains
-
-Detailed instructions are in [DEPLOYMENT.md](/Users/siddwork/Desktop/chettinad-care-frontend/DEPLOYMENT.md).
-
-## Onboarding Flows
-
-Staff onboarding:
-
-- Admin signs in
-- Admin dashboard → `Staff Directory & Access`
-- Create nurses/doctors/admins with strong passwords
-
-Patient onboarding:
-
-- Admin dashboard → `Patient Onboarding`
-- Admin is temporarily acting as the receptionist proxy during this pilot
-- Register the patient demographic record in one call
-- The backend either creates or reuses the patient safely
-- The backend guarantees an active encounter before returning success
-- The backend issues the activation code from the same onboarding flow
-- Patient opens `/patient/activate`, enters their registered mobile number plus activation code, and sets a password
-- Patient then logs in with their registered mobile number and password
-
-## Auth Boundary Guarantees
-
-Authentication and routing are now split explicitly by account type:
-
-- patient login uses `POST /api/v1/auth/login/patient`
-- staff login uses `POST /api/v1/auth/login/staff`
-- the compatibility path `POST /api/v1/auth/login` now requires `account_type=patient|staff`
-- access tokens now include both `role` and `account_type`
-- refresh tokens persist `account_type` and are rejected if they no longer match the current user role
-- `/api/v1/auth/me` rejects sessions whose token scope no longer matches the database role
-- patient portal APIs under `/api/v1/my/*` remain `PATIENT`-only
-- frontend bootstrap and route guards clear the session if `role` and `account_type` do not form a valid pair
-
-Practical result:
-
-- doctor, nurse, and admin credentials cannot authenticate through the patient login path
-- patient credentials cannot authenticate through the staff login path
-- a valid token alone is no longer enough to enter the wrong UI shell
-
-## Data Integrity Operations
-
-Integrity guarantees now enforced on new writes:
-
-- patient records require non-empty `id`, `name`, valid `dob`, and allowed `gender`
-- encounters require `patient_id`, canonical `phase`, and canonical `lifecycle_status`
-- active encounter transitions accept only `AWAITING`, `RECEPTION`, or `IN_CONSULTATION`
-- discharged encounters are stored consistently as `phase='DISCHARGED'` with `is_discharged=1`
-- note statuses are limited to `DRAFT` or `FINALIZED`
-- prescription statuses are limited to `DRAFT` or `AUTHORIZED`
-- queue reads exclude orphaned or invalid encounters and log what was skipped
-
-Operational commands:
-
-- diagnose current data:
-  `cd backend && npm run diagnose:data`
-- dry-run a repair:
-  `cd backend && npm run repair:data`
-- apply deterministic repairs and quarantine unusable rows:
-  `cd backend && npm run repair:data -- --apply`
-
-What the repair script will do:
-
-- fills a deterministic placeholder name for patients whose name is blank
-- normalizes invalid patient gender to `Not specified`
-- converts legacy closed encounters to `DISCHARGED`
-- backfills canonical encounter `lifecycle_status` when the mapping is deterministic
-- normalizes repairable note/prescription statuses to canonical uppercase values
-- quarantines orphaned encounters, orphaned notes, and unusable prescriptions into `data_integrity_quarantine`
-
-What diagnostics summarize:
-
-- total invalid patients
-- invalid encounters
-- malformed queue rows
-- duplicate active encounters
-- legacy schema drift
-
-Remaining legacy-data risks:
-
-- invalid or missing DOB values cannot be inferred safely and stay flagged for manual review
-- ambiguous active encounters with unknown lifecycle phase remain in manual review and are excluded from queue reads until corrected
-
-## Verification
-
-Checks run successfully during this update:
-
-- `cd backend && npm test`
-- `npm run test:auth-boundary`
-- `npm run build`
-
-## Pilot Limitations
-
-- This system is pilot-grade, not production-grade.
-- Queue-first consultation is intentional in this pilot; calendar scheduling is not implemented yet by design.
-- Access tokens remain browser-memory bearer tokens; this is safer than `localStorage`, but it is not a full server-managed session architecture.
-- Rate limiting is still in-process only, so it does not provide strong protection under horizontal scale.
-- OTP delivery is still operationally simple and meant for restricted pilot use, not consumer-scale identity recovery.
-- Billing, insurance, uploads, and broad patient self-service scheduling are intentionally out of scope.
-- Some UI areas outside the core care loop still contain stubbed/offline actions and should not be presented as live integrations.
+Late-night setup: when today has no free slots, the seeder books the next available day. It reports deferred scenarios and does not check in future appointments or fabricate clinical history. Rerun on that appointment date to populate the remaining visits; use a fresh demo database during working hours when a complete live-queue walkthrough is needed.

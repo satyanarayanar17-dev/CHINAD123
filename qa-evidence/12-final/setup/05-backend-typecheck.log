@@ -1,0 +1,8 @@
+
+> chettinad-care-frontend@0.0.0 check:backend
+> npm --prefix backend run typecheck
+
+
+> backend@1.0.0 typecheck
+> tsc -p tsconfig.json
+

@@ -6,28 +6,65 @@ const { writeAuditDirect } = require('../middleware/audit');
 const { createRateLimiter } = require('../middleware/rateLimit');
 const { normalizePatientPhone } = require('../lib/clinicalIntegrity');
 const { assertPatientRecord, loadPatientRecord, resolveSingleActiveEncounter } = require('../lib/careFlow');
-const { issuePatientActivationToken, verifyActivationCode } = require('../lib/patientActivation');
+const {
+  issuePatientActivationToken,
+  verifyActivationCode,
+  activationRetryAfterSeconds,
+  ACTIVATION_MAX_FAILED_ATTEMPTS
+} = require('../lib/patientActivation');
 const { logEvent } = require('../lib/logger');
 
 const router = express.Router();
+
+function activationErr(req, res, status, code, message, extra = {}) {
+  return res.status(status).json({
+    error: { code, message, ...extra },
+    meta: { correlation_id: req.correlationId || null }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Rate limiting — P2: inline claim limiter (tracks failed attempts per UHID)
 // P3 addition: generate limiter via shared factory (5 per 10 min per staff user)
 // ---------------------------------------------------------------------------
 
-// P3: Shared factory for OTP generation — prevents staff from spamming OTPs
+function requestIp(req) {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
+    return forwardedFor.split(',')[0].trim();
+  }
+
+  return req.ip || 'unknown';
+}
+
+function isUniqueConstraintError(err) {
+  return err?.code === 'SQLITE_CONSTRAINT' || err?.code === '23505';
+}
+
 const generateLimiter = createRateLimiter({
   max: 5,
   windowMs: 10 * 60 * 1000,
-  keyFn: (req) => req.user?.id || req.ip,
+  keyFn: (req) => {
+    const actorId = req.user?.id || 'unknown-user';
+    return [
+      `activation:generate:actor:${actorId}`,
+      `activation:generate:patient:${String(req.body?.patient_id || '').trim() || 'unknown-patient'}`
+    ];
+  },
   message: 'Too many OTP generation requests. Please wait 10 minutes before trying again.'
 });
 
 const claimRateLimit = createRateLimiter({
-  max: 5,
+  max: 12,
   windowMs: 20 * 60 * 1000,
-  keyFn: (req) => normalizePatientPhone(req.body?.phone) || req.body?.patient_id || req.ip,
+  keyFn: (req) => {
+    const phoneKey = normalizePatientPhone(req.body?.phone) || String(req.body?.phone || '').trim() || 'unknown-phone';
+    const ip = requestIp(req);
+    return [
+      `activation:claim:phone:${phoneKey}`,
+      `activation:claim:phone-ip:${phoneKey}:${ip}`
+    ];
+  },
   message: 'Too many activation attempts for this phone number. Please wait 20 minutes before trying again.'
 });
 
@@ -44,6 +81,40 @@ async function findPatientByPhone(context, phone) {
   );
 }
 
+function activationUsedError() {
+  return {
+    status: 409,
+    code: 'ACTIVATION_CODE_USED',
+    message: 'This activation code has already been used. Please log in or request a new code.'
+  };
+}
+
+function activationInvalidError() {
+  return {
+    status: 401,
+    code: 'INVALID_TOKEN',
+    message: 'Activation code is invalid or does not match this phone number.'
+  };
+}
+
+function activationExpiredError() {
+  return {
+    status: 410,
+    code: 'EXPIRED_TOKEN',
+    message: 'Activation code has expired. Please request a new one.'
+  };
+}
+
+function activationLockedError(lockedUntil) {
+  const retryAfterSeconds = activationRetryAfterSeconds(lockedUntil);
+  return {
+    status: 429,
+    code: 'ACTIVATION_ATTEMPTS_EXCEEDED',
+    message: 'Too many invalid activation attempts. Please request a new code or wait for the cooldown to expire.',
+    retry_after_seconds: retryAfterSeconds
+  };
+}
+
 /**
  * POST /api/activation/generate
  * Generate a 6-digit OTP for a patient UHID. Requires ADMIN/NURSE/DOCTOR auth.
@@ -57,17 +128,16 @@ router.post('/generate', requireAuth, requireRole(['ADMIN', 'NURSE', 'DOCTOR']),
       actorId: req.user.id,
       reason: 'missing_patient_id'
     });
-    return res.status(400).json({ error: 'MISSING_DATA', message: 'patient_id is required' });
+    return activationErr(req, res, 400, 'MISSING_DATA', 'patient_id is required');
   }
 
   try {
     const patientRecord = await loadPatientRecord({ get }, patient_id);
     assertPatientRecord(patientRecord);
     if (!patientRecord.phone) {
-      return res.status(422).json({
-        error: 'PHONE_REQUIRED',
-        message: 'Patient activation requires a validated phone number on the patient profile.'
-      });
+      return activationErr(req, res, 422, 'PHONE_REQUIRED',
+        'Patient activation requires a validated phone number on the patient profile.'
+      );
     }
 
     await resolveSingleActiveEncounter({ all }, patient_id, {
@@ -85,7 +155,7 @@ router.post('/generate', requireAuth, requireRole(['ADMIN', 'NURSE', 'DOCTOR']),
         patientId: patient_id,
         reason: 'account_already_exists'
       });
-      return res.status(409).json({ error: 'ACCOUNT_EXISTS', message: 'A portal account already exists for this patient.' });
+      return activationErr(req, res, 409, 'ACCOUNT_EXISTS', 'A portal account already exists for this patient.');
     }
 
     const issuedActivation = await issuePatientActivationToken({ run }, patient_id);
@@ -110,7 +180,8 @@ router.post('/generate', requireAuth, requireRole(['ADMIN', 'NURSE', 'DOCTOR']),
 /**
  * POST /api/activation/claim
  * Public route — patient claims their account using phone + OTP.
- * Rate limited to 5 attempts per phone within the OTP window.
+ * Rate limited to 12 attempts per phone/IP within the OTP window, with a
+ * separate DB-backed invalid-attempt lock after 5 bad codes for a live token.
  */
 router.post('/claim', claimRateLimit, async (req, res, next) => {
   const normalizedPhone = normalizePatientPhone(req.body?.phone);
@@ -121,7 +192,7 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
       phone: normalizedPhone || null,
       reason: 'missing_fields'
     });
-    return res.status(400).json({ error: 'MISSING_DATA', message: 'phone, otp, and new_password are required' });
+    return activationErr(req, res, 400, 'MISSING_DATA', 'phone, otp, and new_password are required');
   }
 
   if (new_password.length < 8) {
@@ -130,7 +201,7 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
       phone: normalizedPhone,
       reason: 'weak_password'
     });
-    return res.status(400).json({ error: 'WEAK_PASSWORD', message: 'Password must be at least 8 characters long.' });
+    return activationErr(req, res, 400, 'WEAK_PASSWORD', 'Password must be at least 8 characters long.');
   }
 
   try {
@@ -160,67 +231,108 @@ router.post('/claim', claimRateLimit, async (req, res, next) => {
           };
         }
 
-        throw {
-          status: 401,
-          code: 'INVALID_TOKEN',
-          message: 'Activation code is invalid or does not match this phone number.'
-        };
+        throw activationInvalidError();
       }
 
       if (tokenRecord.consumed_at) {
-        throw {
-          status: 409,
-          code: 'ACTIVATION_CODE_USED',
-          message: 'This activation code has already been used. Please log in or request a new code.'
-        };
+        throw activationUsedError();
       }
 
       const now = new Date();
       const expiry = new Date(tokenRecord.expires_at);
       if (now > expiry) {
-        throw {
-          status: 410,
-          code: 'EXPIRED_TOKEN',
-          message: 'Activation code has expired. Please request a new one.'
-        };
+        throw activationExpiredError();
+      }
+
+      if (tokenRecord.locked_until && new Date(tokenRecord.locked_until) > now) {
+        throw activationLockedError(tokenRecord.locked_until);
       }
 
       const isValidToken = await verifyActivationCode(tokenRecord, otp);
       if (!isValidToken) {
-        throw {
-          status: 401,
-          code: 'INVALID_TOKEN',
-          message: 'Activation code is invalid or does not match this phone number.'
-        };
+        const nextFailedAttempts = Number(tokenRecord.failed_attempts || 0) + 1;
+        const lockedUntil = nextFailedAttempts >= ACTIVATION_MAX_FAILED_ATTEMPTS
+          ? tokenRecord.expires_at
+          : null;
+
+        const updateResult = await tx.run(
+          `UPDATE patient_activation_tokens
+           SET failed_attempts = ?,
+               last_failed_at = CURRENT_TIMESTAMP,
+               locked_until = COALESCE(?, locked_until)
+           WHERE patient_id = ? AND consumed_at IS NULL`,
+          [nextFailedAttempts, lockedUntil, patientRecord.id]
+        );
+
+        if (updateResult.changes === 0) {
+          return { failure: activationUsedError() };
+        }
+
+        if (lockedUntil) {
+          return { failure: activationLockedError(lockedUntil) };
+        }
+
+        return { failure: activationInvalidError() };
       }
 
       if (existingUser) {
-        throw {
-          status: 409,
-          code: 'ACTIVATION_CODE_USED',
-          message: 'This activation code has already been used. Please log in or request a new code.'
-        };
+        throw activationUsedError();
       }
 
       const newUserId = `usr-${patientRecord.id}`;
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(new_password, salt);
 
-      await tx.run(
-        `INSERT INTO users (id, role, name, password_hash, is_active, patient_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-        [newUserId, 'PATIENT', patientRecord.name, hash, 1, patientRecord.id]
-      );
-
-      await tx.run(
+      const consumeResult = await tx.run(
         `UPDATE patient_activation_tokens
          SET consumed_at = CURRENT_TIMESTAMP
-         WHERE patient_id = ?`,
+         WHERE patient_id = ?
+           AND consumed_at IS NULL`,
         [patientRecord.id]
       );
 
+      if (consumeResult.changes === 0) {
+        const latestTokenState = await tx.get(
+          `SELECT consumed_at, expires_at, locked_until
+           FROM patient_activation_tokens
+           WHERE patient_id = ?`,
+          [patientRecord.id]
+        );
+
+        if (latestTokenState?.consumed_at) {
+          throw activationUsedError();
+        }
+
+        if (latestTokenState?.locked_until && new Date(latestTokenState.locked_until) > new Date()) {
+          throw activationLockedError(latestTokenState.locked_until);
+        }
+
+        if (!latestTokenState || new Date(latestTokenState.expires_at) < new Date()) {
+          throw activationExpiredError();
+        }
+
+        throw activationUsedError();
+      }
+
+      try {
+        await tx.run(
+          `INSERT INTO users (id, role, name, password_hash, is_active, patient_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          [newUserId, 'PATIENT', patientRecord.name, hash, 1, patientRecord.id]
+        );
+      } catch (err) {
+        if (isUniqueConstraintError(err)) {
+          throw activationUsedError();
+        }
+        throw err;
+      }
+
       return { newUserId, patientId: patientRecord.id };
     });
+
+    if (activationResult?.failure) {
+      throw activationResult.failure;
+    }
 
     await writeAuditDirect({
       correlation_id: req.correlationId,

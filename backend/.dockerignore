@@ -1,0 +1,17 @@
+node_modules
+.git
+.env
+.env.*
+*.db
+*.db-*
+**/*.db
+**/*.db-*
+*.sqlite
+*.sqlite3
+**/*.sqlite
+**/*.sqlite3
+coverage
+*.log
+**/*.log
+.DS_Store
+**/.DS_Store

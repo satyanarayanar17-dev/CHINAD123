@@ -1,0 +1,4 @@
+sed -i '' "s/\\['All', 'Cardiology', 'General Medicine', 'Orthopedics'\\]/\\['All', 'General Medicine', 'Paediatrics', 'Cardiology', 'Orthopaedics', 'Neurology', 'Pulmonology \/ Respiratory Medicine'\\]/g" src/pages/DoctorCommandCenter.tsx
+sed -i '' "s/\\['All', 'Cardiology', 'General Medicine', 'Orthopedics'\\]/\\['All', 'General Medicine', 'Paediatrics', 'Cardiology', 'Orthopaedics', 'Neurology', 'Pulmonology \/ Respiratory Medicine'\\]/g" src/pages/DoctorAppointments.tsx
+sed -i '' "s/<option>Chettinad Hospital & Research Institute (Main Campus)<\\/option>/<option>Chettinad Hospital and Research Institute (Main Campus)<\\/option>/g" src/pages/InstitutionalSettings.tsx
+sed -i '' "s/<option>Cardiology<\\/option>/<option>Cardiology<\\/option><option>General Medicine<\\/option><option>Paediatrics<\\/option>/g" src/pages/InstitutionalSettings.tsx

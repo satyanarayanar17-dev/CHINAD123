@@ -830,28 +830,15 @@ export const NurseTriage = () => {
 
           <ErrorBoundary moduleName="EWS Summary">
             <Card className="overflow-hidden">
-              <div className={`flex items-center justify-between p-4 text-white ${ewsColor}`}>
+              <div className="flex items-center justify-between p-4 bg-gray-100 text-gray-500">
                 <div className="flex items-center gap-2">
                   <AlertCircle size={20} />
                   <h2 className="font-bold">Calculated EWS</h2>
-                  <span className="text-xs opacity-80">(Score: {ewsScore})</span>
                 </div>
-                <span className="text-2xl font-black">{ewsLevel}</span>
               </div>
-              <CardContent className="bg-surface-container-low">
-                <p className="text-sm font-semibold text-on-surface">
-                  Classification: <strong>{ewsLabel}</strong>
-                </p>
-                {ewsWarnings.length > 0 ? (
-                  <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-on-surface/80">
-                    {ewsWarnings.map((warning, index) => (
-                      <li key={`${warning}-${index}`}>{warning}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-3 text-sm text-on-surface-variant">No active warning flags detected from the current intake.</p>
-                )}
-              </CardContent>
+              <div className="p-4 bg-gray-50 text-sm text-gray-500 italic">
+                EWS disabled pending approved clinical scoring specification.
+              </div>
             </Card>
           </ErrorBoundary>
         </div>

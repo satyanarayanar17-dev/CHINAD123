@@ -177,7 +177,7 @@ export const DoctorCommandCenter = () => {
                 </button>
                 {showFilter && (
                   <div className="absolute top-full mt-1 right-0 bg-white border border-outline rounded-xl shadow-xl z-20 w-40 overflow-hidden">
-                    {['All', 'Cardiology', 'General Medicine', 'Orthopedics'].map(opt => (
+                    {['All', 'General Medicine', 'Paediatrics', 'Cardiology', 'Orthopaedics', 'Neurology', 'Pulmonology / Respiratory Medicine'].map(opt => (
                       <button
                         key={opt}
                         onClick={() => { setFilter(opt); setShowFilter(false); }}

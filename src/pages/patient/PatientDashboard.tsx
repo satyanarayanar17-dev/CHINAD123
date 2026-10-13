@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Calendar, Pill, FileText, Clock, ChevronRight, CheckCircle, AlertCircle } from 'lucide-react';
 import { usePatientDashboardData } from '../../hooks/queries/usePatientPortal';
 import { useAuth } from '../../hooks/useAuth';
+import { CarePlanWidget } from './CarePlanWidget';
 
 export const PatientDashboard = () => {
   const { user } = useAuth();
@@ -38,15 +39,9 @@ export const PatientDashboard = () => {
             <div>
               <p className="text-xs text-white/70 font-semibold mb-0.5 uppercase tracking-wider">Next Appointment</p>
               <p className="font-bold">{upcomingAppts[0].doctor}</p>
-              <p className="text-sm text-white/80">{upcomingAppts[0].date} · {upcomingAppts[0].time}</p>
-              <p className="text-xs text-white/60 mt-0.5">{upcomingAppts[0].location}</p>
+              <p className="text-sm text-white/90">{upcomingAppts[0].date} at {upcomingAppts[0].time}</p>
             </div>
-            <Link
-              to="/patient/appointments"
-              className="ml-4 bg-white text-primary text-xs font-bold px-4 py-2.5 rounded-lg hover:bg-white/90 transition-colors shrink-0"
-            >
-              View Details
-            </Link>
+            <Calendar className="text-white/40" size={32} />
           </div>
         )}
       </div>

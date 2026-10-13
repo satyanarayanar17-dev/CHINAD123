@@ -1,0 +1,79 @@
+{
+  "config": {
+    "argv": [
+      "/Users/siddwork/.nvm/versions/node/v24.15.0/bin/node",
+      "/Users/siddwork/Desktop/chettinad-care-frontend/node_modules/.bin/playwright",
+      "test",
+      "--config",
+      "playwright.clinical.config.ts"
+    ],
+    "configFile": "/Users/siddwork/Desktop/chettinad-care-frontend/playwright.clinical.config.ts",
+    "rootDir": "/Users/siddwork/Desktop/chettinad-care-frontend/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {},
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "",
+        "name": "",
+        "testDir": "/Users/siddwork/Desktop/chettinad-care-frontend/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "clinical-consultation.spec.ts"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "qa-evidence/03-clinical/clinical-browser-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [],
+  "errors": [
+    {
+      "message": "Error: Timed out waiting 120000ms from config.webServer.",
+      "stack": "Error: Timed out waiting 120000ms from config.webServer."
+    }
+  ],
+  "stats": {
+    "startTime": "2026-09-16T12:06:16.815Z",
+    "duration": 120049.563,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

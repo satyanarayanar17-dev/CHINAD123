@@ -1,0 +1,20 @@
+
+> chettinad-care-frontend@0.0.0 test:auth-boundary
+> node --test --experimental-strip-types src/auth/roleBoundary.test.ts
+
+✔ patients require the patient account type (0.56975ms)
+✔ staff roles require the staff account type (0.15425ms)
+✔ mismatched or empty sessions are rejected (0.052666ms)
+✔ home routes stay role-specific (0.05475ms)
+✔ route access stays inside explicit role areas (0.255292ms)
+✔ login redirect helper preserves public routes (0.122833ms)
+✔ token refresh only runs for authenticated 401s (0.080208ms)
+✔ navigation stays scoped per staff role (0.563375ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 91.393583

@@ -11,16 +11,30 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:auth-boundary": "node --test --experimental-strip-types src/auth/roleBoundary.test.ts",
-    "test:triage": "node --test --experimental-strip-types src/pages/nurseTriage.form.test.ts"
+    "test:triage": "node --test --experimental-strip-types src/pages/nurseTriage.form.test.ts",
+    "check:backend": "npm --prefix backend run typecheck",
+    "test:opd": "npm --prefix backend run test:opd",
+    "test:notifications": "npm --prefix backend run test:notifications",
+    "test:v2": "npm run test:config && npm run test:opd && npm run test:notifications && npm run test:auth-session",
+    "demo:seed": "npm --prefix backend run demo:seed",
+    "dev:demo": "OPD_DEMO_OTP=true DB_DIALECT=sqlite SQLITE_PATH=connected-opd-demo.db npm run dev",
+    "test:config": "npm --prefix backend run test:config",
+    "test:auth-session": "npm --prefix backend run test:auth-session",
+    "test:security-browser": "playwright test --config playwright.security.config.ts"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.9.1",
     "@tanstack/react-query": "^5.96.2",
     "axios": "^1.14.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "react-hook-form": "^7.88.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^24.12.0",
     "@types/react": "^19.2.14",
@@ -34,10 +48,14 @@
     "globals": "^17.4.0",
     "lucide-react": "^1.7.0",
     "postcss": "^8.5.8",
+    "prettier": "^3.9.6",
     "react-router-dom": "^7.14.0",
     "tailwindcss": "^4.2.2",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.0",
     "vite": "^8.0.1"
+  },
+  "engines": {
+    "node": ">=24.0.0"
   }
 }

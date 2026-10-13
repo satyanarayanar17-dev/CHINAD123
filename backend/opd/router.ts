@@ -204,7 +204,7 @@ router.get('/dashboard',endpoint(async(req,res)=>{
   
   let securityAlerts = 0;
   if (req.user.role === 'ADMIN') {
-    const alerts = await db.all(`SELECT id FROM audit_logs WHERE code = 'BREAK_GLASS_ACCESSED' AND timestamp >= ?`, [new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()]);
+    const alerts = await db.all(`SELECT id FROM audit_logs WHERE action = 'BREAK_GLASS_ACCESSED' AND timestamp >= ?`, [new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()]);
     securityAlerts = alerts.length;
   }
 

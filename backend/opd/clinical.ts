@@ -36,6 +36,7 @@ import { book } from "./scheduling.ts";
 
 const require = createRequire(import.meta.url);
 const { writePrescriptionItems } = require("../lib/prescriptionItems.js");
+const { runtimeConfig } = require('../config');
 
 export const triageSchema = z
   .object({
@@ -48,7 +49,8 @@ export const triageSchema = z
     height: z.number().min(20).max(250),
     glucose: z.number().positive().max(1500).nullable().optional(),
     complaint: text.max(2000),
-    allergies: optionalText,
+    allergies: z.string().trim().max(3000).optional(),
+    allergy_review_status: z.enum(['UNKNOWN', 'NONE_REPORTED', 'RECORDED']).optional(),
     pain: z.number().int().min(0).max(10),
     notes: optionalText,
     priority: z.number().int().min(0).max(2),
@@ -170,6 +172,20 @@ export async function triage(req: Req) {
       [encounter.id],
     );
     const reason = previous ? parse(text, req.body.reason) : "";
+    const patient = await tx.get<import('../../src/opd/types.ts').Patient>(
+      `SELECT * FROM patients WHERE id=?${tx.dialect === 'postgres' ? ' FOR UPDATE' : ''}`,
+      [encounter.patient_id],
+    );
+    const allergies = value.allergies ?? patient!.allergies ?? '';
+    const allergyStatus = value.allergy_review_status ?? patient!.allergy_review_status ?? (allergies ? 'RECORDED' : 'UNKNOWN');
+    const allergyChanged = allergies !== (patient!.allergies || '') || allergyStatus !== patient!.allergy_review_status;
+    const allergyReviewed = req.body.allergy_review_confirmed === true;
+    if (allergyChanged || allergyReviewed) {
+      if (!allergyReviewed) fail('ALLERGY_REVIEW_REQUIRED',422);
+      if (req.body.patient__v !== patient!.__v) fail('STALE_STATE',409);
+      if ((allergyStatus === 'NONE_REPORTED' && allergies) || (allergyStatus === 'RECORDED' && !allergies)) fail('ALLERGY_STATUS_MISMATCH',422);
+      if (allergyChanged) parse(text, req.body.allergy_change_reason);
+    }
     let ews = 0;
     if (value.pulse > 110 || value.pulse < 50) ews += 2;
     else if (value.pulse > 90 || value.pulse < 60) ews += 1;
@@ -182,17 +198,20 @@ export async function triage(req: Req) {
 
     let priority = value.priority;
     let autoElevated = false;
-    if (ews >= 4 && priority < 2) {
+    if (runtimeConfig.clinicalRulesApproved && ews >= 4 && priority < 2) {
       priority = 2;
       autoElevated = true;
     }
 
     const data = {
       ...value,
+      allergies,
+      allergy_review_status: allergyStatus,
       priority,
       bmi: Number((value.weight / (value.height / 100) ** 2).toFixed(1)),
-      ews,
+      ews: runtimeConfig.clinicalRulesApproved ? ews : null,
       ews_auto_elevated: autoElevated,
+      clinical_protocol_version: runtimeConfig.clinicalRulesApproved ? runtimeConfig.clinicalProtocolVersion : null,
     };
     await tx.run(
       "INSERT INTO triage_records (id,encounter_id,version,data,nurse_id,created_at,amendment_reason) VALUES (?,?,?,?,?,?,?)",
@@ -229,10 +248,12 @@ export async function triage(req: Req) {
         encounter.id,
       ],
     );
-    await tx.run("UPDATE patients SET allergies=?,__v=__v+1 WHERE id=?", [
-      data.allergies,
-      encounter.patient_id,
-    ]);
+    if (allergyChanged || allergyReviewed) {
+      const updated = await tx.run('UPDATE patients SET allergies=?,allergy_review_status=?,allergy_reviewed_at=?,allergy_reviewed_by=?,__v=__v+1 WHERE id=? AND __v=?',
+        [allergies,allergyStatus,now(),req.user.id,encounter.patient_id,patient!.__v]);
+      if (!updated.changes) fail('STALE_STATE',409);
+      await audit(tx,req,'PATIENT_ALLERGIES_REVIEWED',encounter.patient_id,{reason:req.body.allergy_change_reason || 'Confirmed existing record',status:allergyStatus});
+    }
     
     const eventCode = autoElevated ? "CRITICAL_VITALS_ALERT" : (previous ? "TRIAGE_AMENDED" : "TRIAGE_COMPLETED");
     await event(
@@ -240,7 +261,7 @@ export async function triage(req: Req) {
       req,
       encounter.patient_id,
       eventCode,
-      { version: (previous?.version || 0) + 1, reason, ews },
+      { version: (previous?.version || 0) + 1, reason, ...(runtimeConfig.clinicalRulesApproved ? {ews} : {}) },
       encounter.id,
       q!.appointment_id,
     );
@@ -251,7 +272,7 @@ export async function triage(req: Req) {
         encounter.assigned_doctor_id,
         encounter.patient_id,
         autoElevated ? "CRITICAL_VITALS_ALERT" : "TRIAGE_COMPLETED",
-        JSON.stringify({ token: q.token, ews }),
+        JSON.stringify({ token: q.token, ...(runtimeConfig.clinicalRulesApproved ? {ews} : {}) }),
         now(),
       ],
     );
@@ -310,6 +331,15 @@ async function snapshot(
     ],
   );
 }
+async function patientForSigning(tx: DB, req: Req, patientId: string) {
+  const patient=await tx.get<import('../../src/opd/types.ts').Patient>(`SELECT * FROM patients WHERE id=?${tx.dialect==='postgres'?' FOR UPDATE':''}`,[patientId]);
+  if(!patient)fail('NOT_FOUND',404);
+  if(req.body.patient__v===undefined && (runtimeConfig.isPilot||runtimeConfig.isProduction||runtimeConfig.isStaging))fail('PATIENT_REVIEW_REQUIRED',409);
+  if(req.body.patient__v!==undefined && req.body.patient__v!==patient!.__v)fail('PATIENT_RECORD_CHANGED',409);
+  const {id,mrn,name,dob,gender,allergies,allergy_review_status,allergy_reviewed_at,allergy_reviewed_by,__v}=patient!;
+  return {id,mrn,name,dob,gender,allergies,allergy_review_status,allergy_reviewed_at,allergy_reviewed_by,__v};
+}
+
 export async function saveConsultation(req: Req, complete: boolean) {
   roles(req, ["DOCTOR"]);
   const value = parse(consultationSchema, req.body.data);
@@ -344,15 +374,16 @@ export async function saveConsultation(req: Req, complete: boolean) {
     );
     if ((existing?.__v || 0) !== req.body.__v) fail("STALE_STATE", 409);
     if (existing?.status === "FINALIZED") fail("ENCOUNTER_COMPLETED", 409);
+    const patientSnapshot = complete ? await patientForSigning(tx,req,encounter.patient_id) : null;
     const data = await enrich(tx, value);
     
     // Medication Safety Checks
-    if (data.medications.length > 0) {
+    if (runtimeConfig.clinicalRulesApproved && data.medications.length > 0) {
       const patient = await tx.get<{ allergies: string }>("SELECT allergies FROM patients WHERE id=?", [encounter.patient_id]);
       const allergies = (patient?.allergies || "").toLowerCase();
       
       // Simple duplicate check against past 30 days prescriptions (approx active duration)
-      const activeRx = await tx.all<{ rx_content: string }>("SELECT rx_content FROM prescriptions WHERE encounter_id IN (SELECT id FROM encounters WHERE patient_id=?) AND status='AUTHORIZED' AND created_at > datetime('now', '-30 days')", [encounter.patient_id]);
+      const activeRx = await tx.all<{ rx_content: string }>("SELECT rx_content FROM prescriptions WHERE encounter_id IN (SELECT id FROM encounters WHERE patient_id=?) AND status='AUTHORIZED' AND created_at > ?", [encounter.patient_id, new Date(Date.now()-30*86400000).toISOString()]);
       const activeMeds = new Set<string>();
       for (const rx of activeRx) {
         try {
@@ -431,6 +462,7 @@ export async function saveConsultation(req: Req, complete: boolean) {
       const rxId = id("rx");
       const issuedAt = now();
       const prescription = {
+        patient_snapshot: patientSnapshot,
         medications: data.medications,
         diagnoses: data.diagnoses,
         advice: data.advice,
@@ -444,7 +476,7 @@ export async function saveConsultation(req: Req, complete: boolean) {
                 encounter: encounter.id,
                 doctor: req.user.id,
                 issuedAt,
-                data,
+                data,patient_snapshot:patientSnapshot,
               }),
             )
             .digest("hex"),
@@ -542,14 +574,15 @@ export async function amend(req: Req) {
     const original = JSON.parse(note!.draft_content as unknown as string) as ConsultationData;
     if (JSON.stringify(value.follow_up ?? null) !== JSON.stringify(original.follow_up ?? null))
       fail("FOLLOW_UP_AMENDMENT", 409);
+    const patientSnapshot = await patientForSigning(tx,req,encounter.patient_id);
     const data = await enrich(tx, value);
 
     // Medication Safety Checks
-    if (data.medications.length > 0) {
+    if (runtimeConfig.clinicalRulesApproved && data.medications.length > 0) {
       const patient = await tx.get<{ allergies: string }>("SELECT allergies FROM patients WHERE id=?", [encounter.patient_id]);
       const allergies = (patient?.allergies || "").toLowerCase();
       
-      const activeRx = await tx.all<{ rx_content: string }>("SELECT rx_content FROM prescriptions WHERE encounter_id IN (SELECT id FROM encounters WHERE patient_id=?) AND status='AUTHORIZED' AND created_at > datetime('now', '-30 days') AND encounter_id != ?", [encounter.patient_id, encounter.id]);
+      const activeRx = await tx.all<{ rx_content: string }>("SELECT rx_content FROM prescriptions WHERE encounter_id IN (SELECT id FROM encounters WHERE patient_id=?) AND status='AUTHORIZED' AND created_at > ? AND encounter_id != ?", [encounter.patient_id, new Date(Date.now()-30*86400000).toISOString(), encounter.id]);
       const activeMeds = new Set<string>();
       for (const rx of activeRx) {
         try {
@@ -592,6 +625,7 @@ export async function amend(req: Req) {
     if (rx) {
       const issuedAt = now();
       const content = {
+        patient_snapshot: patientSnapshot,
         medications: data.medications,
         diagnoses: data.diagnoses,
         advice: data.advice,
@@ -600,7 +634,7 @@ export async function amend(req: Req) {
           issued_at: issuedAt,
           signed_by: req.user.id,
           sha256: createHash("sha256")
-            .update(JSON.stringify(data) + issuedAt)
+            .update(JSON.stringify({data,patient_snapshot:patientSnapshot}) + issuedAt)
             .digest("hex"),
         },
       };
@@ -706,15 +740,17 @@ export async function labs(
     params.push(user.id);
   }
   if (user.role === "NURSE") {
-    // Nurses can view all lab orders to mark them as collected
+    where += " AND EXISTS (SELECT 1 FROM queue_entries q JOIN departments d ON d.id=q.department_id WHERE q.encounter_id=e.id AND d.name=?)";
+    params.push(user.department);
   }
   const limit = Math.min(parseInt(String(req.query?.limit)) || 500, 1000);
   const offset = parseInt(String(req.query?.offset)) || 0;
   const rows = await tx.all<LabOrder>(
-    `SELECT l.*,e.patient_id,p.name AS patient_name,t.name,t.code,t.unit,t.reference_range FROM lab_orders l JOIN encounters e ON e.id=l.encounter_id JOIN patients p ON p.id=e.patient_id JOIN lab_test_catalog t ON t.id=l.test_id WHERE ${where} ORDER BY l.ordered_at DESC, l.id DESC LIMIT ? OFFSET ?`,
+    `SELECT l.*,e.patient_id,p.name AS patient_name,p.mrn,p.dob,t.name,t.code,t.unit,t.reference_range FROM lab_orders l JOIN encounters e ON e.id=l.encounter_id JOIN patients p ON p.id=e.patient_id JOIN lab_test_catalog t ON t.id=l.test_id WHERE ${where} ORDER BY l.ordered_at DESC, l.id DESC LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
   for (const row of rows) {
+    if(user.role === "ADMIN") { row.result = null;continue; }
     row.result =
       (await tx.get<LabResult>(
         `SELECT r.*,u.name AS entered_name,v.name AS verified_name FROM lab_results r JOIN users u ON u.id=r.entered_by JOIN users v ON v.id=r.verified_by WHERE r.order_id=? ${user.role === "PATIENT" ? "AND r.released=1" : ""} ORDER BY r.version DESC LIMIT 1`,
@@ -733,6 +769,11 @@ export async function changeLab(req: Req, action: string) {
       [req.params.id],
     );
     if (!lab) fail("NOT_FOUND", 404);
+    if (req.user.role === 'NURSE') {
+      const nurse = await actor(req,tx);
+      const scope = await tx.get('SELECT q.encounter_id FROM queue_entries q JOIN departments d ON d.id=q.department_id WHERE q.encounter_id=? AND d.name=?',[lab!.encounter_id,nurse.department]);
+      if (!scope) fail('FORBIDDEN_ROLE',403);
+    }
     if (req.body.__v !== lab!.__v) fail("STALE_STATE", 409);
     let status: LabOrder["status"];
     let code: string;

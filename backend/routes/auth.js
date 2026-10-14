@@ -29,7 +29,7 @@ function authErr(req, res, status, code, message, extra = {}) {
   });
 }
 
-const LOGIN_MAX_ATTEMPTS = process.env.NODE_ENV === 'development' ? 100 : 10;
+const LOGIN_MAX_ATTEMPTS = Number(process.env.LOGIN_MAX_ATTEMPTS) || (process.env.NODE_ENV === 'development' ? 100 : 10);
 const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const REFRESH_TOKEN_TTL_DAYS = 30;
 const ACCESS_TOKEN_TTL = '15m';
@@ -39,6 +39,9 @@ const SSE_TOKEN_TTL = '60s';
 const PASSWORD_MIN_LENGTH = 12;
 const PASSWORD_MAX_LENGTH = 72;
 const BCRYPT_COST = 10;
+// Public, non-credential hash used only to keep unknown-user failures on the
+// same expensive verification path as real accounts and reduce timing leaks.
+const DUMMY_PASSWORD_HASH = '$2b$10$tlUNjzFQ3A/Ccgi.uY3BXuvZlfFPta2X5FsITRV/XKDLrBqi4nhlW';
 
 function requestIp(req) {
   // Express resolves the configured trusted proxy hop. Never trust the client-
@@ -296,6 +299,7 @@ async function handleLogin(req, res, next, accountType, endpoint) {
 
         await recordFailedPassword({ req, userRow: alternateUser, username, ipKey });
       } else {
+        await bcrypt.compare(typeof password === 'string' ? password : '', DUMMY_PASSWORD_HASH);
         await recordUnknownLogin({ req, username });
       }
 
@@ -515,6 +519,7 @@ router.post('/refresh', async (req, res, next) => {
 
     res.json({
       access_token: newAccessToken,
+      userId: tokenRow.user_id,
       token_type: 'bearer',
       role: tokenRow.role.toLowerCase(),
       account_type: storedAccountType.toLowerCase(),

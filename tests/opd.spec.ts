@@ -60,7 +60,10 @@ test('nurse triage sends actual measurements to doctor queue',async({page})=>{
   await dialog.locator('[name="'+name+'"]').fill(value);
  }
  await scan(page);
- await dialog.getByRole('button',{name:'Complete triage & send to doctor',exact:true}).click();
+ await dialog.locator('[name=allergy_review_status]').selectOption('RECORDED');
+    await dialog.locator('[name=allergy_review_confirmed]').selectOption('yes');
+    await dialog.locator('[name=allergy_change_reason]').fill('Synthetic patient-confirmed allergy review');
+    await dialog.getByRole('button',{name:'Complete triage & send to doctor',exact:true}).click();
  await expect(dialog).toHaveCount(0);
  await expect(row).toContainText('Waiting for doctor');
 });
@@ -102,7 +105,7 @@ test('doctor edits and persists consultation, creates lab order, finalizes encou
  await page.getByRole('button',{name:'Issue prescription & complete',exact:true}).click();
  const confirmation=page.getByRole('dialog');
  await expect(confirmation).toBeVisible();
- await confirmation.getByRole('button',{name:'Confirm',exact:true}).click();
+ await confirmation.getByRole('button',{name:'Complete without follow-up',exact:true}).click();
  await expect(confirmation).toHaveCount(0);
  await expect(page.locator('.workspace')).toHaveCount(0);
 });

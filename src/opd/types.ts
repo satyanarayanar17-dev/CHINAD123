@@ -23,6 +23,9 @@ export interface Patient {
   preferred_language: Language;
   existing_mrn: string;
   allergies: string;
+  allergy_review_status?: 'UNKNOWN' | 'NONE_REPORTED' | 'RECORDED';
+  allergy_reviewed_at?: string | null;
+  allergy_reviewed_by?: string | null;
   __v: number;
 }
 export interface Staff {
@@ -199,6 +202,7 @@ export interface Prescription {
   id: string;
   encounter_id: string;
   rx_content: {
+    patient_snapshot?: Pick<Patient,'id'|'mrn'|'name'|'dob'|'gender'|'allergies'|'allergy_review_status'|'allergy_reviewed_at'|'allergy_reviewed_by'|'__v'>;
     medications: Medication[];
     diagnoses: Diagnosis[];
     advice: string;

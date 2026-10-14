@@ -151,6 +151,13 @@ function Login({
   const [mode, setMode] = useState<"patient" | "staff">("patient");
   const [phone, setPhone] = useState("");
   const [sent, setSent] = useState(false);
+  const [challengeId, setChallengeId] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+  useEffect(() => {
+    if (!cooldown) return;
+    const timer = window.setTimeout(() => setCooldown(cooldown - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [cooldown]);
   const [code, setCode] = useState("");
   const [developmentCode, setDevelopmentCode] = useState("");
   const [newPatient, setNewPatient] = useState(false);
@@ -178,7 +185,7 @@ function Login({
     await onLogin(token, generation);
   };
   const patientSignIn = (profile?: Record<string, string>) =>
-    void action.run(() => signIn("/auth/opd/otp/verify", { phone, code, ...(newPatient ? { profile } : {}) }));
+    void action.run(() => signIn("/auth/opd/otp/verify", { phone, code, challenge_id: challengeId || undefined, ...(newPatient ? { profile } : {}) }));
   return (
     <main className="login-page">
       <section className="login-story">
@@ -271,11 +278,14 @@ function Login({
                 onSubmit={(e) => {
                   e.preventDefault();
                   void action.run(async () => {
-                    const r = await api.post<{ development_code?: string }>(
+                    const r = await api.post<{ development_code?: string; challenge_id: string; retry_after: number }>(
                       "/auth/opd/otp/request",
                       { phone },
                     );
                     setDevelopmentCode(r.data.development_code || "");
+                    setChallengeId(r.data.challenge_id);
+                    setCooldown(r.data.retry_after);
+                    setCode('');
                     setSent(true);
                   });
                 }}
@@ -289,12 +299,15 @@ function Login({
                   onChange={(e) => {
                     setPhone(e.target.value);
                     setSent(false);
+                    setCode('');
+                    setDevelopmentCode('');
+                    setChallengeId('');
                   }}
-                  pattern="(?:\+91)?[6-9][0-9]{9}"
+                  pattern="(?:\+91|91|0)?[6-9][0-9]{9}"
                   placeholder="+91"
                 />
-                <Button disabled={action.pending}>
-                  {t("sendOtp")}
+                <Button disabled={action.pending || cooldown > 0}>
+                  {cooldown > 0 ? `${cooldown}s` : t("sendOtp")}
                   <ChevronRight size={17} />
                 </Button>
               </form>
@@ -305,7 +318,7 @@ function Login({
                 )}
               {sent && (
                 <div className="otp-panel">
-                  <p>{t("otpHint")}</p>
+                  <p>{t("otpHint")} ••••••{phone.slice(-4)}</p>
                   {developmentCode && (
                     <div className="demo-code">
                       <small>{t("demoOtp")}</small>

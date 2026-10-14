@@ -45,7 +45,9 @@ if (dbDialect === 'postgres') {
   logEvent('info', 'db_pool_connecting', { dialect: 'postgres' });
   // Parse before applying TLS policy: pg otherwise lets URL sslmode override ssl options.
   const connection = parsePostgresUrl(runtimeConfig.databaseUrl);
-  const tlsEnabled = useDatabaseSsl || Boolean(connection.ssl) ||
+  const localHost = !connection.host || ['localhost','127.0.0.1','::1'].includes(connection.host) || connection.host.startsWith('/');
+  const renderPrivateTls = runtimeConfig.databaseTlsMode === 'render_private' && runtimeConfig.isRender && /^dpg-[a-z0-9]+(?:-[a-z0-9]+)?$/.test(connection.host || '');
+  const tlsEnabled = !localHost || useDatabaseSsl || Boolean(connection.ssl) ||
     Boolean(process.env.PGSSLMODE && process.env.PGSSLMODE !== 'disable');
   pgPool = new Pool({
     ...connection,
@@ -53,8 +55,11 @@ if (dbDialect === 'postgres') {
     connectionTimeoutMillis: runtimeConfig.pgConnectTimeoutMs,
     ssl: tlsEnabled ? {
       ...(typeof connection.ssl === 'object' ? connection.ssl : {}),
-      rejectUnauthorized: true,
-      checkServerIdentity: require('node:tls').checkServerIdentity,
+      // Render documents self-signed TLS on its private network. This explicit,
+      // hostname/platform-restricted mode encrypts private transport; internet
+      // connections always retain certificate and hostname verification.
+      rejectUnauthorized: !renderPrivateTls,
+      ...(!renderPrivateTls ? {checkServerIdentity:require('node:tls').checkServerIdentity} : {}),
       ...(process.env.DATABASE_SSL_CA ? { ca: process.env.DATABASE_SSL_CA.replace(/\\n/g, '\n') } : {})
     } : false
   });

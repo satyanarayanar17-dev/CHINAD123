@@ -139,7 +139,7 @@ for(const language of ['ta','te']) {
   });
   test('patient OTP, own portal, booking and released prescription',async({page})=>{
    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/login');await switchTo(page,language);
-   await page.getByLabel(t(language,'mobile'),{exact:false}).fill(language==='ta'?'9000000006':'9000000002');
+   await page.getByLabel(t(language,'mobile'),{exact:false}).fill('9000000006');
    const response=page.waitForResponse(r=>r.url().endsWith('/otp/request'));await page.getByRole('button',{name:t(language,'sendOtp'),exact:true}).click();
    const result=await response;if(result.status()===429){await page.waitForTimeout(61000);await page.getByRole('button',{name:t(language,'sendOtp'),exact:true}).click();}
    await expect(page.locator('.demo-code strong')).toBeVisible();await screen(page,language,'patient-otp');

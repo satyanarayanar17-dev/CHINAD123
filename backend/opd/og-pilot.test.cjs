@@ -5,8 +5,8 @@ if (process.env.OPD_TEST_POSTGRES !== 'true') throw Error('Run through scripts/i
 Object.assign(process.env, {
   NODE_ENV: 'test', APP_ENV: 'restricted_web_pilot', ENABLE_LEGACY_API: 'false',
   JWT_SECRET: 'A9z!K7m#Q4v@R2x$A9z!K7m#Q4v@R2x$', CORS_ORIGIN: 'https://pilot.example.invalid',
-  COOKIE_SECURE: 'true', COOKIE_SAME_SITE: 'none', SMS_WEBHOOK_URL: 'https://sms.example.invalid/send',
-  SMS_WEBHOOK_TOKEN: 'synthetic-adapter-credential', OPD_PILOT_DEPARTMENT_PREFIX: 'OBST'
+  COOKIE_SECURE: 'true', COOKIE_SAME_SITE: 'none', OTP_DELIVERY_PROVIDER: 'webhook', SMS_WEBHOOK_URL: 'https://sms.example.invalid/send',
+  BACKUP_ENCRYPTION_KEY: 'a'.repeat(64), PERSISTENT_DATA_ROOT: '/var/data', PATIENT_DOCUMENT_STORAGE_PATH: '/var/data/patient-documents', SMS_WEBHOOK_TOKEN: 'synthetic-adapter-credential', OPD_PILOT_DEPARTMENT_PREFIX: 'OBST'
 });
 const app = require('../server');
 const db = require('../database');

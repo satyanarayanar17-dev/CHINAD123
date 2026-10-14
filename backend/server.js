@@ -67,25 +67,30 @@ if (configValidation.errors.length > 0) {
 }
 
 // ===========================================================================
-// 2. CORS — restricted in production, open in dev
+// 2. CORS — configured origins in every deployment; localhost-only fallback.
 // ===========================================================================
-app.set('trust proxy', 1);
+// Default to direct connections; configure exact trusted proxy IPs/subnets at deployment.
+app.set('trust proxy', process.env.TRUST_PROXY === '1' && runtimeConfig.isRender ? 1 : process.env.TRUST_PROXY ? process.env.TRUST_PROXY.split(',').map(v => v.trim()) : false);
 
 const allowedOrigins = runtimeConfig.corsOrigins;
 
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin || !isLockedDeployment) {
+    if (!origin) {
       callback(null, true);
       return;
     }
 
-    if (allowedOrigins.includes(origin)) {
+    const localOrigin = (() => { try { const url = new URL(origin); return ['http:','https:'].includes(url.protocol) && ['localhost','127.0.0.1','[::1]'].includes(url.hostname); } catch { return false; } })();
+    if (allowedOrigins.includes(origin) || (!isLockedDeployment && !allowedOrigins.length && localOrigin)) {
       callback(null, true);
       return;
     }
 
-    callback(new Error('Origin not allowed by CORS.'));
+    callback(Object.assign(new Error('Request origin is not allowed.'), {
+      status: 403,
+      code: 'CORS_ORIGIN_DENIED'
+    }));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -100,6 +105,14 @@ app.use(helmet({
 }));
 app.use(cors(corsOptions));
 app.use(cookieParser());
+app.use('/api/v1/auth', (req, res, next) => {
+  // Native clients have no browser Fetch Metadata. Browsers must carry an allowed Origin
+  // for cross-site cookie operations; CORS above validates that Origin before this handler.
+  if (!['GET','HEAD','OPTIONS'].includes(req.method) && req.headers['sec-fetch-site'] === 'cross-site' && !req.headers.origin) {
+    return res.status(403).json({error:{code:'CSRF_REJECTED',message:'Request origin required.'}});
+  }
+  next();
+});
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: true, limit: '50kb' }));
 
@@ -159,7 +172,6 @@ const patientDocumentsRouter = require('./routes/patient_documents');
 const patientSelfRecordsRouter = require('./routes/patient_self_records');
 
 app.use('/api/v1/auth', authRouter);
-  app.use('/api/v1/debug', require('./routes/debug'));
 app.use('/api/v1/auth/opd', require('./opd/auth.ts').authRouter);
 app.use('/api/v1/opd', require('./opd/router.ts').router);
 // Care Plan is part of the canonical v2 OPD API and must remain available when
@@ -171,6 +183,7 @@ app.use('/api/v1/opd/patient-self-records', patientSelfRecordsRouter);
 app.get('/api/v1/openapi.json', (_req, res) => res.sendFile(require('node:path').join(__dirname, 'opd/openapi.json')));
 // Legacy write paths are isolated so they cannot bypass the v2 journey state machine.
 if (process.env.ENABLE_LEGACY_API === 'true' && !isLockedDeployment) {
+app.use('/api/v1/debug', require('./routes/debug'));
 app.use('/api/v1/queue', queueRouter);
 app.use('/api/v1/notes', notesRouter);
 app.use('/api/v1/prescriptions', prescriptionsRouter);
@@ -214,7 +227,9 @@ async function assessReadiness() {
       admin_access: activeAdmins > 0 ? 'ok' : 'missing',
       pilot_department: pilotDepartments === 1 ? 'ok' : 'missing_or_ambiguous'
     };
-    bootState.ready = upToDate && activeAdmins > 0 && pilotDepartments === 1;
+    const recovery = require('./lib/pilotBackupScheduler').backupStatus();
+    bootState.checks.recovery = isLockedDeployment ? recovery : {status:'local_fixture'};
+    bootState.ready = upToDate && activeAdmins > 0 && pilotDepartments === 1 && (!isLockedDeployment || recovery.fresh);
 
     return {
       healthy: true,
@@ -266,6 +281,7 @@ app.get('/api/v1/health', async (req, res) => {
     env: runtimeConfig.nodeEnv,
     app_env: runtimeConfig.appEnv,
     db: dbDialect,
+    release: {commit:process.env.RELEASE_COMMIT || process.env.RENDER_GIT_COMMIT || 'local',node:process.version},
     db_status: readiness.db_status,
     migrations: readiness.migrations || {
       applied: 0,
@@ -303,6 +319,7 @@ app.get('/api/v1/ready', async (req, res) => {
   const payload = {
     status: readiness.status,
     ready: readiness.healthy && bootState.ready,
+    release: {commit:process.env.RELEASE_COMMIT || process.env.RENDER_GIT_COMMIT || 'local',node:process.version},
     db_status: readiness.db_status,
     migrations_up_to_date: readiness.migrations?.up_to_date || false,
     correlation_id: req.correlationId
@@ -335,9 +352,9 @@ app.use((err, req, res, next) => {
 
   const errorEnvelope = {
     error: {
-      code,
-      message: err.message || 'An unexpected error occurred.',
-      details: err.details || null
+      code: status >= 500 && !['LOGOUT_FAILED','SMS_NOT_CONFIGURED','SMS_DELIVERY_FAILED','SERVICE_UNAVAILABLE'].includes(code) ? 'INTERNAL_ERROR' : code,
+      message: status >= 500 ? 'Service temporarily unavailable.' : (err.message || 'An unexpected error occurred.'),
+      details: status >= 500 ? null : (err.details || null)
     },
     meta: {
       correlation_id: req.correlationId
@@ -368,12 +385,25 @@ if (require.main === module) {
   let httpServer;
 
   async function startServer() {
+    if (isLockedDeployment) {
+      const fs = require('node:fs/promises');
+      const path = require('node:path');
+      const root = await fs.realpath(runtimeConfig.persistentDataRoot);
+      await fs.mkdir(runtimeConfig.documentStoragePath, {recursive:true,mode:0o700});
+      const documents = await fs.realpath(runtimeConfig.documentStoragePath);
+      const relative = path.relative(root,documents);
+      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw Error('Private document storage escapes the declared persistent root.');
+      const probe = path.join(documents,'.write-probe-'+crypto.randomUUID());
+      await fs.writeFile(probe,'',{flag:'wx',mode:0o600});
+      await fs.unlink(probe);
+    }
     await migrateDatabase();
     await pingDatabase();
     await ensureBootstrapAdmin({ get, run });
 
     if (isLockedDeployment) {
       await ensureAdminAccessProvisioned({ get });
+      await require('./lib/pilotBackupScheduler').startPilotBackups(runtimeConfig,require('./database').pgPool);
     }
 
     require('./opd/notifications.ts').startNotificationWorker();

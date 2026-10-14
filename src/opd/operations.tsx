@@ -25,6 +25,7 @@ import {
   Button,
   Field,
   Select,
+  Textarea,
   Status,
   Modal,
   Alert,
@@ -37,6 +38,7 @@ import { Triage } from "./workspace";
 import { CarePlanSummary } from "./carePlan";
 import type {
   Session,
+  Doctor,
   Appointment,
   Patient,
   QueueEntry,
@@ -454,7 +456,7 @@ export function AppointmentsPage(props: PageProps) {
                     </td>
                     <td>
                       <div className="row-actions">
-                        {a.status === "PENDING_CONFIRMATION" && ["DOCTOR", "NURSE"].includes(session.role) && (
+                        {a.status === "PENDING_CONFIRMATION" && ["ADMIN", "DOCTOR"].includes(session.role) && (
                           <Button disabled={action.pending} onClick={() => void action.run(() => post(`/appointments/${a.id}/confirm`, {__v: a.__v}))}>
                             Confirm
                           </Button>
@@ -773,6 +775,7 @@ export function QueueTable({
 }: PageProps & { entries: QueueEntry[] }) {
   const { t } = useI18n();
   const action = useAction();
+  const [reassign, setReassign] = useState<QueueEntry | null>(null);
   const [triage, setTriage] = useState<QueueEntry | null>(null);
   const [patientJourney, setPatientJourney] = useState<string | null>(null);
   const journey = useQuery({
@@ -792,6 +795,7 @@ export function QueueTable({
   return (
     <>
       <Alert code={action.error} />
+      {reassign && <ReassignVisitDialog entry={reassign} onClose={() => setReassign(null)} />}
       {entries.length ? (
         <div className="table-scroll" tabIndex={0}>
           <table>
@@ -824,6 +828,7 @@ export function QueueTable({
                   </td>
                   <td>
                     <b>{e.doctor_name}</b>
+                    {session.role === "ADMIN" && ["WAITING","WAITING_DOCTOR","DOCTOR_READY"].includes(e.status) && <Button variant="ghost" onClick={() => setReassign(e)}>{t("reassignVisit")}</Button>}
                     <small>
                       {e.department_name} · {t("room")} {e.room}
                     </small>
@@ -1038,7 +1043,7 @@ export function LaboratoryPage({ session }: PageProps) {
           {q.data
             .filter((l) => !filter || filter === l.status)
             .map((l) => (
-              <div key={l.id}>
+              <div key={l.id} className="lab-card">
                 {session.role !== "PATIENT" && (
                   <p className="lab-patient">{l.patient_name}</p>
                 )}
@@ -1134,7 +1139,7 @@ function ResultForm({
           unit: order.result?.unit || order.unit,
           reference_range:
             order.result?.reference_range || order.reference_range,
-          flag: order.result?.flag || "NORMAL",
+          flag: order.result?.flag || "",
         }}
         fields={[
           { name: "value", label: "resultValue", required: true },
@@ -1188,4 +1193,14 @@ function ResultForm({
       </DataForm>
     </Modal>
   );
+}
+
+function ReassignVisitDialog({entry,onClose}:{entry:QueueEntry;onClose:()=>void}) {
+  const {t}=useI18n();const action=useAction();const [doctor,setDoctor]=useState("");const [reason,setReason]=useState("");
+  const directory=useQuery({queryKey:["opd","directory"],queryFn:()=>get<{doctors:Doctor[]}>("/directory")});
+  return <Modal title="reassignVisit" onClose={onClose}><form className="form-stack" onSubmit={event=>{event.preventDefault();void action.run(()=>post(`/encounters/${entry.encounter_id}/reassign`,{doctor_id:doctor,__v:entry.__v,reason}),onClose);}}>
+    <p>{entry.patient_name} · {t("mrn")} {entry.mrn} · {entry.token}</p><p>{t("reassignHint")}</p>
+    <Select label="receivingDoctor" required value={doctor} onChange={event=>setDoctor(event.target.value)}><option value="">{t("selectDoctor")}</option>{directory.data?.doctors.filter(d=>d.department===entry.department_name&&d.id!==entry.doctor_id).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</Select>
+    <Textarea label="handoverReason" required maxLength={1000} value={reason} onChange={event=>setReason(event.target.value)} /><Alert code={action.error}/><div className="form-actions"><Button type="button" variant="secondary" onClick={onClose}>{t("cancel")}</Button><Button disabled={action.pending||!doctor||!reason.trim()}>{t("confirmTransfer")}</Button></div>
+  </form></Modal>;
 }

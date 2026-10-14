@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
+import { randomUUID, randomInt, timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
@@ -9,48 +9,56 @@ import type { Patient, Staff } from '../../src/opd/types.ts';
 const require = createRequire(import.meta.url);
 const { JWT_SECRET, requireAuth, createSessionCredentials } = require('../middleware/auth');
 const { getRefreshCookieOptions, REFRESH_COOKIE_NAME } = require('../cookies');
-const { createRateLimiter } = require('../middleware/rateLimit');
-const { runtimeConfig } = require('../config');
-const locked = runtimeConfig.isPilot || runtimeConfig.isProduction; // Note: isStaging is checked in config.js
-export const demoOtp = runtimeConfig.opdDemoOtp;
-const hash = (mobile: string, code: string) => createHmac('sha256', JWT_SECRET).update(`${mobile}:${code}`).digest('hex');
+import { demoOtp, otpHash, otpSettings, otpProvider, otpDeliveryConfigured, otpRateLimit, authLog } from './otp.ts';
+export { demoOtp, sendSms } from './otp.ts';
 const ttl = () => new Date(Date.now() + 30 * 86400000).toISOString();
-type Otp = { hash: string; expires_at: string; sent_at: string; consumed: number; attempts: number };
+type Otp = { hash: string; challenge_id: string; purpose: string; delivered: number; expires_at: string; sent_at: string; consumed: number; attempts: number };
 export const authRouter = Router();
-
-// A production adapter receives phone, template and variables over authenticated HTTPS.
-// The adapter is responsible for the hospital's approved SMS templates and delivery receipts.
-export async function sendSms(mobile: string, template: string, variables: Record<string, string>) {
-  const url = process.env.SMS_WEBHOOK_URL;
-  if (!url || !url.startsWith('https://') || !process.env.SMS_WEBHOOK_TOKEN) fail('SMS_NOT_CONFIGURED', 503);
-  const response = await fetch(url!, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.SMS_WEBHOOK_TOKEN}` }, body: JSON.stringify({ phone: mobile, template, variables }), signal: AbortSignal.timeout(10000) });
-  if (!response.ok) fail('SMS_DELIVERY_FAILED', 503);
-}
-authRouter.get('/config', endpoint(async (_req, res) => res.json({ demo_otp: demoOtp, sms_available: Boolean(process.env.SMS_WEBHOOK_URL && process.env.SMS_WEBHOOK_TOKEN) })));
-authRouter.post('/otp/request', createRateLimiter({ max: 8, windowMs: 900000, keyFn: (req: Req) => [`opd-otp-ip:${req.ip}`, `opd-otp-phone:${String(req.body.phone).replace(/\D/g,'').slice(-10)}`] }), endpoint(async (req, res) => {
+const purpose = (value: unknown) => { if (value !== undefined && value !== 'PATIENT_LOGIN') fail('OTP_INVALID',401); };
+authRouter.get('/config', endpoint(async (_req, res) => res.json({ demo_otp: demoOtp, sms_available: otpDeliveryConfigured })));
+authRouter.post('/otp/request', endpoint(async (req, res) => {
   const mobile = parse(phone, req.body.phone);
-  if (!demoOtp && (!process.env.SMS_WEBHOOK_URL || !process.env.SMS_WEBHOOK_TOKEN)) fail('SMS_NOT_CONFIGURED', 503);
-  const code = String(randomInt(100000, 1000000));
+  purpose(req.body.purpose);
+  await otpRateLimit(mobile, req.ip || 'unknown');
+  const code = String(randomInt(100000,1000000));
+  const challengeId = randomUUID();
   await transaction(async tx => {
-    const existing = await tx.get<Otp>('SELECT * FROM patient_otps WHERE phone=?', [mobile]);
-    if (existing && Date.now() - new Date(existing.sent_at).getTime() < 60000) fail('OTP_WAIT', 429);
-    await tx.run('INSERT INTO patient_otps (phone,hash,expires_at,sent_at,attempts,consumed) VALUES (?,?,?,?,0,0) ON CONFLICT(phone) DO UPDATE SET hash=excluded.hash,expires_at=excluded.expires_at,sent_at=excluded.sent_at,attempts=0,consumed=0', [mobile, hash(mobile,code), new Date(Date.now()+300000).toISOString(), now()]);
-    await audit(tx, req, 'OTP_REQUESTED', null, { delivery: demoOtp ? 'DEVELOPMENT' : 'SMS' });
+    // Create a stable row before locking, including the first concurrent request.
+    await tx.run("INSERT INTO patient_otps (phone,hash,expires_at,sent_at,consumed) VALUES (?,'','1970-01-01','1970-01-01',1) ON CONFLICT(phone) DO NOTHING",[mobile]);
+    const existing = await tx.get<Otp>(`SELECT * FROM patient_otps WHERE phone=?${tx.dialect === 'postgres' ? ' FOR UPDATE' : ''}`,[mobile]);
+    if (Date.now()-new Date(existing!.sent_at).getTime() < otpSettings.cooldown*1000) fail('OTP_WAIT',429);
+    await tx.run("UPDATE patient_otps SET hash=?,challenge_id=?,purpose='PATIENT_LOGIN',delivered=0,expires_at=?,sent_at=?,attempts=0,consumed=0 WHERE phone=?",[otpHash(mobile,challengeId,code),challengeId,new Date(Date.now()+otpSettings.ttl*1000).toISOString(),now(),mobile]);
+    await audit(tx,req,'OTP_REQUESTED',null,{delivery:demoOtp?'DEVELOPMENT':'SMS'});
   });
-  if (!demoOtp) {
-    try { await sendSms(mobile, 'PATIENT_LOGIN_OTP', { code, expires_minutes: '5' }); }
-    catch (error) { await db.run('UPDATE patient_otps SET consumed=1 WHERE phone=? AND hash=?', [mobile,hash(mobile,code)]); throw error; }
+  authLog('OTP_REQUESTED',mobile);
+  try {
+    await otpProvider.sendOtp({phoneNumber:mobile,otp:code,purpose:'PATIENT_LOGIN',challengeId});
+    await transaction(async tx => {
+      await tx.run('UPDATE patient_otps SET delivered=1 WHERE phone=? AND challenge_id=?',[mobile,challengeId]);
+      await audit(tx,req,'OTP_SENT',null,{});
+    });
+  } catch {
+    await transaction(async tx => {
+      await tx.run('UPDATE patient_otps SET consumed=1 WHERE phone=? AND challenge_id=?',[mobile,challengeId]);
+      await audit(tx,req,'OTP_DELIVERY_FAILED',null,{},'denied');
+    });
+    authLog('OTP_DELIVERY_FAILED',mobile);
+    fail('SMS_DELIVERY_FAILED',503);
   }
-  res.json({ sent: true, expires_in: 300, ...(demoOtp ? { development_code: code } : {}) });
+  authLog('OTP_SENT',mobile);
+  res.json({sent:true,expires_in:otpSettings.ttl,retry_after:otpSettings.cooldown,challenge_id:challengeId,...(demoOtp?{development_code:code}:{})});
 }));
-authRouter.post('/otp/verify', createRateLimiter({ max: 20, windowMs: 900000, keyFn: (req: Req) => `opd-verify:${req.ip}` }), endpoint(async (req, res) => {
+authRouter.post('/otp/verify', endpoint(async (req, res) => {
   const mobile = parse(phone, req.body.phone);
+  purpose(req.body.purpose);
+  await otpRateLimit(mobile,req.ip || 'unknown',true);
   const code = parse(z.string().regex(/^\d{6}$/), req.body.code);
+  if (!demoOtp && (typeof req.body.challenge_id !== 'string' || !req.body.challenge_id)) fail('OTP_INVALID',401);
   // Invalid attempts must commit, rather than being rolled back with the response error.
   const result = await transaction(async tx => {
     const otp = await tx.get<Otp>(`SELECT * FROM patient_otps WHERE phone=?${tx.dialect === 'postgres' ? ' FOR UPDATE' : ''}`, [mobile]);
-    if (!otp || otp.consumed || otp.attempts >= 5 || new Date(otp.expires_at).getTime() <= Date.now()) return { error: 'OTP_INVALID' };
-    const correct = timingSafeEqual(Buffer.from(otp.hash, 'hex'), Buffer.from(hash(mobile, code), 'hex'));
+    if (!otp || otp.consumed || !otp.delivered || otp.purpose !== 'PATIENT_LOGIN' || (req.body.challenge_id !== undefined && req.body.challenge_id !== otp.challenge_id) || otp.attempts >= otpSettings.attempts || new Date(otp.expires_at).getTime() <= Date.now()) return { error: 'OTP_INVALID' };
+    const correct = timingSafeEqual(Buffer.from(otp.hash, 'hex'), Buffer.from(otpHash(mobile, otp.challenge_id, code), 'hex'));
     if (!correct) {
       await tx.run('UPDATE patient_otps SET attempts=attempts+1 WHERE phone=?', [mobile]);
       await audit(tx, req, 'OTP_REJECTED', null, {}, 'denied');
@@ -73,11 +81,17 @@ authRouter.post('/otp/verify', createRateLimiter({ max: 20, windowMs: 900000, ke
     if (isNewPatient) await event(tx, req, patient.id, 'PATIENT_REGISTERED', { mrn: patient.mrn });
     const credentials = createSessionCredentials();
     await tx.run("INSERT INTO refresh_tokens (id,session_key,user_id,expires_at,revoked,account_type,device_name,created_at) VALUES (?,?,?,?,0,'PATIENT',?,?)", [credentials.tokenHash, credentials.sessionKey, user.id, ttl(), (req.headers['user-agent'] || '').slice(0,200), now()]);
-    await tx.run('UPDATE patient_otps SET consumed=1 WHERE phone=?', [mobile]);
+    const consumed = await tx.run('UPDATE patient_otps SET consumed=1 WHERE phone=? AND challenge_id=? AND consumed=0', [mobile,otp.challenge_id]);
+    if (!consumed.changes) fail('OTP_INVALID',401);
+    await tx.run('UPDATE patients SET phone_verified_at=? WHERE id=?',[now(),patient.id]);
     await audit(tx, req, 'PATIENT_OTP_LOGIN', patient.id);
     return { user, credentials };
   });
-  if (result.error) fail(result.error, result.error === 'PROFILE_REQUIRED' ? 422 : 401);
+  if (result.error) {
+    authLog('OTP_VERIFY_FAILURE',mobile);
+    fail(result.error, result.error === 'PROFILE_REQUIRED' ? 422 : 401);
+  }
+  authLog('OTP_VERIFY_SUCCESS',mobile);
   const accessToken = jwt.sign({ id: result.user!.id, role: 'PATIENT', account_type: 'PATIENT', sid: result.credentials!.sessionKey, session_iat_ms: Date.now() }, JWT_SECRET, { expiresIn: '15m' });
   res.cookie(REFRESH_COOKIE_NAME, result.credentials!.secret, getRefreshCookieOptions());
   res.json({ access_token: accessToken, role: 'patient', account_type: 'patient', userId: result.user!.id, name: result.user!.name, must_change_password: false });

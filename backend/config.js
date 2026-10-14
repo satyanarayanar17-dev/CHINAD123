@@ -17,6 +17,7 @@ const SAFE_LOCAL_ONLY_DEFAULTS = {
   PG_CONNECT_TIMEOUT_MS: '10000',
   COOKIE_SAME_SITE: 'lax',
   COOKIE_SECURE: 'false',
+  OTP_DELIVERY_PROVIDER: '',
   ACTIVATION_OTP_DELIVERY: 'api_response',
   PILOT_AUTH_BYPASS: 'false',
   ALLOW_SEED_RESET: 'false',
@@ -116,6 +117,11 @@ const ENVIRONMENT_RULES = [
     description: 'Return development OTPs locally. Must be false for restricted and production deployments.'
   },
   {
+    name: 'OTP_DELIVERY_PROVIDER',
+    requiredInPilot: true,
+    description: 'Explicit patient OTP transport: development, webhook, or msg91.'
+  },
+  {
     name: 'SMS_WEBHOOK_URL',
     requiredInPilot: true,
     description: 'Authenticated HTTPS SMS adapter endpoint used by v2 patient OTP and notification delivery.'
@@ -124,6 +130,18 @@ const ENVIRONMENT_RULES = [
     name: 'SMS_WEBHOOK_TOKEN',
     requiredInPilot: true,
     description: 'SMS adapter bearer credential. Supply through the deployment secret store.'
+  },
+  {
+    name: 'MSG91_AUTH_KEY',
+    description: 'MSG91 server-side authentication key. Supply through the deployment secret store.'
+  },
+  {
+    name: 'MSG91_TEMPLATE_ID',
+    description: 'MSG91 Flow SMS template ID mapped to the approved DLT content template.'
+  },
+  {
+    name: 'MSG91_OTP_VARIABLE',
+    description: 'Case-sensitive MSG91 Flow variable name that receives the Chettinad-generated OTP.'
   },
   {
     name: 'ENABLE_LEGACY_API',
@@ -175,6 +193,7 @@ const ENVIRONMENT_RULES = [
 
 const ALLOWED_DB_DIALECTS = new Set(['sqlite', 'postgres']);
 const ALLOWED_ACTIVATION_DELIVERY_MODES = new Set(['console', 'api_response']);
+const ALLOWED_OTP_DELIVERY_PROVIDERS = new Set(['development', 'webhook', 'msg91']);
 
 function readString(value, fallback = '') {
   return typeof value === 'string' ? value.trim() : fallback;
@@ -251,6 +270,10 @@ function loadRuntimeConfig(env = process.env) {
   const cookieSameSite = readString(env.COOKIE_SAME_SITE, locked ? 'none' : SAFE_LOCAL_ONLY_DEFAULTS.COOKIE_SAME_SITE).toLowerCase();
   // Mirror cookies.js: locked deployments and SameSite=None default to Secure.
   const cookieSecure = readString(env.COOKIE_SECURE, locked || cookieSameSite === 'none' ? 'true' : SAFE_LOCAL_ONLY_DEFAULTS.COOKIE_SECURE);
+  const opdDemoOtp = readBoolean(env.OPD_DEMO_OTP, false);
+  // OPD_DEMO_OTP is retained as the explicit legacy local switch. It selects only
+  // the development provider when no provider was named; named providers never fall back.
+  const otpDeliveryProvider = readString(env.OTP_DELIVERY_PROVIDER, opdDemoOtp ? 'development' : '').toLowerCase();
 
   return {
     nodeEnv,
@@ -265,6 +288,8 @@ function loadRuntimeConfig(env = process.env) {
     sqliteAbsolutePath: path.resolve(__dirname, readString(env.SQLITE_PATH, SAFE_LOCAL_ONLY_DEFAULTS.SQLITE_PATH)),
     databaseUrl: readString(env.DATABASE_URL),
     databaseSsl: readBoolean(env.DATABASE_SSL, false),
+    databaseTlsMode: readString(env.DATABASE_TLS_MODE, 'verify'),
+    isRender: readBoolean(env.RENDER, false),
     pgPoolMax: readInteger(env.PGPOOL_MAX, Number(SAFE_LOCAL_ONLY_DEFAULTS.PGPOOL_MAX)),
     pgConnectTimeoutMs: readInteger(env.PG_CONNECT_TIMEOUT_MS, Number(SAFE_LOCAL_ONLY_DEFAULTS.PG_CONNECT_TIMEOUT_MS)),
     jwtSecret,
@@ -273,10 +298,19 @@ function loadRuntimeConfig(env = process.env) {
     cookieSecure,
     cookieDomain: readString(env.COOKIE_DOMAIN),
     activationOtpDelivery: activationDelivery,
-    opdDemoOtp: readBoolean(env.OPD_DEMO_OTP, false),
+    opdDemoOtp,
+    otpDeliveryProvider,
     smsWebhookUrl: readString(env.SMS_WEBHOOK_URL),
     smsWebhookToken: readString(env.SMS_WEBHOOK_TOKEN),
+    msg91AuthKey: readString(env.MSG91_AUTH_KEY),
+    msg91TemplateId: readString(env.MSG91_TEMPLATE_ID),
+    msg91OtpVariable: readString(env.MSG91_OTP_VARIABLE),
     enableLegacyApi: readBoolean(env.ENABLE_LEGACY_API, false),
+    clinicalRulesApproved: readBoolean(env.CLINICAL_RULES_APPROVED, false),
+    clinicalProtocolVersion: readString(env.CLINICAL_PROTOCOL_VERSION),
+    backupEncryptionKey: readString(env.BACKUP_ENCRYPTION_KEY),
+    persistentDataRoot: readString(env.PERSISTENT_DATA_ROOT),
+    documentStoragePath: readString(env.PATIENT_DOCUMENT_STORAGE_PATH),
     bootstrapAdmin: {
       id: readString(env.BOOTSTRAP_ADMIN_ID),
       name: readString(env.BOOTSTRAP_ADMIN_NAME),
@@ -285,7 +319,7 @@ function loadRuntimeConfig(env = process.env) {
     pilotAuthBypass: readBoolean(env.PILOT_AUTH_BYPASS, false),
     allowSeedReset: readBoolean(env.ALLOW_SEED_RESET, false),
     pilotDepartmentPrefix: readString(env.OPD_PILOT_DEPARTMENT_PREFIX, 'OBST'),
-    ogPilotOnly: readBoolean(env.OPD_OG_PILOT_ONLY, true)
+    ogPilotOnly: readBoolean(env.OPD_OG_PILOT_ONLY, appEnv === APP_ENVS.PILOT)
   };
 }
 
@@ -293,13 +327,60 @@ function validateRuntimeConfig(config) {
   const errors = [];
   const warnings = [];
 
+  if (config.clinicalRulesApproved && !/^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$/.test(config.clinicalProtocolVersion)) {
+    errors.push('CLINICAL_PROTOCOL_VERSION is required before enabling hospital-approved clinical rules.');
+  }
+
   if (!ALLOWED_DB_DIALECTS.has(config.dbDialect)) {
     errors.push(`DB_DIALECT must be one of: ${Array.from(ALLOWED_DB_DIALECTS).join(', ')}`);
   }
 
   const isLocked = config.isPilot || config.isProduction || config.isStaging;
 
+  if (config.otpDeliveryProvider && !ALLOWED_OTP_DELIVERY_PROVIDERS.has(config.otpDeliveryProvider)) {
+    errors.push(`OTP_DELIVERY_PROVIDER must be one of: ${Array.from(ALLOWED_OTP_DELIVERY_PROVIDERS).join(', ')}`);
+  }
+  if (config.opdDemoOtp && config.otpDeliveryProvider !== 'development') {
+    errors.push('OPD_DEMO_OTP=true requires OTP_DELIVERY_PROVIDER=development; external providers never fall back to demo OTP.');
+  }
+  if (config.otpDeliveryProvider === 'development' && !config.opdDemoOtp) {
+    errors.push('OTP_DELIVERY_PROVIDER=development requires OPD_DEMO_OTP=true.');
+  }
+  if ((config.isProduction || config.isPilot) && config.otpDeliveryProvider === 'development') {
+    errors.push('OTP_DELIVERY_PROVIDER=development is forbidden for restricted and production deployments.');
+  }
+
+  if (config.otpDeliveryProvider === 'webhook') {
+    if (!isValidSmsUrl(config.smsWebhookUrl)) {
+      errors.push('SMS_WEBHOOK_URL must be an HTTPS endpoint without embedded credentials when OTP_DELIVERY_PROVIDER=webhook.');
+    }
+    if (!config.smsWebhookToken) {
+      errors.push('SMS_WEBHOOK_TOKEN is required when OTP_DELIVERY_PROVIDER=webhook.');
+    }
+  }
+
+  if (config.otpDeliveryProvider === 'msg91') {
+    if (!config.msg91AuthKey) errors.push('MSG91_AUTH_KEY is required when OTP_DELIVERY_PROVIDER=msg91.');
+    if (!config.msg91TemplateId) errors.push('MSG91_TEMPLATE_ID is required when OTP_DELIVERY_PROVIDER=msg91.');
+    if (!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(config.msg91OtpVariable)) {
+      errors.push('MSG91_OTP_VARIABLE must be the exact case-sensitive MSG91 Flow variable name when OTP_DELIVERY_PROVIDER=msg91.');
+    }
+    if (['mobiles', 'template_id'].includes(config.msg91OtpVariable.toLowerCase())) {
+      errors.push('MSG91_OTP_VARIABLE conflicts with an MSG91 request field.');
+    }
+  }
+
   if (isLocked) {
+    if(!/^[a-f0-9]{64}$/i.test(config.backupEncryptionKey)) errors.push('BACKUP_ENCRYPTION_KEY must be a separately stored 32-byte hexadecimal encryption key for locked deployments.');
+    const root = config.persistentDataRoot;
+    const documents = config.documentStoragePath;
+    if (!root || !path.isAbsolute(root) || root === '/' || /^\/(tmp|var\/tmp|private\/tmp)(\/|$)/.test(root)) {
+      errors.push('PERSISTENT_DATA_ROOT must name an absolute durable mounted directory outside temporary storage.');
+    }
+    const relative = root && documents ? path.relative(root, documents) : '..';
+    if (!documents || !path.isAbsolute(documents) || !relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+      errors.push('PATIENT_DOCUMENT_STORAGE_PATH must be a private directory inside PERSISTENT_DATA_ROOT.');
+    }
     if (config.dbDialect !== 'postgres') {
       errors.push('DB_DIALECT must be postgres for v2 restricted, staging, and production deployments.');
     }
@@ -316,7 +397,7 @@ function validateRuntimeConfig(config) {
       errors.push('CORS_ORIGIN must be set explicitly for locked deployments.');
     }
     // Staging allows OPD_DEMO_OTP for synthetic testing; pilot/prod do not.
-    if (config.opdDemoOtp && !config.isStaging) {
+    if (config.opdDemoOtp && (config.isProduction || config.isPilot)) {
       errors.push('OPD_DEMO_OTP must be false for restricted and production deployments.');
     }
     if (config.enableLegacyApi) {
@@ -334,14 +415,10 @@ function validateRuntimeConfig(config) {
     if (config.corsOrigins.some(origin => !isValidCorsOrigin(origin) || !origin.startsWith('https://'))) {
       errors.push('CORS_ORIGIN must contain only explicit HTTPS origins for locked deployments.');
     }
-    // Staging allows SMS to be optional so testers aren't blocked by needing a real provider.
-    if (!config.isStaging) {
-      if (!isValidSmsUrl(config.smsWebhookUrl)) {
-        errors.push('SMS_WEBHOOK_URL must be an HTTPS endpoint without embedded credentials for v2 patient OTP delivery.');
-      }
-      if (!config.smsWebhookToken) {
-        errors.push('SMS_WEBHOOK_TOKEN is required for v2 patient OTP delivery.');
-      }
+    // Staging may intentionally select the development provider. Production and
+    // the restricted pilot must explicitly select a configured external provider.
+    if (!config.opdDemoOtp && !config.otpDeliveryProvider) {
+      errors.push('OTP_DELIVERY_PROVIDER must explicitly select webhook or msg91 for deployed patient OTP delivery.');
     }
   } else if (!config.jwtSecret) {
     warnings.push('JWT_SECRET is not set. Local dev will fall back to an insecure default. Never use that outside local_dev.');
@@ -355,6 +432,11 @@ function validateRuntimeConfig(config) {
     }
   }
 
+  if (!['verify','render_private'].includes(config.databaseTlsMode)) errors.push('DATABASE_TLS_MODE must be verify or render_private.');
+  if(config.databaseTlsMode==='render_private') {
+    let internal=false;try { internal=/^dpg-[a-z0-9]+(?:-[a-z0-9]+)?$/.test(new URL(config.databaseUrl).hostname); }catch{}
+    if(!config.isRender || !internal || !config.databaseSsl) errors.push('render_private TLS is restricted to Render service execution and a dotless internal dpg hostname with DATABASE_SSL=true.');
+  }
   if (config.dbDialect === 'postgres' && !config.databaseUrl) {
     errors.push('DATABASE_URL is required when DB_DIALECT=postgres.');
   }
@@ -393,7 +475,14 @@ function describeRuntimeConfig(config) {
     activation_otp_delivery: config.enableLegacyApi && !config.isPilot && !config.isProduction ? config.activationOtpDelivery : null,
     cookie_secure: config.cookieSecure === 'true',
     opd_demo_otp: config.opdDemoOtp,
-    sms_adapter_configured: Boolean(isValidSmsUrl(config.smsWebhookUrl) && config.smsWebhookToken),
+    otp_delivery_provider: config.otpDeliveryProvider || null,
+    sms_adapter_configured: config.otpDeliveryProvider === 'development'
+      ? config.opdDemoOtp && !config.isProduction && !config.isPilot
+      : config.otpDeliveryProvider === 'webhook'
+        ? Boolean(isValidSmsUrl(config.smsWebhookUrl) && config.smsWebhookToken)
+        : config.otpDeliveryProvider === 'msg91'
+          ? Boolean(config.msg91AuthKey && config.msg91TemplateId && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(config.msg91OtpVariable))
+          : false,
     legacy_api_enabled: config.enableLegacyApi,
     pilot_department_prefix: config.pilotDepartmentPrefix,
     og_pilot_only: config.ogPilotOnly,

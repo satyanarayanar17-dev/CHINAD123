@@ -24,7 +24,13 @@
     "test:og-pilot": "node scripts/isolated-postgres.cjs node opd/og-pilot.test.cjs",
     "demo:seed": "node opd/demo.cjs",
     "test:config": "node --test config.test.cjs",
-    "test:auth-session": "node --test opd/auth-session.test.cjs"
+    "test:auth-session": "node --test opd/auth-session.test.cjs cors.test.cjs",
+    "test:otp": "node --test opd/otp.test.cjs opd/otp-production.test.cjs opd/msg91-otp.test.cjs",
+    "test:pilot-safety": "node --test opd/pilot-safety.test.cjs cors-local.test.cjs",
+    "test:recovery": "node --test scripts/pilot-backup.test.cjs",
+    "backup:pilot": "node scripts/pilot-backup.cjs",
+    "test:locked-startup": "node scripts/isolated-postgres.cjs node --test scripts/locked-startup.test.cjs",
+    "test:demo-fixture": "node --test scripts/demo-fixture.test.cjs"
   },
   "keywords": [],
   "author": "",

@@ -110,17 +110,18 @@ async function run(){
  const encounterId=checked.encounter_id;
  let q=(await api(nurse,'get','/queue')).find(e=>e.encounter_id===encounterId);
  assert.equal((await api(patient,'get','/queue')).length,1);assert.equal((await api(otherNurse,'get','/queue')).length,0);
- await api(otherNurse,'post','/encounters/'+encounterId+'/start-triage',{__v:q.__v},404);
+ await api(otherNurse,'post','/encounters/'+encounterId+'/start-triage',{__v:q.__v},403);
  // fast-tracking is now allowed, so skipping the 409 check
  await api(nurse,'post','/encounters/'+encounterId+'/start-triage',{__v:q.__v});
  q=(await api(nurse,'get','/queue')).find(e=>e.encounter_id===encounterId);
  const triage={temperature:36.8,systolic:120,diastolic:80,pulse:76,spo2:98,weight:62,height:164,complaint:'Synthetic complaint',allergies:'Synthetic penicillin allergy',pain:2,notes:'Synthetic intake notes',priority:0};
  await api(nurse,'post','/encounters/'+encounterId+'/triage',{__v:q.__v,data:{...triage,spo2:101}},422);
- await api(nurse,'post','/encounters/'+encounterId+'/triage',{__v:q.__v,data:triage});
+ const allergyPatient=await api(nurse,'get','/patients/'+own.id+'/record');
+ await api(nurse,'post','/encounters/'+encounterId+'/triage',{__v:q.__v,data:{...triage,allergy_review_status:'RECORDED'},patient__v:allergyPatient.patient.__v,allergy_review_confirmed:true,allergy_change_reason:'Synthetic reviewed intake'});
  await api(nurse,'post','/encounters/'+encounterId+'/triage',{__v:q.__v,data:triage},409);
  q=(await api(doctor,'get','/queue')).find(e=>e.encounter_id===encounterId);assert.equal(q.status,'WAITING_DOCTOR');
  const record=await api(doctor,'get','/patients/'+own.id+'/record');assert.equal(record.triage[0].data.bmi,23.1);assert.equal(record.patient.allergies,triage.allergies);
- await api(otherDoctor,'get','/patients/'+own.id+'/record',undefined,404);await api(admin,'get','/patients/'+own.id+'/record',undefined,403);
+ await api(otherDoctor,'get','/patients/'+own.id+'/record',undefined,403);await api(admin,'get','/patients/'+own.id+'/record',undefined,403);
  pass('Identity-verified check-in, unique token, assigned triage, vital validation and doctor handoff');
  await api(doctor,'post','/encounters/'+encounterId+'/call',{__v:q.__v});
  q=(await api(doctor,'get','/queue')).find(e=>e.encounter_id===encounterId);

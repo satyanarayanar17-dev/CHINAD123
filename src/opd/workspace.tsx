@@ -102,6 +102,9 @@ export function Triage({
     },
     { name: "complaint", type: "textarea", required: true },
     { name: "allergies", type: "textarea" },
+    { name: 'allergy_review_status', required: true, options: ['UNKNOWN','NONE_REPORTED','RECORDED'].map(value => ({value,label:`allergy_${value}`})) },
+    { name: 'allergy_review_confirmed', required: true, options: [{value:'no',label:'notReviewed'},{value:'yes',label:'allergyReviewConfirmed'}] },
+    { name: 'allergy_change_reason', type: 'textarea' },
     { name: "notes", type: "textarea" },
     ...(previous
       ? [{ name: "amendReason", required: true, type: "textarea" }]
@@ -121,11 +124,8 @@ export function Triage({
           <p className="muted">{t("triageSub")}</p>
           <DataForm
             fields={fields}
-            initial={
-              previous
-                ? { ...previous.data }
-                : { priority: 0, allergies: q.data.patient.allergies }
-            }
+            initial={{ ...(previous ? previous.data : {priority:0,allergies:q.data.patient.allergies}),
+              allergy_review_status:q.data.patient.allergy_review_status || 'UNKNOWN',allergy_review_confirmed:'no',patient__v:q.data.patient.__v }}
             pending={action.pending}
             error={action.error}
             submit="sendDoctor"
@@ -150,6 +150,9 @@ export function Triage({
                     __v: entry.__v,
                     data,
                     reason: v.amendReason,
+                    patient__v: Number(v.patient__v),
+                    allergy_review_confirmed: v.allergy_review_confirmed === 'yes',
+                    allergy_change_reason: v.allergy_change_reason,
                   }),
                 onClose,
               );
@@ -264,14 +267,7 @@ function ConsultationForm({
   const meds = useFieldArray({ control, name: "medications" });
   const selectedDiagnoses = watch("diagnosis_ids");
   const selectedFollowUp = watch("follow_up");
-  const currentMedications = watch("medications");
   
-  const checkAllergy = (drugId: string) => {
-    if (!drugId || !record.patient.allergies) return false;
-    const drug = catalogue.drugs.find((d) => d.id === drugId);
-    return drug && record.patient.allergies.toLowerCase().includes(drug.name.toLowerCase());
-  };
-
   const complete = !!encounter?.is_discharged;
   const save = (data: ConsultationData, finalize = false) =>
     void action.run(
@@ -280,12 +276,12 @@ function ConsultationForm({
           ? post(`/encounters/${encounterId}/amend`, {
               data,
               reason: amendReason,
-              __v: version,
+              __v: version,patient__v:record.patient.__v,
             })
           : finalize
             ? post(`/encounters/${encounterId}/complete`, {
                 data,
-                __v: version,
+                __v: version,patient__v:record.patient.__v,
               })
             : api
                 .put<{ __v: number }>(
@@ -476,11 +472,6 @@ function ConsultationForm({
                             </option>
                           ))}
                         </Select>
-                        {checkAllergy(currentMedications[index]?.drug_id) && (
-                          <div className="full alert info" style={{ backgroundColor: "var(--bg-error)", color: "var(--fg-error)", marginTop: -10 }}>
-                            Warning: Patient may be allergic to this medication based on their reported allergies ({record.patient.allergies}).
-                          </div>
-                        )}
                         <Field
                           label="dose"
                           required

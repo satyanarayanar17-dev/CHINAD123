@@ -287,7 +287,7 @@
         "tags": [
           "Authentication"
         ],
-        "description": "Returns challenge_id, expiry and resend cooldown. Production never returns the OTP value.",
+        "description": "Returns challenge_id, expires_in (seconds) and retry_after (resend cooldown seconds). Production never returns the OTP value.",
         "responses": {
           "200": {
             "description": "Success",
@@ -304,6 +304,13 @@
                     },
                     "development_code": {
                       "type": "string"
+                    },
+                    "challenge_id": {
+                      "type": "string"
+                    },
+                    "retry_after": {
+                      "type": "integer",
+                      "minimum": 0
                     }
                   },
                   "required": [

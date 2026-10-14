@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Chettinad Care v2 \u2014 Connected OPD API",
+    "title": "Chettinad Care v2 — Connected OPD API",
     "version": "2.0.0",
     "description": "Implemented Connected OPD REST contract. API URL retains /api/v1 for compatibility; v2 workflows live under /opd. All /opd routes require a role-bound bearer token and active account. Patient access is limited to self, doctors to linked care, nurses to their department. Mutable resources use __v; conflicts return HTTP 409 and require refetch. Timestamps are UTC ISO 8601; schedule dates and times use Asia/Kolkata. See docs/V2_ARCHITECTURE.md for adapter and deployment requirements."
   },
@@ -287,7 +287,7 @@
         "tags": [
           "Authentication"
         ],
-        "description": "Five-minute OTP; minimum 60 seconds between requests for a phone. Rate limited by phone and IP. development_code exists only when OPD_DEMO_OTP=true in local development.",
+        "description": "Returns challenge_id, expires_in (seconds) and retry_after (resend cooldown seconds). Production never returns the OTP value.",
         "responses": {
           "200": {
             "description": "Success",
@@ -304,6 +304,13 @@
                     },
                     "development_code": {
                       "type": "string"
+                    },
+                    "challenge_id": {
+                      "type": "string"
+                    },
+                    "retry_after": {
+                      "type": "integer",
+                      "minimum": 0
                     }
                   },
                   "required": [
@@ -334,6 +341,12 @@
                 "properties": {
                   "phone": {
                     "type": "string"
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "enum": [
+                      "PATIENT_LOGIN"
+                    ]
                   }
                 },
                 "required": [
@@ -353,7 +366,7 @@
         "tags": [
           "Authentication"
         ],
-        "description": "OTP is single use with five failed attempts allowed. New patient requires profile or receives PROFILE_REQUIRED (422). The verified mobile is authoritative. Sets refresh cookie; creates demographics and a patient account, not an encounter.",
+        "description": "Non-demo verification requires the current unexpired challenge_id, matching phone and PATIENT_LOGIN purpose. PROFILE_REQUIRED keeps the challenge for confirmed first registration.",
         "responses": {
           "200": {
             "description": "Success",
@@ -392,11 +405,22 @@
                   },
                   "profile": {
                     "$ref": "#/components/schemas/PatientProfile"
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "enum": [
+                      "PATIENT_LOGIN"
+                    ]
+                  },
+                  "challenge_id": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "phone",
-                  "code"
+                  "code",
+                  "challenge_id"
                 ]
               }
             }
@@ -1971,7 +1995,7 @@
         "tags": [
           "Administration"
         ],
-        "description": "Request schema depends on kind: departments \u2192 DepartmentInput, drugs \u2192 DrugInput, diagnoses \u2192 DiagnosisInput, tests \u2192 LabTestInput.",
+        "description": "Request schema depends on kind: departments → DepartmentInput, drugs → DrugInput, diagnoses → DiagnosisInput, tests → LabTestInput.",
         "responses": {
           "201": {
             "description": "Created",
@@ -2335,6 +2359,65 @@
           "DOCTOR"
         ]
       }
+    },
+    "/opd/encounters/{id}/reassign": {
+      "post": {
+        "summary": "Transfer an unstarted visit",
+        "tags": [
+          "Scheduling"
+        ],
+        "description": "ADMIN only; same department and available receiving doctor. Blocked after any note, lab order or consultation start. Atomic encounter, queue and appointment update with audited acceptance/reason.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "doctor_id",
+                  "__v",
+                  "reason"
+                ],
+                "properties": {
+                  "doctor_id": {
+                    "type": "string"
+                  },
+                  "__v": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transferred"
+          },
+          "409": {
+            "description": "Stale, started or unavailable"
+          },
+          "403": {
+            "description": "Unauthorized role or department"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2580,6 +2663,27 @@
             "type": "string",
             "maxLength": 3000,
             "default": ""
+          },
+          "allergy_review_status": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "NONE_REPORTED",
+              "RECORDED"
+            ]
+          },
+          "allergy_reviewed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "allergy_reviewed_by": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2600,7 +2704,77 @@
             "minimum": 1
           },
           "data": {
-            "$ref": "#/components/schemas/PatientProfile"
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "phone": {
+                "type": "string",
+                "description": "Indian mobile; accepts 10 digits, +91 or 91 prefix and normalizes to +91XXXXXXXXXX."
+              },
+              "dob": {
+                "type": "string",
+                "format": "date"
+              },
+              "gender": {
+                "type": "string",
+                "enum": [
+                  "Female",
+                  "Male",
+                  "Other",
+                  "Not specified"
+                ]
+              },
+              "email": {
+                "type": "string",
+                "default": ""
+              },
+              "address": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "city": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "state": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "pin_code": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{5}$"
+              },
+              "emergency_contact": {
+                "type": "string",
+                "description": "Indian mobile normalized to E.164."
+              },
+              "preferred_language": {
+                "type": "string",
+                "enum": [
+                  "en",
+                  "ta",
+                  "te"
+                ]
+              },
+              "existing_mrn": {
+                "type": "string",
+                "maxLength": 3000,
+                "default": ""
+              },
+              "allergies": {
+                "type": "string",
+                "maxLength": 3000,
+                "default": ""
+              }
+            },
+            "description": "Partial demographic edit, merged into the current record. Phone cannot be changed. Reception cannot edit allergies. Patient allergy self-reports clear review attribution."
           }
         },
         "required": [
@@ -3419,8 +3593,7 @@
           },
           "allergies": {
             "type": "string",
-            "maxLength": 3000,
-            "default": ""
+            "maxLength": 3000
           },
           "pain": {
             "type": "integer",
@@ -3440,6 +3613,14 @@
           "bmi": {
             "type": "number",
             "readOnly": true
+          },
+          "allergy_review_status": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "NONE_REPORTED",
+              "RECORDED"
+            ]
           }
         },
         "required": [
@@ -3454,7 +3635,7 @@
           "pain",
           "priority"
         ],
-        "description": "Temperature \u00b0C, weight kg, height cm. Systolic must exceed diastolic. BMI is computed by the server."
+        "description": "Temperature °C, weight kg, height cm. Systolic must exceed diastolic. BMI is computed by the server."
       },
       "TriageWrite": {
         "type": "object",
@@ -3470,13 +3651,25 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 500
+          },
+          "patient__v": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "allergy_review_confirmed": {
+            "type": "boolean"
+          },
+          "allergy_change_reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
           }
         },
         "required": [
           "__v",
           "data"
         ],
-        "description": "Uses queue __v. A reason is required when amending existing triage."
+        "description": "Queue __v is separate from patient__v. Omitted allergies preserve the record. Review requires explicit confirmation and patient__v; changes also require allergy_change_reason. Existing triage amendments require reason. Unapproved clinical scoring is disabled."
       },
       "TriageRecord": {
         "type": "object",
@@ -3752,12 +3945,18 @@
           },
           "data": {
             "$ref": "#/components/schemas/ConsultationData"
+          },
+          "patient__v": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Root patient version, mandatory for signing or amendment in locked deployments."
           }
         },
         "required": [
           "__v",
           "data"
-        ]
+        ],
+        "description": " Signing checks patient__v and preserves an immutable identity/allergy snapshot."
       },
       "ConsultationAmendment": {
         "type": "object",
@@ -3773,13 +3972,19 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 500
+          },
+          "patient__v": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Root patient version, mandatory for signing or amendment in locked deployments."
           }
         },
         "required": [
           "__v",
           "data",
           "reason"
-        ]
+        ],
+        "description": " Signing checks patient__v and preserves an immutable identity/allergy snapshot."
       },
       "NoteVersion": {
         "type": "object",
@@ -3964,6 +4169,9 @@
                   "signed_by",
                   "sha256"
                 ]
+              },
+              "patient_snapshot": {
+                "$ref": "#/components/schemas/PatientSnapshot"
               }
             },
             "required": [
@@ -4104,7 +4312,7 @@
         "required": [
           "__v"
         ],
-        "description": "result requires data, verification and a reason. collect: ORDERED\u2192COLLECTED; process: COLLECTED\u2192PROCESSING; result: PROCESSING/AVAILABLE/REVIEWED\u2192AVAILABLE; review: AVAILABLE\u2192REVIEWED."
+        "description": "result requires data, verification and a reason. collect: ORDERED→COLLECTED; process: COLLECTED→PROCESSING; result: PROCESSING/AVAILABLE/REVIEWED→AVAILABLE; review: AVAILABLE→REVIEWED."
       },
       "LabResult": {
         "type": "object",
@@ -4762,6 +4970,66 @@
           "account_type",
           "must_change_password"
         ]
+      },
+      "PatientSnapshot": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mrn": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "dob": {
+            "type": "string",
+            "format": "date"
+          },
+          "gender": {
+            "type": "string",
+            "enum": [
+              "Female",
+              "Male",
+              "Other",
+              "Not specified"
+            ]
+          },
+          "allergies": {
+            "type": "string",
+            "maxLength": 3000,
+            "default": ""
+          },
+          "allergy_review_status": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "NONE_REPORTED",
+              "RECORDED"
+            ]
+          },
+          "allergy_reviewed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "allergy_reviewed_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "__v": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
       }
     }
   }

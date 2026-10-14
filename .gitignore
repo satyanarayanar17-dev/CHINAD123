@@ -28,3 +28,7 @@ test-results/
 playwright-report/
 backend/node_modules/
 backend/storage/
+
+# Clinical recovery archives are private even when encrypted.
+*.ccbackup
+*.ccbackup.partial-*

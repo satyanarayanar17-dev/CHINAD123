@@ -9,7 +9,9 @@ services:
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_VERSION
-        value: "24.0.0"
+        value: "24"
+      - key: TRUST_PROXY
+        value: "1"
       - key: NODE_ENV
         value: development
       - key: DB_DIALECT
@@ -20,6 +22,8 @@ services:
         value: /tmp/patient-documents
       - key: OPD_DEMO_OTP
         value: "true"
+      - key: OTP_DELIVERY_PROVIDER
+        value: development
       - key: JWT_SECRET
         generateValue: true
       - key: CORS_ORIGIN
@@ -32,8 +36,16 @@ services:
   - type: web
     name: chettinad-care-web
     runtime: static
-    buildCommand: npm ci && npm rebuild sqlite3 --build-from-source && npm run build
+    buildCommand: npm ci && npm run build
     staticPublishPath: dist
     envVars:
       - key: VITE_API_BASE_URL
         value: "https://chettinad-care-api.onrender.com/api/v1"
+
+    headers:
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://chettinad-care-api.onrender.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests"
+      - {path: "/*", name: X-Frame-Options, value: DENY}
+      - {path: "/*", name: X-Content-Type-Options, value: nosniff}
+      - {path: "/*", name: Referrer-Policy, value: no-referrer}

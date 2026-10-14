@@ -1,5 +1,12 @@
 # Antigravity handoff — Chettinad Care v2
 
+## Authentication readiness update — 28 September 2026
+
+Read `OTP_AUTH_IMPLEMENTATION.md` before deployment. OTP delivery now uses an explicit provider boundary, shared database rate limits, challenge-bound hashes and atomic consumption. Production/staging flag combinations cannot enable demo OTP. ADMIN/reception and assigned DOCTOR may book/confirm; NURSE booking/confirmation is denied. Nurse lab access is department-scoped. Configure TRUST_PROXY explicitly for the actual ingress; direct access is the default.
+
+Local automated and clinical regression evidence is not production approval. Real SMS/DLT, production secrets, restore/migration rehearsal, deployment CORS/cookie/TLS verification, monitoring and mobile execution remain external gates. No commits or pushes were made. Stop before Prescription Print QA.
+
+
 Prepared 16 September 2026. Continue the existing project and its final QA work. The application is implemented, but **hospital release verification is incomplete**. This document records engineering state; it is not the final QA release report or hospital deployment handoff.
 
 ## 1. Exact project location

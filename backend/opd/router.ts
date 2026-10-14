@@ -60,28 +60,27 @@ router.get('/patients', endpoint(async(req,res)=>{
   const limit = Math.min(parseInt(String(req.query.limit)) || 100, 500);
   const offset = parseInt(String(req.query.offset)) || 0;
   const results = await db.all<Patient>('SELECT * FROM patients WHERE LOWER(name) LIKE LOWER(?) OR phone LIKE ? OR mrn LIKE ? ORDER BY name, id LIMIT ? OFFSET ?',[`%${search}%`,`%${search}%`,`%${search}%`, limit, offset]);
-  if (req.user.department !== 'MEDICAL_RECORDS') {
-    res.json(results.map(p => ({
-      ...p,
-      phone: p.phone ? `***-***-${p.phone.slice(-4)}` : p.phone,
-      mrn: p.mrn ? `***-${p.mrn.slice(-4)}` : p.mrn,
-      dob: p.dob ? p.dob.substring(0, 4) + '-**-**' : p.dob
-    })));
-  } else {
-    res.json(results);
-  }
+  // Reception must distinguish real identities and edit usable demographics.
+  // Clinical fields are excluded even though ADMIN owns the operational directory.
+  res.json(results.map(({allergies: _allergies,allergy_review_status: _review,allergy_reviewed_at: _at,allergy_reviewed_by: _by,...demographics}) => demographics));
 }));
 router.post('/patients',endpoint(async(req,res)=>{roles(req,['ADMIN']);res.status(201).json(await transaction(async tx=>{const patient=await createPatient(tx,req,req.body);await event(tx,req,patient.id,'PATIENT_REGISTERED');return patient;}));}));
 router.get('/profile',endpoint(async(req,res)=>{roles(req,['PATIENT']);const user=await actor(req);res.json(await patientAccess(req,user.patient_id!));}));
 router.patch('/patients/:id',endpoint(async(req,res)=>{
-  roles(req,['PATIENT','ADMIN']); const data=parse(profileSchema,req.body.data);
+  roles(req,['PATIENT','ADMIN']); const changes=parse(profileSchema.partial().strict(),req.body.data);
   await transaction(async tx=>{
     const patient=await patientAccess(req,String(req.params.id),tx,false);
     if(patient.__v!==req.body.__v) fail('STALE_STATE',409);
+    const data=parse(profileSchema,{...patient,...changes});
     // Patient mobile is their login identity. Changing it requires a separate verified identity workflow.
     if(data.phone!==patient.phone) fail('MOBILE_CHANGE_REQUIRES_VERIFICATION');
+    if(req.user.role==='ADMIN' && data.allergies!==patient.allergies) fail('CLINICAL_ACCESS_DENIED',403);
     const fields=Object.keys(data); const changed=await tx.run(`UPDATE patients SET ${fields.map(f=>`${f}=?`).join(',')},__v=__v+1 WHERE id=? AND __v=?`,[...Object.values(data),patient.id,patient.__v]);
     if(!changed.changes) fail('STALE_STATE',409);
+    if(data.allergies!==patient.allergies) {
+      await tx.run('UPDATE patients SET allergy_review_status=?,allergy_reviewed_at=NULL,allergy_reviewed_by=NULL WHERE id=?',[data.allergies?'RECORDED':'UNKNOWN',patient.id]);
+      await audit(tx,req,'PATIENT_ALLERGIES_SELF_REPORTED',patient.id);
+    }
     await tx.run('UPDATE users SET name=? WHERE patient_id=?',[data.name,patient.id]);
     await event(tx,req,patient.id,'PROFILE_UPDATED');
   });res.json({success:true});
@@ -99,6 +98,7 @@ router.post('/encounters/:id/start',endpoint(async(req,res)=>res.json(await clin
 router.put('/encounters/:id/consultation',endpoint(async(req,res)=>res.json(await clinical.saveConsultation(req,false))));
 router.post('/encounters/:id/complete',endpoint(async(req,res)=>res.json(await clinical.saveConsultation(req,true))));
 router.post('/encounters/:id/amend',endpoint(async(req,res)=>res.json(await clinical.amend(req))));
+router.post('/encounters/:id/reassign',endpoint(async(req,res)=>res.json(await scheduling.reassignVisit(req))));
 router.post('/encounters/:id/labs',endpoint(async(req,res)=>res.status(201).json(await clinical.orderLab(req))));
 router.get('/patients/:id/record',endpoint(async(req,res)=>res.json(await clinical.record(req,String(req.params.id)))));
 router.get('/patients/:id/journey',endpoint(async(req,res)=>res.json(await clinical.journey(req,String(req.params.id)))));

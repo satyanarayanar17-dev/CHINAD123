@@ -186,7 +186,8 @@ export async function book(
 ) {
   const data = parse(bookingSchema, input);
   const user = await actor(req, tx);
-  // DOCTORS and NURSES can also book appointments, so no strict role restriction here\n  // actor() and patientAccess() check permissions securely.
+  roles(req, ["PATIENT", "ADMIN", "DOCTOR"]);
+  if (user.role === "DOCTOR" && data.doctor_id !== user.id) fail("FORBIDDEN_ROLE", 403);
   const patientId = user.role === "PATIENT" ? user.patient_id : data.patient_id;
   if (!patientId) fail("PATIENT_REQUIRED");
   await patientAccess(req, patientId!, tx, false);
@@ -213,11 +214,11 @@ export async function book(
   const assignedNurseId = assignment ? assignment.nurse_id : null;
   const appointmentId = id("apt");
   
-  const isDoctor = req.user.role === 'DOCTOR';
-  const status = isDoctor ? 'CONFIRMED' : 'PENDING_CONFIRMATION';
-  const confirmedAt = isDoctor ? now() : null;
-  const confirmedBy = isDoctor ? req.user.id : null;
-  const confirmedRole = isDoctor ? req.user.role : null;
+  const isStaff = ['ADMIN', 'DOCTOR'].includes(req.user.role);
+  const status = isStaff ? 'CONFIRMED' : 'PENDING_CONFIRMATION';
+  const confirmedAt = isStaff ? now() : null;
+  const confirmedBy = isStaff ? req.user.id : null;
+  const confirmedRole = isStaff ? req.user.role : null;
   
   await tx.run(
     "INSERT INTO appointments (id,patient_id,doctor_id,department_id,scheduled_at,ends_at,room,status,reason,created_by,created_at,follow_up_of,requested_at,requested_by_patient_id,assigned_nurse_id,confirmed_at,confirmed_by_user_id,confirmed_by_role) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -244,7 +245,7 @@ export async function book(
   );
   
   let eventType = "APPOINTMENT_REQUESTED";
-  if (isDoctor) {
+  if (isStaff) {
     eventType = followUpOf ? "FOLLOW_UP_BOOKED" : "APPOINTMENT_CONFIRMED";
   }
   
@@ -278,7 +279,7 @@ export async function book(
 }
 
 export async function confirmRequest(req: Req, appointmentId: string) {
-  roles(req, ["ADMIN", "DOCTOR", "NURSE"]);
+  roles(req, ["ADMIN", "DOCTOR"]);
   return transaction(async (tx) => {
     const user = await actor(req, tx);
     const apt = await tx.get<Appointment>(`${appointmentSelect} WHERE a.id=?`, [appointmentId]);
@@ -286,7 +287,6 @@ export async function confirmRequest(req: Req, appointmentId: string) {
     if (apt!.status !== ("PENDING_CONFIRMATION" as any)) return apt; // Idempotent
 
     if (user.role === "DOCTOR" && apt!.doctor_id !== user.id) fail("UNAUTHORIZED", 403);
-    if (user.role === "NURSE" && (apt as any).assigned_nurse_id !== user.id && (apt as any).department_name !== user.department) fail("UNAUTHORIZED", 403);
 
     const updated = await tx.run(
       "UPDATE appointments SET status='CONFIRMED', confirmed_at=?, confirmed_by_user_id=?, confirmed_by_role=?, __v=__v+1 WHERE id=? AND status='PENDING_CONFIRMATION' AND __v=?",
@@ -427,6 +427,7 @@ export async function checkIn(req: Req) {
     );
     if (!apt) fail("NOT_FOUND", 404);
     await enforcePilotDepartment(tx, apt!.department_id);
+    if (req.user.role === "DOCTOR" && apt!.doctor_id !== req.user.id) fail("NOT_ASSIGNED",403);
     if (apt!.status === "CHECKED_IN")
       return tx.get<QueueEntry>(
         "SELECT * FROM queue_entries WHERE appointment_id=?",
@@ -580,4 +581,36 @@ export async function queue(req: Req): Promise<QueueEntry[]> {
       }
       return e;
     });
+}
+
+// Reception may transfer an unstarted visit within the same department.
+// Once clinical work exists, ownership remains fixed and must follow a hospital handover procedure.
+export async function reassignVisit(req: Req) {
+  roles(req,['ADMIN']);
+  const input=parse(z.object({doctor_id:text,__v:z.number().int().positive(),reason:text.max(1000)}),req.body);
+  return transaction(async tx=>{
+    const visit=await tx.get<QueueEntry & {appointment_id:string;assigned_doctor_id:string;consultation_started_at:string|null;scheduled_at:string;ends_at:string;department_id:string;patient_id:string;appointment_version:number}>(`SELECT q.*,e.assigned_doctor_id,e.patient_id,a.scheduled_at,a.ends_at,a.__v AS appointment_version FROM queue_entries q JOIN encounters e ON e.id=q.encounter_id JOIN appointments a ON a.id=q.appointment_id WHERE q.encounter_id=?${tx.dialect==='postgres'?' FOR UPDATE OF q,e,a':''}`,[req.params.id]);
+    if(!visit)fail('NOT_FOUND',404);
+    if(visit!.__v!==input.__v)fail('STALE_STATE',409);
+    if(!['WAITING','WAITING_DOCTOR','DOCTOR_READY'].includes(visit!.status)||visit!.consultation_started_at||await tx.get('SELECT id FROM clinical_notes WHERE encounter_id=?',[req.params.id])||await tx.get('SELECT id FROM lab_orders WHERE encounter_id=?',[req.params.id]))fail('VISIT_HANDOVER_REQUIRED',409);
+    if(input.doctor_id===visit!.assigned_doctor_id)fail('SAME_DOCTOR');
+    const doctor=await doctorLock(tx,input.doctor_id);
+    const department=await tx.get<Department>('SELECT * FROM departments WHERE id=?',[visit!.department_id]);
+    if(!department || doctor.department!==department.name)fail('INVALID_DEPARTMENT');
+    await enforcePilotDepartment(tx,department!.id);
+    const date=day(new Date(visit!.scheduled_at));
+    if(await tx.get('SELECT id FROM practitioner_unavailability WHERE doctor_id=? AND date=?',[doctor.id,date]))fail('DOCTOR_UNAVAILABLE',409);
+    const weekday=new Date(date+'T12:00:00Z').getUTCDay();
+    const schedule=await tx.get<Schedule>('SELECT * FROM practitioner_schedules WHERE doctor_id=? AND department_id=? AND weekday=?',[doctor.id,department!.id,weekday]);
+    const localTime=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(visit!.scheduled_at));
+    const localEnd=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(visit!.ends_at));
+    if(!schedule||localTime<schedule.start_time||localEnd>schedule.end_time||(schedule.break_start&&schedule.break_end&&localTime<schedule.break_end&&localEnd>schedule.break_start))fail('DOCTOR_UNAVAILABLE',409);
+    if(await tx.get("SELECT id FROM appointments WHERE doctor_id=? AND id!=? AND status NOT IN ('CANCELLED','NO_SHOW','COMPLETED') AND scheduled_at<? AND ends_at>?",[doctor.id,visit!.appointment_id,visit!.ends_at,visit!.scheduled_at]))fail('SLOT_UNAVAILABLE',409);
+    await tx.run('UPDATE encounters SET assigned_doctor_id=?,__v=__v+1 WHERE id=?',[doctor.id,req.params.id]);
+    await tx.run("UPDATE queue_entries SET status=?,__v=__v+1 WHERE encounter_id=? AND __v=?",[visit!.status==='DOCTOR_READY'?'WAITING_DOCTOR':visit!.status,req.params.id,input.__v]);
+    await tx.run('UPDATE appointments SET doctor_id=?,room=?,__v=__v+1 WHERE id=? AND __v=?',[doctor.id,schedule!.room,visit!.appointment_id,visit!.appointment_version]);
+    await event(tx,req,visit!.patient_id,'VISIT_REASSIGNED',{previous_doctor:visit!.assigned_doctor_id,doctor_id:doctor.id,reason:input.reason},String(req.params.id),visit!.appointment_id);
+    await audit(tx,req,'VISIT_REASSIGNED',visit!.patient_id,{encounter_id:req.params.id,previous_doctor:visit!.assigned_doctor_id,doctor_id:doctor.id,reason:input.reason});
+    return {success:true,__v:input.__v+1};
+  });
 }

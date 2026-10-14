@@ -47,13 +47,15 @@ export function PatientHeader({ patient }: { patient: Patient }) {
         <p>
           {Math.max(0, age)} {t("years")} · {t(patient.gender)}{" "}
           <span className="dot-separator">·</span> {t("mrn")} {patient.mrn}
+          <small>{t("dob")}: {patient.dob}</small>
         </p>
       </div>
       <span className={`allergy ${patient.allergies ? "has-allergy" : ""}`}>
         <ShieldCheck size={15} />
         {patient.allergies
           ? `${t("allergies")}: ${patient.allergies}`
-          : t("noAllergies")}
+          : t(patient.allergy_review_status === 'NONE_REPORTED' ? 'allergy_NONE_REPORTED' : 'allergy_UNKNOWN')}
+        {!patient.allergy_reviewed_at && <small> · {t('notReviewed')}</small>}
       </span>
     </div>
   );
@@ -225,7 +227,7 @@ export function PrescriptionView({
           </div>
           <span>{t("prescription")}</span>
         </div>
-        <PatientHeader patient={patient} />
+        <PatientHeader patient={{...patient,...rx.patient_snapshot}} />
         <div className="detail-grid">
           <p>
             <small>{t("issuedBy")}</small>

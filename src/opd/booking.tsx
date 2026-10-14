@@ -86,7 +86,7 @@ export function PatientForm({
     >
       <p className="muted">{t("registerHint")}</p>
       <DataForm
-        fields={profileFields.map((f) => ({
+        fields={profileFields.filter((f) => f.name !== 'allergies').map((f) => ({
           ...f,
           disabled: patient && f.name === "phone" ? true : f.disabled,
         }))}

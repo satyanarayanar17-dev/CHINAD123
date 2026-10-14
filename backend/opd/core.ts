@@ -63,7 +63,7 @@ export const phone = z
   .string()
   .trim()
   .transform((v) =>
-    v.replace(/[\s()-]/g, "").replace(/^(?:\+91|91)?([6-9]\d{9})$/, "+91$1"),
+    v.replace(/[\s()-]/g, "").replace(/^(?:\+91|91|0)?([6-9]\d{9})$/, "+91$1"),
   )
   .refine((v) => /^\+91[6-9]\d{9}$/.test(v));
 export const profileSchema = z.object({
@@ -147,14 +147,9 @@ export async function patientAccess(
   }
   
   if (!authorized && (user.role === "DOCTOR" || user.role === "NURSE")) {
-    const breakGlassReason = req.headers['x-break-glass-reason'];
-    if (breakGlassReason) {
-      authorized = true;
-      await audit(tx, req, "BREAK_GLASS_ACCESSED", patientId, { reason: breakGlassReason });
-      logEvent('admin_alert', { type: 'BREAK_GLASS', patient_id: patientId, actor_id: user.id, reason: breakGlassReason });
-    } else {
-      fail("FORBIDDEN_RECORD", 403);
-    }
+    // A caller-controlled header is not an emergency authorization grant.
+    // Unlinked care requires an approved assignment through hospital operations.
+    fail("FORBIDDEN_RECORD", 403);
   }
 
   if (!authorized) fail("NOT_FOUND", 404);
@@ -273,10 +268,11 @@ export async function createPatient(tx: DB, req: Req, input: unknown) {
     fail("PATIENT_EXISTS", 409);
   const patientId = id("pat");
   const mrn = `CC-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
-  const fields = Object.keys(data);
+  const record = { ...data, allergy_review_status: data.allergies ? 'RECORDED' : 'UNKNOWN' };
+  const fields = Object.keys(record);
   await tx.run(
     `INSERT INTO patients (id, mrn, ${fields.join(",")}) VALUES (?, ?, ${fields.map(() => "?").join(",")})`,
-    [patientId, mrn, ...Object.values(data)],
+    [patientId, mrn, ...Object.values(record)],
   );
   await audit(tx, req, "PATIENT_REGISTERED", patientId, {
     resource: patientId,

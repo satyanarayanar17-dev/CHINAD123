@@ -70,16 +70,15 @@ async function run() {
   const currentTime = localTime(new Date());
 
   const migrationRows = await db.all('SELECT id FROM schema_migrations ORDER BY id');
-  assert.equal(migrationRows.length, 15);
-  assert.equal(migrationRows.at(-1).id, '015_patient_documents_and_self_records');
+  assert.deepEqual(migrationRows.map(row => row.id), require('../migrations').migrations.map(m => m.id).sort());
   assert.equal(og.name, 'Obstetrics & Gynaecology');
   const readiness = await request(app).get('/api/v1/ready');
   assert.equal(readiness.status, 200, JSON.stringify(readiness.body));
   assert.equal(readiness.body.ready, true);
   assert.equal(readiness.body.migrations_up_to_date, true);
-  console.log('PASS 15/15 migration and generated OBST department identity');
+  console.log('PASS Registered migration and generated OBST department identity');
 
-  await call(otherDoctor, 'post', '/care-plans/patient-a', { start_date: today }, 404);
+  await call(otherDoctor, 'post', '/care-plans/patient-a', { start_date: today }, 403);
   await call(nurse, 'post', '/care-plans/patient-a', { start_date: today }, 403);
   const created = await call(doctor, 'post', '/care-plans/patient-a', { start_date: today, department_id: og.id }, 201);
   const planId = created.care_plan.id;
@@ -108,11 +107,11 @@ async function run() {
   await call(patientB, 'get', '/care-plans/patient-a', undefined, 404);
   await call(patientB, 'get', '/adherence/patient-a/today', undefined, 404);
   await call(patientB, 'get', '/adherence/patient-a/timeline', undefined, 404);
-  await call(otherDoctor, 'get', '/care-plans/patient-a', undefined, 404);
+  await call(otherDoctor, 'get', '/care-plans/patient-a', undefined, 403);
   await call(admin, 'get', '/care-plans/patient-a', undefined, 403);
   assert.ok((await call(nurse, 'get', '/care-plans/patient-a')).plan);
   await call(nurse, 'post', '/care-plans/patient-a/tasks', { __v: planVersion, task: { ...base, task_type: 'ACTIVITY', title: 'Forbidden', instruction: 'Forbidden' } }, 403);
-  await call(otherNurse, 'get', '/care-plans/patient-a', undefined, 404);
+  await call(otherNurse, 'get', '/care-plans/patient-a', undefined, 403);
   console.log('PASS Patient isolation, Doctor linkage, Nurse read-only boundary, and Admin denial');
 
   const beforeRead = Number((await db.get('SELECT COUNT(*) AS count FROM care_plan_adherence')).count);
@@ -208,7 +207,7 @@ async function run() {
   console.log('PASS deterministic Asia/Kolkata occurrence boundaries and all checklist states');
 
   await db.run("UPDATE queue_entries SET status='COMPLETED' WHERE encounter_id='enc-active'");
-  await call(nurse, 'get', '/care-plans/patient-a', undefined, 404);
+  await call(nurse, 'get', '/care-plans/patient-a', undefined, 403);
   const deactivatedPlan = await call(doctor, 'patch', '/care-plans/patient-a', { __v: planVersion, status: 'INACTIVE', effective_date: tomorrow, reason: 'Synthetic pilot completion' });
   assert.equal(deactivatedPlan.care_plan.status, 'INACTIVE');
   const audit = await db.all("SELECT actor_id,patient_id,action,correlation_id,new_state FROM audit_logs WHERE action LIKE 'CARE_PLAN%' ORDER BY id");

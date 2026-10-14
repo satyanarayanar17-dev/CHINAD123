@@ -1,5 +1,6 @@
 import {defineConfig} from '@playwright/test';
 export default defineConfig({
+ outputDir:'test-results/opd',
  testDir:'./tests',
  testMatch:'opd.spec.ts',
  fullyParallel:false,

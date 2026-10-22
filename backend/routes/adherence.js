@@ -4,6 +4,8 @@ const { requireAuth } = require('../middleware/auth');
 const { transaction, db, endpoint, parse, now, id, fail, roles, actor, patientAccess, audit } = require('../opd/core.ts');
 const { dateInZone, scheduledFor, scheduledOn, derivedStatus, DATE_RE } = require('../lib/carePlanSchedule');
 
+const { measurementNumbers } = require('../lib/measurementNumbers');
+
 const router = express.Router();
 router.use(requireAuth);
 
@@ -33,7 +35,7 @@ async function occurrenceDto(tx, task, date, response, at) {
   let observation = null;
   if (response) {
     observation = await tx.get('SELECT * FROM patient_observations WHERE adherence_id=?', [response.id]);
-    if (observation) observation.components = await tx.all('SELECT component_code,numeric_value,unit FROM patient_observation_components WHERE observation_id=? ORDER BY component_code', [observation.id]);
+    if (observation) observation.components = (await tx.all('SELECT component_code,numeric_value,unit FROM patient_observation_components WHERE observation_id=? ORDER BY component_code', [observation.id])).map(measurementNumbers);
   }
   return {
     id: response?.id || task.id,
@@ -104,7 +106,7 @@ router.get('/:patientId/timeline', endpoint(async (req, res) => {
   );
   for (const row of rows) {
     const observation = await db.get('SELECT * FROM patient_observations WHERE adherence_id=?', [row.id]);
-    if (observation) observation.components = await db.all('SELECT component_code,numeric_value,unit FROM patient_observation_components WHERE observation_id=? ORDER BY component_code', [observation.id]);
+    if (observation) observation.components = (await db.all('SELECT component_code,numeric_value,unit FROM patient_observation_components WHERE observation_id=? ORDER BY component_code', [observation.id])).map(measurementNumbers);
     row.observation = observation || null;
   }
   res.json(rows);

@@ -1115,7 +1115,7 @@
         "tags": [
           "Queue"
         ],
-        "description": "Only on appointment date in Asia/Kolkata. Creates one active encounter and department/day token. Repeating check-in returns the existing queue entry.",
+        "description": "Only on appointment date in Asia/Kolkata. Creates one active encounter and department/day token. Repeating check-in returns the existing queue entry. Send the reviewed appointment __v when available; a stale supplied revision returns 409 and a malformed revision returns 422 before any encounter is created. Omission remains compatible with older clients.",
         "responses": {
           "200": {
             "description": "Success",
@@ -1150,7 +1150,8 @@
           }
         ],
         "x-roles": [
-          "ADMIN"
+          "ADMIN",
+          "DOCTOR"
         ],
         "requestBody": {
           "required": true,
@@ -1162,6 +1163,11 @@
                   "identity_verified": {
                     "type": "boolean",
                     "const": true
+                  },
+                  "__v": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Reviewed appointment version; optional for older clients."
                   }
                 },
                 "required": [
@@ -2415,6 +2421,69 @@
           },
           "403": {
             "description": "Unauthorized role or department"
+          }
+        }
+      }
+    },
+    "/opd/appointments/{id}/confirm": {
+      "post": {
+        "summary": "Confirm a requested appointment",
+        "operationId": "post_opd_appointments_id_confirm",
+        "tags": [
+          "Appointments"
+        ],
+        "description": "Reception or the assigned doctor confirms a pending request. Doctor ownership is checked for repeated calls as well. Send the reviewed __v; stale supplied revisions return 409 and malformed revisions return 422. Omission remains compatible with older clients.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "x-roles": [
+          "ADMIN",
+          "DOCTOR"
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "__v": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Confirmed or already processed appointment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Appointment"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Structured validation, authorization, conflict or internal error. Common statuses: 401, 403, 404, 409, 422, 429, 503.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }

@@ -282,11 +282,11 @@ export async function confirmRequest(req: Req, appointmentId: string) {
   roles(req, ["ADMIN", "DOCTOR"]);
   return transaction(async (tx) => {
     const user = await actor(req, tx);
-    const apt = await tx.get<Appointment>(`${appointmentSelect} WHERE a.id=?`, [appointmentId]);
+    const apt = await tx.get<Appointment>(`${appointmentSelect} WHERE a.id=?${tx.dialect === 'postgres' ? ' FOR UPDATE OF a' : ''}`, [appointmentId]);
     if (!apt) return fail("NOT_FOUND", 404);
-    if (apt!.status !== ("PENDING_CONFIRMATION" as any)) return apt; // Idempotent
-
     if (user.role === "DOCTOR" && apt!.doctor_id !== user.id) fail("UNAUTHORIZED", 403);
+    if (req.body?.__v !== undefined && apt!.__v !== parse(z.number().int().positive(), req.body.__v)) fail("STALE_STATE", 409);
+    if (apt!.status !== ("PENDING_CONFIRMATION" as any)) return apt; // Authorized idempotent retry only.
 
     const updated = await tx.run(
       "UPDATE appointments SET status='CONFIRMED', confirmed_at=?, confirmed_by_user_id=?, confirmed_by_role=?, __v=__v+1 WHERE id=? AND status='PENDING_CONFIRMATION' AND __v=?",
@@ -419,7 +419,7 @@ export async function changeAppointment(req: Req, action: string) {
 }
 export async function checkIn(req: Req) {
   roles(req, ["ADMIN", "DOCTOR"]);
-  if (req.body.identity_verified !== true) fail("VERIFY_IDENTITY");
+  if (req.body?.identity_verified !== true) fail("VERIFY_IDENTITY");
   return transaction(async (tx) => {
     const apt = await tx.get<Appointment>(
       `SELECT * FROM appointments WHERE id=?${tx.dialect === "postgres" ? " FOR UPDATE" : ""}`,
@@ -428,6 +428,7 @@ export async function checkIn(req: Req) {
     if (!apt) fail("NOT_FOUND", 404);
     await enforcePilotDepartment(tx, apt!.department_id);
     if (req.user.role === "DOCTOR" && apt!.doctor_id !== req.user.id) fail("NOT_ASSIGNED",403);
+    if (req.body?.__v !== undefined && apt!.__v !== parse(z.number().int().positive(), req.body.__v)) fail("STALE_STATE",409);
     if (apt!.status === "CHECKED_IN")
       return tx.get<QueueEntry>(
         "SELECT * FROM queue_entries WHERE appointment_id=?",

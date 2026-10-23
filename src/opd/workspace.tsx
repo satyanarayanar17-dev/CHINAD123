@@ -32,7 +32,6 @@ import {
 } from "./ui";
 import { PatientHeader, Vitals, Journey, ResultCard } from "./records";
 import { DoctorCarePlanManager } from "./carePlan";
-import { SlotPicker } from "./booking";
 import type { FormField } from "./ui";
 import type {
   RecordBundle,
@@ -208,7 +207,6 @@ function ConsultationForm({
   catalogue,
   encounterId,
   onClose,
-  session,
   onDirtyChange,
 }: {
   record: RecordBundle;
@@ -218,7 +216,7 @@ function ConsultationForm({
   session: Session;
   onDirtyChange: (dirty: boolean) => void;
 }) {
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const action = useAction();
   const labAction = useAction();
   const note = record.notes.find((n) => n.encounter_id === encounterId);
@@ -227,14 +225,12 @@ function ConsultationForm({
   const [version, setVersion] = useState(note?.__v || 0);
   const [tab, setTab] = useState("consultation");
   const [amendReason, setAmendReason] = useState("");
-  const [followUp, setFollowUp] = useState(!!note?.draft_content.follow_up);
   const [test, setTest] = useState("");
   const [confirmComplete, setConfirmComplete] = useState(false);
   const {
     register,
     handleSubmit,
     control,
-    setValue,
     watch,
     getValues,
     reset,
@@ -266,11 +262,11 @@ function ConsultationForm({
   }, [isDirty, onDirtyChange]);
   const meds = useFieldArray({ control, name: "medications" });
   const selectedDiagnoses = watch("diagnosis_ids");
-  const selectedFollowUp = watch("follow_up");
   
   const complete = !!encounter?.is_discharged;
-  const save = (data: ConsultationData, finalize = false) =>
-    void action.run(
+  const save = (input: ConsultationData, finalize = false) => {
+    const data = complete ? input : {...input, follow_up:null};
+    return void action.run(
       () =>
         complete
           ? post(`/encounters/${encounterId}/amend`, {
@@ -296,6 +292,7 @@ function ConsultationForm({
         else setVersion((res as { __v: number }).__v);
       },
     );
+  };
   return (
     <div className="workspace">
       <div className="workspace-toolbar">
@@ -395,45 +392,6 @@ function ConsultationForm({
                   {t("amendment")} · {t("completeHint")}
                 </div>
               )}
-              <Panel title="consultation">
-                <div className="form-grid inset">
-                  {[
-                    "complaint",
-                    "history",
-                    "previous_history",
-                    "examination",
-                    "assessment",
-                  ].map((key) => (
-                    <div
-                      key={key}
-                      className={key === "complaint" ? "full" : ""}
-                    >
-                      <Textarea
-                        label={key}
-                        {...register(key as keyof ConsultationData)}
-                        maxLength={3000}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </Panel>
-              <Panel title="diagnoses">
-                <div className="diagnosis-options">
-                  {catalogue.diagnoses.map((d) => (
-                    <label
-                      key={d.id}
-                      className={`choice-chip ${selectedDiagnoses.includes(d.id) ? "selected" : ""}`}
-                    >
-                      <input
-                        type="checkbox"
-                        value={d.id}
-                        {...register("diagnosis_ids")}
-                      />
-                      {d.name}
-                    </label>
-                  ))}
-                </div>
-              </Panel>
               <Panel
                 title="medications"
                 action={
@@ -506,48 +464,51 @@ function ConsultationForm({
                   ))}
                 </div>
               </Panel>
+              <Panel title="consultation">
+                <div className="form-grid inset">
+                  {[
+                    "complaint",
+                    "history",
+                    "previous_history",
+                    "examination",
+                    "assessment",
+                  ].map((key) => (
+                    <div
+                      key={key}
+                      className={key === "complaint" ? "full" : ""}
+                    >
+                      <Textarea
+                        label={key}
+                        {...register(key as keyof ConsultationData)}
+                        maxLength={3000}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+              <Panel title="diagnoses">
+                <div className="diagnosis-options">
+                  {catalogue.diagnoses.map((d) => (
+                    <label
+                      key={d.id}
+                      className={`choice-chip ${selectedDiagnoses.includes(d.id) ? "selected" : ""}`}
+                    >
+                      <input
+                        type="checkbox"
+                        value={d.id}
+                        {...register("diagnosis_ids")}
+                      />
+                      {d.name}
+                    </label>
+                  ))}
+                </div>
+              </Panel>
               <Panel title="advice">
                 <div className="form-grid inset">
                   <Textarea label="treatment" {...register("treatment")} />
                   <Textarea label="advice" {...register("advice")} />
                 </div>
               </Panel>
-              {!complete && (
-                <Panel title="followUp">
-                  <div className="inset">
-                    <label className="check-label">
-                      <input
-                        type="checkbox"
-                        checked={followUp}
-                        onChange={(e) => {
-                          setFollowUp(e.target.checked);
-                          if (!e.target.checked) setValue("follow_up", null, { shouldDirty: true });
-                        }}
-                      />
-                      {t("scheduleFollowUp")}
-                    </label>
-                    {followUp && (
-                      <SlotPicker
-                        doctorId={session.id}
-                        selected={selectedFollowUp?.scheduled_at || ""}
-                        onSelect={(slot) =>
-                          setValue(
-                            "follow_up",
-                            slot.scheduled_at
-                              ? {
-                                  doctor_id: session.id,
-                                  scheduled_at: slot.scheduled_at,
-                                  reason: t("followUp"),
-                                }
-                              : null,
-                            { shouldDirty: true },
-                          )
-                        }
-                      />
-                    )}
-                  </div>
-                </Panel>
-              )}
               {complete && (
                 <Textarea
                   label="amendReason"
@@ -571,7 +532,7 @@ function ConsultationForm({
                     <Button
                       type="button"
                       disabled={
-                        action.pending || (followUp && !selectedFollowUp)
+                        action.pending
                       }
                       onClick={() =>
                         void handleSubmit(() => setConfirmComplete(true))()
@@ -669,14 +630,6 @@ function ConsultationForm({
           onClose={() => setConfirmComplete(false)}
         >
           <p>{t("completeHint")}</p>
-          <div className="follow-up-confirmation">
-            <strong>{t("nextAppointment")}</strong>
-            {selectedFollowUp ? (
-              <span>{formatDate(selectedFollowUp.scheduled_at, language, true)}</span>
-            ) : (
-              <span>{t("noFollowUpSelected")}</span>
-            )}
-          </div>
           <Alert code={action.error} />
           <div className="form-actions">
             <Button
@@ -689,7 +642,7 @@ function ConsultationForm({
               disabled={action.pending}
               onClick={() => save(getValues(), true)}
             >
-              {t(selectedFollowUp ? "completeAndBookFollowUp" : "confirmComplete")}
+              {t("confirmComplete")}
             </Button>
           </div>
         </Modal>

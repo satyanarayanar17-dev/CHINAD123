@@ -30,7 +30,8 @@
     "test:recovery": "node --test scripts/pilot-backup.test.cjs",
     "backup:pilot": "node scripts/pilot-backup.cjs",
     "test:locked-startup": "node scripts/isolated-postgres.cjs node --test scripts/locked-startup.test.cjs",
-    "test:demo-fixture": "node --test scripts/demo-fixture.test.cjs"
+    "test:demo-fixture": "node --test scripts/demo-fixture.test.cjs",
+    "test:doctor-workflow": "node --test opd/doctor-registration.test.cjs opd/cross-client.test.cjs"
   },
   "keywords": [],
   "author": "",

@@ -15,7 +15,7 @@
     "check:backend": "npm --prefix backend run typecheck",
     "test:opd": "npm --prefix backend run test:opd",
     "test:notifications": "npm --prefix backend run test:notifications",
-    "test:v2": "npm run test:config && npm run test:opd && npm run test:notifications && npm run test:auth-session",
+    "test:v2": "npm run test:config && npm run test:opd && npm run test:notifications && npm run test:auth-session && npm --prefix backend run test:doctor-workflow",
     "demo:seed": "npm --prefix backend run demo:seed",
     "dev:demo": "OPD_DEMO_OTP=true DB_DIALECT=sqlite SQLITE_PATH=connected-opd-demo.db npm run dev",
     "test:config": "npm --prefix backend run test:config",

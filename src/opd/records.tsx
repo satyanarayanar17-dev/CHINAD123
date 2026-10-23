@@ -8,10 +8,12 @@ import {
   FlaskConical,
   Printer,
   ShieldCheck,
+  CheckCircle2,
 } from "lucide-react";
-import { get, Panel, Loading, Empty, Alert, Status, Button, Modal, Field, Select, Textarea, useAction } from "./ui";
+import { get, Panel, Loading, Empty, Alert, Status, Button, Modal, Field, Select, Textarea } from "./ui";
 import { useI18n, formatDate } from "./i18n";
 import { api } from "../api/client";
+import { DoctorCarePlanManager, Progress } from "./carePlan";
 import type { CarePlanOccurrence } from "./carePlan";
 import type {
   RecordBundle,
@@ -520,7 +522,7 @@ export function PatientRecord({
         </div>
       )}
       {tab === "documents" && <DocumentsPanel patientId={patientId} documents={documents.data || []} patientCanUpload={session.role === "PATIENT"} onChanged={() => void documents.refetch()} />}
-      {tab === "carePlan" && <PatientCareDossierPanel patientId={patientId} />}
+      {tab === "carePlan" && <PatientCareDossierPanel patientId={patientId} canManage={session.role === "DOCTOR"} />}
       {rx && (
         <PrescriptionView
           prescription={rx}
@@ -535,77 +537,21 @@ export function PatientRecord({
 interface PatientDocument { id: string; patient_id: string; appointment_id: string | null; document_type: string; title: string; original_filename: string; mime_type: string; size_bytes: number; clinical_date: string; created_at: string; uploaded_by_name: string; content_url: string; }
 interface PatientSelfRecord { id: string; record_type: string; numeric_value: number | null; secondary_numeric_value: number | null; unit: string | null; activity_name: string | null; duration_minutes: number | null; observed_at: string; }
 
-function PatientCareDossierPanel({ patientId }: { patientId: string }) {
-  const tasks = useQuery({ queryKey: ["opd", "dossier-care-plan", patientId], queryFn: () => get<CarePlanOccurrence[]>(`/adherence/${patientId}/today`) });
-  const observations = useQuery({ queryKey: ["opd", "dossier-self-records", patientId], queryFn: () => get<PatientSelfRecord[]>(`/patient-self-records/${patientId}`) });
-  const [addingTask, setAddingTask] = useState(false);
-  return (
-    <div className="page-stack">
-      <Panel title="Today's Care Plan" action={<Button variant="secondary" onClick={() => setAddingTask(true)}>+ Add Task</Button>}>
-        {tasks.isLoading ? <Loading /> : tasks.data?.length ? tasks.data.map((task) => <div className="record-row" key={task.id}><span className="record-icon"><Activity size={20} /></span><span><strong>{task.title}</strong><small>{task.instruction} · {task.status}</small></span></div>) : <Empty title="No active Care Plan tasks" hint="The doctor has not assigned a task for today." />}
-      </Panel>
-      <Panel title="Patient self-recorded observations">
-        {observations.isLoading ? <Loading /> : observations.data?.length ? observations.data.map((record) => <div className="record-row" key={record.id}><span className="record-icon"><Activity size={20} /></span><span><strong>{record.record_type.replaceAll("_", " ")}</strong><small>{record.record_type === "ACTIVITY" ? `${record.activity_name} · ${record.duration_minutes} min` : record.record_type === "BLOOD_PRESSURE" ? `${record.numeric_value}/${record.secondary_numeric_value} mmHg` : `${record.numeric_value} ${record.unit || ""}`} · Patient self-recorded</small></span></div>) : <Empty title="No self-recorded observations" hint="Patient entries will appear here." />}
-      </Panel>
-      {addingTask && <AddCarePlanTaskModal patientId={patientId} onClose={() => setAddingTask(false)} onSaved={() => { setAddingTask(false); void tasks.refetch(); }} />}
-    </div>
-  );
-}
-
-function AddCarePlanTaskModal({ patientId, onClose, onSaved }: { patientId: string; onClose: () => void; onSaved: () => void }) {
-  const [title, setTitle] = useState("");
-  const [instruction, setInstruction] = useState("");
-  const [taskType, setTaskType] = useState("ACTIVITY");
-  const [frequency, setFrequency] = useState("DAILY");
-  const [time, setTime] = useState("09:00");
-  
-  const action = useAction();
-  
-  const save = async () => {
-    const planResponse = await get<{ plan: { __v: number } | null }>(`/care-plans/${patientId}`);
-    let v = planResponse.plan?.__v;
-    
-    if (v === undefined) {
-      const newPlan = await api.post(`/opd/care-plans/${patientId}`, { start_date: new Date().toISOString().slice(0, 10) });
-      v = newPlan.data.care_plan.__v;
-    }
-    
-    await api.post(`/opd/care-plans/${patientId}/tasks`, {
-      __v: v,
-      task: {
-        task_type: taskType,
-        title,
-        instruction,
-        frequency_type: frequency,
-        scheduled_time: time,
-        start_date: new Date().toISOString().slice(0, 10)
-      }
-    });
-    onSaved();
-  };
-  
-  return (
-    <Modal title="Add Care Plan Task" onClose={onClose}>
-      <form className="form-stack" onSubmit={(e) => { e.preventDefault(); void action.run(save); }}>
-        <Field label="Activity" required value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. 30 Min Walk" />
-        <Textarea label="Instructions" required value={instruction} onChange={e => setInstruction(e.target.value)} placeholder="Additional details..." />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <label className="field-label">Frequency
-            <select value={frequency} onChange={e => setFrequency(e.target.value)}>
-              <option value="DAILY">Daily</option>
-              <option value="ONCE">Once</option>
-            </select>
-          </label>
-          <Field label="Time" type="time" required value={time} onChange={e => setTime(e.target.value)} />
-        </div>
-        <Alert code={action.error} />
-        <div className="modal-actions">
-          <Button variant="ghost" onClick={onClose} type="button">Cancel</Button>
-          <Button type="submit" disabled={action.pending || !title || !instruction}>Save Task</Button>
-        </div>
-      </form>
-    </Modal>
-  );
+function PatientCareDossierPanel({ patientId, canManage }: { patientId: string; canManage: boolean }) {
+  const tasks = useQuery({ queryKey: ["opd", "dossier-care-plan", patientId], queryFn: () => get<CarePlanOccurrence[]>(`/adherence/${patientId}/today`), refetchInterval: 15000 });
+  const observations = useQuery({ queryKey: ["opd", "dossier-self-records", patientId], queryFn: () => get<PatientSelfRecord[]>(`/patient-self-records/${patientId}`), refetchInterval: 15000 });
+  return <div className="page-stack">
+    {canManage && <DoctorCarePlanManager patientId={patientId} />}
+    <Panel title="Today's care plan">
+      {tasks.isLoading ? <Loading /> : tasks.isError ? <Alert code="NETWORK_ERROR" /> : tasks.data?.length ? <>
+        {!canManage && <Progress tasks={tasks.data} />}
+        {tasks.data.map(task => <div className={`record-row ${task.status === "COMPLETED" ? "care-plan-done" : ""}`} key={task.id}><span className="record-icon">{task.status === "COMPLETED" ? <CheckCircle2 size={22} /> : <Activity size={20} />}</span><span><strong>{task.title}</strong><small>{task.instruction} · {task.status}</small></span></div>)}
+      </> : <Empty title="No active care tasks" hint="Tasks assigned by the doctor will appear here." />}
+    </Panel>
+    <Panel title="Patient activity & vitals">
+      {observations.isLoading ? <Loading /> : observations.isError ? <Alert code="NETWORK_ERROR" /> : observations.data?.length ? observations.data.map(record => <div className="record-row" key={record.id}><span className={`record-icon ${record.record_type === "ACTIVITY" ? "care-plan-done" : ""}`}>{record.record_type === "ACTIVITY" ? <CheckCircle2 size={20} /> : <Activity size={20} />}</span><span><strong>{record.record_type.replaceAll("_", " ")}</strong><small>{record.record_type === "ACTIVITY" ? `${record.activity_name} · ${record.duration_minutes} min` : record.record_type === "BLOOD_PRESSURE" ? `${record.numeric_value}/${record.secondary_numeric_value} mmHg` : `${record.numeric_value} ${record.unit || ""}`} · Patient self-recorded</small></span></div>) : <Empty title="No patient entries yet" hint="Patient updates will appear here." />}
+    </Panel>
+  </div>;
 }
 
 function DocumentsPanel({ patientId, documents, patientCanUpload, onChanged }: { patientId: string; documents: PatientDocument[]; patientCanUpload: boolean; onChanged: () => void }) {

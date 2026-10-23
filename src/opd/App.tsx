@@ -42,7 +42,6 @@ import {
   errorCode,
   Empty,
 } from "./ui";
-import { profileFields } from "./booking";
 import {
   Overview,
   AppointmentsPage,
@@ -115,7 +114,7 @@ const navigation: Record<Session["role"], string[]> = {
     "settings",
   ],
   NURSE: ["queue", "appointments", "laboratory", "settings"],
-  DOCTOR: ["overview", "queue", "appointments", "laboratory", "schedules", "settings"],
+  DOCTOR: ["overview", "patients", "queue", "appointments", "laboratory", "settings"],
 };
 const icons: Record<string, LucideIcon> = {
   overview: LayoutDashboard,
@@ -160,7 +159,6 @@ function Login({
   }, [cooldown]);
   const [code, setCode] = useState("");
   const [developmentCode, setDevelopmentCode] = useState("");
-  const [newPatient, setNewPatient] = useState(false);
   const action = useAction();
   const config = useQuery({
     queryKey: ["opd", "public-config"],
@@ -184,8 +182,8 @@ function Login({
     }
     await onLogin(token, generation);
   };
-  const patientSignIn = (profile?: Record<string, string>) =>
-    void action.run(() => signIn("/auth/opd/otp/verify", { phone, code, challenge_id: challengeId || undefined, ...(newPatient ? { profile } : {}) }));
+  const patientSignIn = () =>
+    void action.run(() => signIn("/auth/opd/otp/verify", { phone, code, challenge_id: challengeId || undefined }));
   return (
     <main className="login-page">
       <section className="login-story">
@@ -325,26 +323,8 @@ function Login({
                       <strong>{developmentCode}</strong>
                     </div>
                   )}
-                  <label className="check-label">
-                    <input
-                      type="checkbox"
-                      checked={newPatient}
-                      onChange={(e) => setNewPatient(e.target.checked)}
-                    />
-                    {t("newPatient")}
-                  </label>
-                  <DataForm
-                    key={String(newPatient)}
-                    fields={
-                      newPatient
-                        ? profileFields.filter((f) => f.name !== "phone")
-                        : []
-                    }
-                    initial={{ preferred_language: "en", gender: "Female" }}
-                    submit="verify"
-                    pending={action.pending}
-                    onSubmit={(v) => patientSignIn(v)}
-                  >
+                  <p className="muted">Your doctor creates your profile and enables mobile access. Use the same mobile number.</p>
+                  <DataForm fields={[]} submit="verify" pending={action.pending} onSubmit={() => patientSignIn()}>
                     <Field
                       label="code"
                       inputMode="numeric"

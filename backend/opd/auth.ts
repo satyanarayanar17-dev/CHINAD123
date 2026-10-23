@@ -15,7 +15,7 @@ const ttl = () => new Date(Date.now() + 30 * 86400000).toISOString();
 type Otp = { hash: string; challenge_id: string; purpose: string; delivered: number; expires_at: string; sent_at: string; consumed: number; attempts: number };
 export const authRouter = Router();
 const purpose = (value: unknown) => { if (value !== undefined && value !== 'PATIENT_LOGIN') fail('OTP_INVALID',401); };
-authRouter.get('/config', endpoint(async (_req, res) => res.json({ demo_otp: demoOtp, sms_available: otpDeliveryConfigured })));
+authRouter.get('/config', endpoint(async (_req, res) => res.json({ demo_otp: demoOtp, sms_available: otpDeliveryConfigured, doctor_registration_required: true })));
 authRouter.post('/otp/request', endpoint(async (req, res) => {
   const mobile = parse(phone, req.body.phone);
   purpose(req.body.purpose);
@@ -64,12 +64,9 @@ authRouter.post('/otp/verify', endpoint(async (req, res) => {
       await audit(tx, req, 'OTP_REJECTED', null, {}, 'denied');
       return { error: 'OTP_INVALID' };
     }
-    let patient = await tx.get<Patient>('SELECT * FROM patients WHERE phone=?', [mobile]);
-    const isNewPatient = !patient;
-    if (!patient) {
-      if (!req.body.profile) return { error: 'PROFILE_REQUIRED' };
-      patient = await createPatient(tx, req, { ...req.body.profile, phone: mobile });
-    }
+    const patient = await tx.get<Patient>(`SELECT * FROM patients WHERE phone=?${tx.dialect === 'postgres' ? ' FOR UPDATE' : ''}`, [mobile]);
+    if (!patient) return { error: 'PATIENT_NOT_REGISTERED' };
+    if (!patient.portal_access_enabled) return { error: 'PATIENT_ACCESS_DISABLED' };
     let user = await tx.get<Staff>(`SELECT * FROM users WHERE patient_id=?${tx.dialect === 'postgres' ? ' FOR UPDATE' : ''}`, [patient.id]);
     if (!user) {
       const userId = id('patient-user');
@@ -78,7 +75,6 @@ authRouter.post('/otp/verify', endpoint(async (req, res) => {
     }
     if (user.role !== 'PATIENT' || !user.is_active) return { error: 'ACCOUNT_DISABLED' };
     req.user = { id: user.id, role: 'PATIENT' };
-    if (isNewPatient) await event(tx, req, patient.id, 'PATIENT_REGISTERED', { mrn: patient.mrn });
     const credentials = createSessionCredentials();
     await tx.run("INSERT INTO refresh_tokens (id,session_key,user_id,expires_at,revoked,account_type,device_name,created_at) VALUES (?,?,?,?,0,'PATIENT',?,?)", [credentials.tokenHash, credentials.sessionKey, user.id, ttl(), (req.headers['user-agent'] || '').slice(0,200), now()]);
     const consumed = await tx.run('UPDATE patient_otps SET consumed=1 WHERE phone=? AND challenge_id=? AND consumed=0', [mobile,otp.challenge_id]);
@@ -89,7 +85,7 @@ authRouter.post('/otp/verify', endpoint(async (req, res) => {
   });
   if (result.error) {
     authLog('OTP_VERIFY_FAILURE',mobile);
-    fail(result.error, result.error === 'PROFILE_REQUIRED' ? 422 : 401);
+    fail(result.error, ['PATIENT_NOT_REGISTERED','PATIENT_ACCESS_DISABLED'].includes(result.error) ? 403 : 401);
   }
   authLog('OTP_VERIFY_SUCCESS',mobile);
   const accessToken = jwt.sign({ id: result.user!.id, role: 'PATIENT', account_type: 'PATIENT', sid: result.credentials!.sessionKey, session_iat_ms: Date.now() }, JWT_SECRET, { expiresIn: '15m' });

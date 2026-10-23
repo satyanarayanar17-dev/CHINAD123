@@ -175,7 +175,7 @@ const en = {
   register: "Register patient",
   profile: "Patient profile",
   registerHint:
-    "Registration creates one patient identity. Book an appointment to begin the visit.",
+    "Create the patient profile and enable mobile access. Choose Start visit when the patient arrives.",
   PENDING_CONFIRMATION: "Awaiting confirmation",
   CONFIRMED: "Confirmed",
   CHECKED_IN: "Checked in",
@@ -409,6 +409,8 @@ const en = {
     "The patient already has an overlapping appointment.",
   PATIENT_EXISTS:
     "A patient with this mobile already exists. Search the existing record.",
+  PATIENT_NOT_REGISTERED: "Ask your doctor to create your patient profile with this mobile number before signing in.",
+  PATIENT_ACCESS_DISABLED: "Your doctor needs to enable mobile access for your profile.",
   PROFILE_REQUIRED:
     "Complete the registration details to create your patient record.",
   OTP_INVALID:

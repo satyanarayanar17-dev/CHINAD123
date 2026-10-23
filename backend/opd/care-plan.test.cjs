@@ -78,6 +78,10 @@ async function run() {
   assert.equal(readiness.body.migrations_up_to_date, true);
   console.log('PASS Registered migration and generated OBST department identity');
 
+  const beforePlan = await call(doctor, 'get', '/care-plans/patient-a');
+  assert.equal(beforePlan.plan, null); assert.equal(beforePlan.available_prescription_items.length, 2);
+  console.log('PASS Current prescriptions are available before the first care plan');
+
   await call(otherDoctor, 'post', '/care-plans/patient-a', { start_date: today }, 403);
   await call(nurse, 'post', '/care-plans/patient-a', { start_date: today }, 403);
   const created = await call(doctor, 'post', '/care-plans/patient-a', { start_date: today, department_id: og.id }, 201);
@@ -94,6 +98,9 @@ async function run() {
   for (const timing of ['FASTING','BEFORE_DINNER','POST_DINNER']) glucose.push(await add({ task_type: 'MEASUREMENT', title: `${timing}_GLUCOSE`, instruction: 'Record glucose', observation_type: 'GLUCOSE', timing_relation: timing, target_unit: 'mg/dL' }));
   const activity = await add({ task_type: 'ACTIVITY', title: 'Morning Walk', instruction: 'Walk for 30 minutes', expected_duration_minutes: 30 });
   const items = await db.all("SELECT * FROM prescription_items WHERE prescription_id='rx-a' ORDER BY ordinal");
+  await db.run("INSERT INTO encounters (id,patient_id,phase,lifecycle_status,is_discharged,assigned_doctor_id,created_at) VALUES ('enc-other-complete','patient-a','DISCHARGED','DISCHARGED',1,'doctor-other',?)",[new Date().toISOString()]);
+  await call(otherDoctor,'post','/care-plans/patient-a/tasks',{__v:planVersion,task:{...base,task_type:'MEDICATION',title:'Forbidden alert',instruction:'Forbidden alert',prescription_item_id:items[0].id}},403);
+  await db.run("DELETE FROM encounters WHERE id='enc-other-complete'");
   const medication = await add({ task_type: 'MEDICATION', title: 'ignored', instruction: 'ignored', prescription_item_id: items[0].id });
   const insulin = await add({ task_type: 'INSULIN', title: 'ignored', instruction: 'ignored', prescription_item_id: items[1].id });
 

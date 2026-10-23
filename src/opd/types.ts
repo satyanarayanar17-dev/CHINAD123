@@ -8,6 +8,8 @@ export type QueueStatus =
   | "CONSULTATION"
   | "COMPLETED";
 export interface Patient {
+  assigned_doctor_id?: string | null;
+  portal_access_enabled?: number;
   id: string;
   mrn: string;
   name: string;

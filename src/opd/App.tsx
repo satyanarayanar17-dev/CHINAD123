@@ -25,8 +25,15 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
-  api, setAccessToken, clearAccessToken, acceptBrowserSession, prepareBrowserSignIn,
-  isSessionRestoreBlocked, beginBrowserLogout, finishBrowserLogout, SESSION_ENDED_EVENT,
+  api,
+  setAccessToken,
+  clearAccessToken,
+  acceptBrowserSession,
+  prepareBrowserSignIn,
+  isSessionRestoreBlocked,
+  beginBrowserLogout,
+  finishBrowserLogout,
+  SESSION_ENDED_EVENT,
   getSessionGeneration,
 } from "../api/client";
 import { I18nProvider, LanguageSelect, useI18n, formatDate } from "./i18n";
@@ -62,6 +69,7 @@ import { Consultation } from "./workspace";
 import { CarePlanPage } from "./carePlan";
 import type { Session, Notification } from "./types";
 import "./styles.css";
+import "./design.css";
 
 const client = new QueryClient({
   defaultOptions: {
@@ -79,10 +87,13 @@ async function restoreSession(): Promise<Session | null | undefined> {
       "/auth/refresh",
       {},
     );
-    if (generation !== getSessionGeneration() || isSessionRestoreBlocked()) return undefined;
+    if (generation !== getSessionGeneration() || isSessionRestoreBlocked())
+      return undefined;
     setAccessToken(refreshed.data.access_token);
     const restored = await get<Session>("/session");
-    return generation === getSessionGeneration() && !isSessionRestoreBlocked() ? restored : undefined;
+    return generation === getSessionGeneration() && !isSessionRestoreBlocked()
+      ? restored
+      : undefined;
   } catch (e) {
     // A previous auth request must not clear or replace a newer session.
     if (generation !== getSessionGeneration()) return undefined;
@@ -114,7 +125,14 @@ const navigation: Record<Session["role"], string[]> = {
     "settings",
   ],
   NURSE: ["queue", "appointments", "laboratory", "settings"],
-  DOCTOR: ["overview", "patients", "queue", "appointments", "laboratory", "settings"],
+  DOCTOR: [
+    "patients",
+    "queue",
+    "laboratory",
+    "appointments",
+    "overview",
+    "settings",
+  ],
 };
 const icons: Record<string, LucideIcon> = {
   overview: LayoutDashboard,
@@ -130,10 +148,14 @@ const icons: Record<string, LucideIcon> = {
   settings: Settings,
 };
 function Brand() {
-  const { t } = useI18n();
   return (
     <div className="brand">
-      <img src="/logo.png" className="brand-logo" alt="Chettinad Health City" style={{ height: "40px", objectFit: "contain", marginRight: "12px" }} />
+      <img
+        src="/logo.png"
+        className="brand-logo"
+        alt="Chettinad Health City"
+        style={{ height: "40px", objectFit: "contain", marginRight: "12px" }}
+      />
     </div>
   );
 }
@@ -150,7 +172,7 @@ function Login({
   const [mode, setMode] = useState<"patient" | "staff">("patient");
   const [phone, setPhone] = useState("");
   const [sent, setSent] = useState(false);
-  const [challengeId, setChallengeId] = useState('');
+  const [challengeId, setChallengeId] = useState("");
   const [cooldown, setCooldown] = useState(0);
   useEffect(() => {
     if (!cooldown) return;
@@ -183,7 +205,13 @@ function Login({
     await onLogin(token, generation);
   };
   const patientSignIn = () =>
-    void action.run(() => signIn("/auth/opd/otp/verify", { phone, code, challenge_id: challengeId || undefined }));
+    void action.run(() =>
+      signIn("/auth/opd/otp/verify", {
+        phone,
+        code,
+        challenge_id: challengeId || undefined,
+      }),
+    );
   return (
     <main className="login-page">
       <section className="login-story">
@@ -276,14 +304,15 @@ function Login({
                 onSubmit={(e) => {
                   e.preventDefault();
                   void action.run(async () => {
-                    const r = await api.post<{ development_code?: string; challenge_id: string; retry_after: number }>(
-                      "/auth/opd/otp/request",
-                      { phone },
-                    );
+                    const r = await api.post<{
+                      development_code?: string;
+                      challenge_id: string;
+                      retry_after: number;
+                    }>("/auth/opd/otp/request", { phone });
                     setDevelopmentCode(r.data.development_code || "");
                     setChallengeId(r.data.challenge_id);
                     setCooldown(r.data.retry_after);
-                    setCode('');
+                    setCode("");
                     setSent(true);
                   });
                 }}
@@ -297,9 +326,9 @@ function Login({
                   onChange={(e) => {
                     setPhone(e.target.value);
                     setSent(false);
-                    setCode('');
-                    setDevelopmentCode('');
-                    setChallengeId('');
+                    setCode("");
+                    setDevelopmentCode("");
+                    setChallengeId("");
                   }}
                   pattern="(?:\+91|91|0)?[6-9][0-9]{9}"
                   placeholder="+91"
@@ -316,15 +345,25 @@ function Login({
                 )}
               {sent && (
                 <div className="otp-panel">
-                  <p>{t("otpHint")} ••••••{phone.slice(-4)}</p>
+                  <p>
+                    {t("otpHint")} ••••••{phone.slice(-4)}
+                  </p>
                   {developmentCode && (
                     <div className="demo-code">
                       <small>{t("demoOtp")}</small>
                       <strong>{developmentCode}</strong>
                     </div>
                   )}
-                  <p className="muted">Your doctor creates your profile and enables mobile access. Use the same mobile number.</p>
-                  <DataForm fields={[]} submit="verify" pending={action.pending} onSubmit={() => patientSignIn()}>
+                  <p className="muted">
+                    Your doctor creates your profile and enables mobile access.
+                    Use the same mobile number.
+                  </p>
+                  <DataForm
+                    fields={[]}
+                    submit="verify"
+                    pending={action.pending}
+                    onSubmit={() => patientSignIn()}
+                  >
                     <Field
                       label="code"
                       inputMode="numeric"
@@ -355,9 +394,12 @@ function WorkspaceApp() {
   const location = useLocation();
   const bootstrap = useRef<Promise<Session | null | undefined> | null>(null);
   const clinicalDirty = useRef(false);
-  const setClinicalDirty = useCallback((dirty: boolean) => { clinicalDirty.current = dirty; }, []);
+  const setClinicalDirty = useCallback((dirty: boolean) => {
+    clinicalDirty.current = dirty;
+  }, []);
   const canLeave = () => {
-    if (clinicalDirty.current && !window.confirm(t("discardChanges"))) return false;
+    if (clinicalDirty.current && !window.confirm(t("discardChanges")))
+      return false;
     clinicalDirty.current = false;
     return true;
   };
@@ -414,7 +456,8 @@ function WorkspaceApp() {
       navigate("/login", { replace: true });
     };
     const changed = (event: StorageEvent) => {
-      if (event.key === "cc-session-signed-out" && event.newValue !== null) endSession();
+      if (event.key === "cc-session-signed-out" && event.newValue !== null)
+        endSession();
     };
     window.addEventListener(SESSION_ENDED_EVENT, endSession);
     window.addEventListener("storage", changed);
@@ -427,8 +470,12 @@ function WorkspaceApp() {
     if (loading) return;
     const routes = session ? navigation[session.role] : [];
     const currentPage = location.pathname.split("/")[2];
-    if (!session && location.pathname !== "/login") navigate("/login", { replace: true });
-    else if (session && (!location.pathname.startsWith("/app/") || !routes.includes(currentPage)))
+    if (!session && location.pathname !== "/login")
+      navigate("/login", { replace: true });
+    else if (
+      session &&
+      (!location.pathname.startsWith("/app/") || !routes.includes(currentPage))
+    )
       navigate("/app/" + routes[0], { replace: true });
   }, [loading, session, location.pathname, navigate]);
   const onLogin = async (token: string, requestedGeneration: number) => {
@@ -440,11 +487,13 @@ function WorkspaceApp() {
     try {
       s = await get<Session>("/session");
     } catch (e) {
-      if (generation !== getSessionGeneration() || isSessionRestoreBlocked()) return;
+      if (generation !== getSessionGeneration() || isSessionRestoreBlocked())
+        return;
       clearAccessToken();
       throw e;
     }
-    if (generation !== getSessionGeneration() || isSessionRestoreBlocked()) return;
+    if (generation !== getSessionGeneration() || isSessionRestoreBlocked())
+      return;
     setSession(s);
     setError("");
     setRecord(null);
@@ -452,7 +501,8 @@ function WorkspaceApp() {
     navigate(`/app/${navigation[s.role][0]}`, { replace: true });
   };
   const reloadSession = async (generation: number) => {
-    if (generation !== getSessionGeneration() || isSessionRestoreBlocked()) return;
+    if (generation !== getSessionGeneration() || isSessionRestoreBlocked())
+      return;
     try {
       const refreshed = await get<Session>("/session");
       if (generation === getSessionGeneration() && !isSessionRestoreBlocked()) {
@@ -460,7 +510,8 @@ function WorkspaceApp() {
         setError("");
       }
     } catch (e) {
-      if (generation === getSessionGeneration() && !isSessionRestoreBlocked()) setError(errorCode(e));
+      if (generation === getSessionGeneration() && !isSessionRestoreBlocked())
+        setError(errorCode(e));
     }
   };
   const logout = () => {
@@ -658,11 +709,18 @@ function WorkspaceApp() {
             <Button
               variant="ghost"
               disabled={noticeAction.pending}
-              onClick={() => void noticeAction.run(() => api.post("/opd/notifications/read"))}
+              onClick={() =>
+                void noticeAction.run(() => api.post("/opd/notifications/read"))
+              }
             >
               {t("markRead")}
             </Button>
-            <Alert code={noticeAction.error || (notices.error ? errorCode(notices.error) : "")} />
+            <Alert
+              code={
+                noticeAction.error ||
+                (notices.error ? errorCode(notices.error) : "")
+              }
+            />
             {notices.data?.length ? (
               notices.data.map((n) => (
                 <div
@@ -685,7 +743,9 @@ function WorkspaceApp() {
               {...consultation}
               session={session}
               onDirtyChange={setClinicalDirty}
-              onClose={() => { if (canLeave()) setConsultation(null); }}
+              onClose={() => {
+                if (canLeave()) setConsultation(null);
+              }}
             />
           ) : record ? (
             <PatientRecord

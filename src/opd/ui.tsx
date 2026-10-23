@@ -159,7 +159,9 @@ export function Panel({
   children,
   action,
   className = "",
+  literalTitle = false,
 }: {
+  literalTitle?: boolean;
   title?: string;
   children: ReactNode;
   action?: ReactNode;
@@ -170,7 +172,7 @@ export function Panel({
     <section className={`panel ${className}`}>
       {title && (
         <div className="panel-heading">
-          <h2>{t(title)}</h2>
+          <h2>{literalTitle ? title : t(title)}</h2>
           {action}
         </div>
       )}
@@ -329,8 +331,16 @@ export function DataForm({
     ),
   });
   return (
-    <form onSubmit={(e) => { e.preventDefault(); handleSubmit(onSubmit)(e); }} className="form-stack">
-      <Alert code={error || (Object.keys(errors).length ? "INVALID_INPUT" : "")} />
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        handleSubmit(onSubmit)(e);
+      }}
+      className="form-stack"
+    >
+      <Alert
+        code={error || (Object.keys(errors).length ? "INVALID_INPUT" : "")}
+      />
       <div className="form-grid">
         {fields.map((field) => {
           const {
@@ -344,10 +354,21 @@ export function DataForm({
             required: attrs.required,
             validate: (value) => {
               if (attrs.disabled || (!value && !attrs.required)) return true;
-              let schema: z.ZodType<string> = z.string().refine((v) => !attrs.required || v.trim().length > 0);
-              if (type === "email") schema = schema.refine((v) => z.string().email().safeParse(v).success);
-              if (attrs.pattern) schema = schema.refine((v) => new RegExp("^(?:" + attrs.pattern + ")$").test(v));
-              if (options) schema = schema.refine((v) => options.some((o) => o.value === v));
+              let schema: z.ZodType<string> = z
+                .string()
+                .refine((v) => !attrs.required || v.trim().length > 0);
+              if (type === "email")
+                schema = schema.refine(
+                  (v) => z.string().email().safeParse(v).success,
+                );
+              if (attrs.pattern)
+                schema = schema.refine((v) =>
+                  new RegExp("^(?:" + attrs.pattern + ")$").test(v),
+                );
+              if (options)
+                schema = schema.refine((v) =>
+                  options.some((o) => o.value === v),
+                );
               return schema.safeParse(value).success || "INVALID_INPUT";
             },
           });
@@ -419,8 +440,11 @@ export function Confirm({
   );
 }
 
-import React from 'react';
-export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
+import React from "react";
+export class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
   constructor(props: { children: React.ReactNode }) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -430,7 +454,11 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   }
   render() {
     if (this.state.hasError) {
-      return <div style={{color:'red', padding: '10px'}}>{this.state.error?.message}</div>;
+      return (
+        <div style={{ color: "red", padding: "10px" }}>
+          {this.state.error?.message}
+        </div>
+      );
     }
     return this.props.children;
   }

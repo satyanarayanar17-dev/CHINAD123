@@ -35,6 +35,7 @@ import { PatientForm } from "./booking";
 import { Journey, ResultCard } from "./records";
 import { Triage } from "./workspace";
 import { CarePlanSummary } from "./carePlan";
+import type { CarePlanOccurrence } from "./carePlan";
 import type {
   Session,
   Doctor,
@@ -78,12 +79,17 @@ export function Overview(props: PageProps) {
     enabled: session.role === "PATIENT" && !!session.patient_id,
     refetchInterval: 10000,
   });
-  const patientRecord = useQuery({ queryKey: ["opd", "home-record", session.patient_id], queryFn: () => get<RecordBundle>(`/patients/${session.patient_id}/record`), enabled: session.role === "PATIENT" && !!session.patient_id });
+  const patientRecord = useQuery({
+    queryKey: ["opd", "home-record", session.patient_id],
+    queryFn: () => get<RecordBundle>(`/patients/${session.patient_id}/record`),
+    enabled: session.role === "PATIENT" && !!session.patient_id,
+  });
   const isPatient = session.role === "PATIENT";
   const upcoming = appointments.data
     ?.filter(
       (a) =>
-        (a.status === "CONFIRMED" || a.status === "PENDING_CONFIRMATION") && a.scheduled_at > new Date().toISOString(),
+        (a.status === "CONFIRMED" || a.status === "PENDING_CONFIRMATION") &&
+        a.scheduled_at > new Date().toISOString(),
     )
     .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))[0];
   const d = dashboard.data;
@@ -124,11 +130,31 @@ export function Overview(props: PageProps) {
               <div />
             </div>
           </div>
-          <CarePlanSummary patientId={session.patient_id!} navigate={navigate} />
+          <CarePlanSummary
+            patientId={session.patient_id!}
+            navigate={navigate}
+          />
           <Panel title="What do I need to do next?">
-            <div className="row-actions"><Button variant="secondary" onClick={() => navigate("records")}><ClipboardCheck size={17} /> Upload Report</Button><Button variant="ghost" onClick={() => navigate("carePlan")}><Activity size={17} /> Record a measurement</Button></div>
-            {patientRecord.data?.prescriptions[0] && <p className="muted">Latest prescription: {patientRecord.data.prescriptions[0].rx_content.medications?.map((medication) => medication.name).join(", ") || "Available in My Records"}</p>}
-            <p className="muted">Follow-up appointments and Care Plan reminders will appear here when your OBST care team schedules them.</p>
+            <div className="row-actions">
+              <Button variant="secondary" onClick={() => navigate("records")}>
+                <ClipboardCheck size={17} /> Upload Report
+              </Button>
+              <Button variant="ghost" onClick={() => navigate("carePlan")}>
+                <Activity size={17} /> Record a measurement
+              </Button>
+            </div>
+            {patientRecord.data?.prescriptions[0] && (
+              <p className="muted">
+                Latest prescription:{" "}
+                {patientRecord.data.prescriptions[0].rx_content.medications
+                  ?.map((medication) => medication.name)
+                  .join(", ") || "Available in My Records"}
+              </p>
+            )}
+            <p className="muted">
+              Follow-up appointments and Care Plan reminders will appear here
+              when your OBST care team schedules them.
+            </p>
           </Panel>
           <div className="two-column">
             <Panel
@@ -186,9 +212,23 @@ export function Overview(props: PageProps) {
             d && (
               <>
                 {d.security_alerts && d.security_alerts > 0 ? (
-                  <div style={{ padding: '1rem', background: '#fee2e2', border: '1px solid #ef4444', color: '#991b1b', borderRadius: '4px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div
+                    style={{
+                      padding: "1rem",
+                      background: "#fee2e2",
+                      border: "1px solid #ef4444",
+                      color: "#991b1b",
+                      borderRadius: "4px",
+                      marginBottom: "1rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                    }}
+                  >
                     <ShieldAlert size={20} />
-                    <strong>Security Alert:</strong> {d.security_alerts} Break-Glass emergency access event(s) recorded in the last 24 hours. Please review audit logs.
+                    <strong>Security Alert:</strong> {d.security_alerts}{" "}
+                    Break-Glass emergency access event(s) recorded in the last
+                    24 hours. Please review audit logs.
                   </div>
                 ) : null}
                 <div className="metrics">
@@ -353,19 +393,24 @@ export function AppointmentsPage(props: PageProps) {
     refetchInterval: 10000,
   });
   const patientPeriod = (appointment: Appointment) =>
-    !["COMPLETED", "CANCELLED", "NO_SHOW"].includes(appointment.status) && new Date(appointment.scheduled_at).getTime() >= clockTime
+    !["COMPLETED", "CANCELLED", "NO_SHOW"].includes(appointment.status) &&
+    new Date(appointment.scheduled_at).getTime() >= clockTime
       ? "Upcoming"
       : "Past";
-  const displayedAppointments = session.role === "PATIENT"
-    ? [...(q.data || [])].sort((a, b) => (patientPeriod(a) === "Upcoming" ? 0 : 1) - (patientPeriod(b) === "Upcoming" ? 0 : 1) || (patientPeriod(a) === "Upcoming" ? a.scheduled_at.localeCompare(b.scheduled_at) : b.scheduled_at.localeCompare(a.scheduled_at)))
-    : (q.data || []);
+  const displayedAppointments =
+    session.role === "PATIENT"
+      ? [...(q.data || [])].sort(
+          (a, b) =>
+            (patientPeriod(a) === "Upcoming" ? 0 : 1) -
+              (patientPeriod(b) === "Upcoming" ? 0 : 1) ||
+            (patientPeriod(a) === "Upcoming"
+              ? a.scheduled_at.localeCompare(b.scheduled_at)
+              : b.scheduled_at.localeCompare(a.scheduled_at)),
+        )
+      : q.data || [];
   return (
     <div className="page-stack">
-      <PageHeader
-        title="appointments"
-        subtitle="overviewSub"
-
-      />
+      <PageHeader title="appointments" subtitle="overviewSub" />
       <Panel>
         <div className="table-toolbar">
           <Field
@@ -401,69 +446,103 @@ export function AppointmentsPage(props: PageProps) {
               <tbody>
                 {displayedAppointments.map((a, index) => (
                   <Fragment key={a.id}>
-                  {session.role === "PATIENT" && (index === 0 || patientPeriod(displayedAppointments[index - 1]) !== patientPeriod(a)) && <tr className="appointment-group"><th colSpan={4}>{patientPeriod(a)}</th></tr>}
-                  <tr key={a.id}>
-                    <td>
-                      <b>{formatDate(a.scheduled_at, language)}</b>
-                      <small>{formatTime(a.scheduled_at)}</small>
-                    </td>
-                    {session.role !== "PATIENT" && (
+                    {session.role === "PATIENT" &&
+                      (index === 0 ||
+                        patientPeriod(displayedAppointments[index - 1]) !==
+                          patientPeriod(a)) && (
+                        <tr className="appointment-group">
+                          <th colSpan={4}>{patientPeriod(a)}</th>
+                        </tr>
+                      )}
+                    <tr key={a.id}>
                       <td>
-                        <b>{a.patient_name}</b>
-                        <small>{a.mrn}</small>
+                        <b>{formatDate(a.scheduled_at, language)}</b>
+                        <small>{formatTime(a.scheduled_at)}</small>
                       </td>
-                    )}
-                    <td>
-                      <b>{a.doctor_name}</b>
-                      <small>
-                        {a.department_name} · {t("room")} {a.room}
-                      </small>
-                    </td>
-                    <td>
-                      <Status value={a.queue_status || a.status} />
-                      {a.follow_up_of && <small>{t("followUp")}</small>}
-                    </td>
-                    <td>
-                      <div className="row-actions">
-                        {["PENDING_CONFIRMATION", "CONFIRMED"].includes(a.status) && ["ADMIN", "DOCTOR"].includes(session.role) && new Date(a.scheduled_at).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) === today() && (
-                          <Button disabled={action.pending} title="Verify the patient name and MRN before checking in" onClick={() => void action.run(() => post(`/appointments/${a.id}/check-in`, {identity_verified: true, __v: a.__v}))}>
-                            {t("checkIn")}
-                          </Button>
-                        )}
-                        {["DOCTOR", "NURSE"].includes(session.role) && (
-                          <>
+                      {session.role !== "PATIENT" && (
+                        <td>
+                          <b>{a.patient_name}</b>
+                          <small>{a.mrn}</small>
+                        </td>
+                      )}
+                      <td>
+                        <b>{a.doctor_name}</b>
+                        <small>
+                          {a.department_name} · {t("room")} {a.room}
+                        </small>
+                      </td>
+                      <td>
+                        <Status value={a.queue_status || a.status} />
+                        {a.follow_up_of && <small>{t("followUp")}</small>}
+                      </td>
+                      <td>
+                        <div className="row-actions">
+                          {["PENDING_CONFIRMATION", "CONFIRMED"].includes(
+                            a.status,
+                          ) &&
+                            ["ADMIN", "DOCTOR"].includes(session.role) &&
+                            new Date(a.scheduled_at).toLocaleDateString(
+                              "en-CA",
+                              { timeZone: "Asia/Kolkata" },
+                            ) === today() && (
+                              <Button
+                                disabled={action.pending}
+                                title="Verify the patient name and MRN before checking in"
+                                onClick={() =>
+                                  void action.run(() =>
+                                    post(`/appointments/${a.id}/check-in`, {
+                                      identity_verified: true,
+                                      __v: a.__v,
+                                    }),
+                                  )
+                                }
+                              >
+                                {t("checkIn")}
+                              </Button>
+                            )}
+                          {["DOCTOR", "NURSE"].includes(session.role) && (
+                            <>
+                              <Button
+                                variant="secondary"
+                                onClick={() =>
+                                  a.status === "COMPLETED" && a.encounter_id
+                                    ? openConsultation(
+                                        a.patient_id,
+                                        a.encounter_id!,
+                                      )
+                                    : openRecord(a.patient_id)
+                                }
+                              >
+                                {t(
+                                  a.status === "COMPLETED" && a.encounter_id
+                                    ? "amend"
+                                    : "openRecord",
+                                )}
+                              </Button>
+                            </>
+                          )}
+                          {session.role === "PATIENT" && a.encounter_id && (
                             <Button
                               variant="secondary"
-                              onClick={() =>
-                                a.status === "COMPLETED" && a.encounter_id
-                                  ? openConsultation(
-                                      a.patient_id,
-                                      a.encounter_id!,
-                                    )
-                                  : openRecord(a.patient_id)
-                              }
+                              onClick={() => openRecord(a.patient_id)}
                             >
-                              {t(
-                                a.status === "COMPLETED" && a.encounter_id ? "amend" : "openRecord",
-                              )}
+                              {t("viewJourney")}
                             </Button>
-
-                          </>
-                        )}
-                        {session.role === "PATIENT" && a.encounter_id && (
-                          <Button
-                            variant="secondary"
-                            onClick={() => openRecord(a.patient_id)}
-                          >
-                            {t("viewJourney")}
-                          </Button>
-                        )}
-                        {session.role === "PATIENT" && patientPeriod(a) === "Upcoming" && (
-                          <Button variant="ghost" onClick={() => openRecord(a.patient_id, "documents")}>Add Records for this Appointment</Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                          )}
+                          {session.role === "PATIENT" &&
+                            patientPeriod(a) === "Upcoming" && (
+                              <Button
+                                variant="ghost"
+                                onClick={() =>
+                                  openRecord(a.patient_id, "documents")
+                                }
+                              >
+                                Add Records for this Appointment
+                              </Button>
+                            )}
+                        </div>
+                      </td>
+                    </tr>
                   </Fragment>
                 ))}
               </tbody>
@@ -476,6 +555,79 @@ export function AppointmentsPage(props: PageProps) {
     </div>
   );
 }
+function PatientDirectoryCard({
+  patient,
+  selected,
+  onSelect,
+  clinical,
+}: {
+  patient: Patient;
+  selected: boolean;
+  onSelect: () => void;
+  clinical: boolean;
+}) {
+  const care = useQuery({
+    queryKey: ["opd", "care-plan", "today", patient.id],
+    queryFn: () => get<CarePlanOccurrence[]>(`/adherence/${patient.id}/today`),
+    enabled: clinical,
+    staleTime: 15000,
+    refetchInterval: 30000,
+  });
+  const tasks = care.data || [];
+  const completed = tasks.filter((task) => task.status === "COMPLETED").length;
+  const all = tasks.length > 0 && completed === tasks.length;
+  return (
+    <button
+      className={`directory-card ${selected ? "selected" : ""}`}
+      onClick={onSelect}
+      aria-pressed={selected}
+    >
+      <span className="directory-person">
+        <span className="avatar">
+          {patient.name
+            .split(" ")
+            .slice(0, 2)
+            .map((part) => part[0])
+            .join("")}
+        </span>
+        <span>
+          <strong>{patient.name}</strong>
+          <small>{patient.mrn}</small>
+        </span>
+        <ArrowUpRight size={18} />
+      </span>
+      <span className="directory-progress">
+        <span>
+          {clinical && care.isLoading
+            ? "Loading care progress…"
+            : clinical && care.isError
+              ? "Care progress unavailable"
+              : clinical && tasks.length
+                ? `${completed} of ${tasks.length} care tasks`
+                : clinical
+                  ? "Care plan not assigned"
+                  : patient.phone}
+        </span>
+        <span className={all ? "care-label complete" : "care-label"}>
+          {all ? (
+            <>
+              <CheckCircle2 size={14} /> All complete
+            </>
+          ) : patient.portal_access_enabled ? (
+            "Mobile access"
+          ) : (
+            "Access paused"
+          )}
+        </span>
+      </span>
+      {clinical && tasks.length > 0 && (
+        <span className={`directory-track ${all ? "complete" : ""}`}>
+          <span style={{ width: `${(completed / tasks.length) * 100}%` }} />
+        </span>
+      )}
+    </button>
+  );
+}
 export function PatientsPage(props: PageProps) {
   const { t } = useI18n();
   const action = useAction();
@@ -483,6 +635,9 @@ export function PatientsPage(props: PageProps) {
   const [create, setCreate] = useState(false);
   const [edit, setEdit] = useState<Patient | null>(null);
   const [journeyId, setJourneyId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const doctor = props.session.role === "DOCTOR";
   const q = useQuery({
     queryKey: ["opd", "patients", search],
     queryFn: () =>
@@ -493,11 +648,19 @@ export function PatientsPage(props: PageProps) {
     queryFn: () => get<JourneyEvent[]>(`/patients/${journeyId}/journey`),
     enabled: !!journeyId,
   });
+  const patients = q.data || [];
+  const currentPage = Math.min(
+    page,
+    Math.max(0, Math.ceil(patients.length / 20) - 1),
+  );
+  const visible = patients.slice(currentPage * 20, currentPage * 20 + 20);
+  const selected =
+    patients.find((patient) => patient.id === selectedId) || visible[0];
   return (
     <div className="page-stack">
       <PageHeader
-        title="patients"
-        subtitle="registerHint"
+        title={doctor ? "yourPatients" : "patients"}
+        subtitle={doctor ? "careAtGlance" : "registerHint"}
         action={
           <Button onClick={() => setCreate(true)}>
             <UserPlus size={18} />
@@ -505,83 +668,205 @@ export function PatientsPage(props: PageProps) {
           </Button>
         }
       />
+      {doctor && (
+        <p className="directory-doctor">
+          {props.session.name} · {props.session.department}
+        </p>
+      )}
       <Alert code={action.error} />
-      <Panel>
-        <div className="table-toolbar">
-          <div className="search-field">
-            <Search size={18} />
-            <input
-              aria-label={t("searchPatients")}
-              placeholder={t("searchPatients")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+      <div className="patient-workspace">
+        <Panel
+          title="patientDirectory"
+          className="directory-panel"
+          action={
+            <span className="care-label">
+              {patients.length} {t("patients")}
+            </span>
+          }
+        >
+          <div className="table-toolbar">
+            <div className="search-field">
+              <Search size={18} />
+              <input
+                aria-label={t("searchPatients")}
+                placeholder={t("searchPatients")}
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(0);
+                }}
+              />
+            </div>
           </div>
-        </div>
-        {q.isLoading ? (
-          <Loading />
-        ) : q.isError ? (
-          <Alert code="NETWORK_ERROR" />
-        ) : q.data?.length ? (
-          <div className="table-scroll" tabIndex={0}>
-            <table>
-              <thead>
-                <tr>
-                  <th>{t("patient")}</th>
-                  <th>{t("mobile")}</th>
-                  <th>{t("dob")}</th>
-                  <th>{t("city")}</th>
-                  <th>{t("actions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {q.data.map((p) => (
-                  <tr key={p.id}>
-                    <td>
-                      <div className="person-cell">
-                        <span className="avatar">
-                          {p.name
-                            .split(" ")
-                            .slice(0, 2)
-                            .map((n) => n[0])
-                            .join("")}
-                        </span>
-                        <span>
-                          <b>{p.name}</b>
-                          <small>{p.mrn}</small>
-                        </span>
-                      </div>
-                    </td>
-                    <td>{p.phone}<small>{p.portal_access_enabled ? "Mobile access enabled" : "Mobile access disabled"}</small></td>
-                    <td>{p.dob}</td>
-                    <td>{p.city || "—"}</td>
-                    <td>
-                      <div className="row-actions">
-                        {props.session.role === "DOCTOR" && <>
-                          <Button disabled={action.pending} onClick={()=>void action.run(async()=>{ const entry=await post<QueueEntry>(`/patients/${p.id}/check-in`,{identity_verified:true}); if(entry.status!=="CONSULTATION") await post(`/encounters/${entry.encounter_id}/start`,{__v:entry.__v}); return entry; },entry=>props.openConsultation(p.id,entry.encounter_id))}>Start visit</Button>
-                          <Button variant="ghost" onClick={()=>props.openRecord(p.id,"carePlan")}>Care plan & medications</Button>
-                          <Button variant="ghost" disabled={action.pending} onClick={()=>void action.run(()=>api.patch(`/opd/patients/${p.id}/access`,{portal_access_enabled:!p.portal_access_enabled,__v:p.__v}))}>{p.portal_access_enabled ? "Disable mobile access" : "Enable mobile access"}</Button>
-                        </>}
-                        <Button variant="ghost" onClick={() => setEdit(p)}>
-                          {t("edit")}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() => setJourneyId(p.id)}
-                        >
-                          {t("journey")}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {q.isLoading ? (
+            <Loading />
+          ) : q.isError ? (
+            <Alert code="NETWORK_ERROR" />
+          ) : !visible.length ? (
+            <Empty />
+          ) : (
+            <div className="directory-list">
+              {visible.map((patient) => (
+                <PatientDirectoryCard
+                  key={patient.id}
+                  patient={patient}
+                  clinical={doctor}
+                  selected={selected?.id === patient.id}
+                  onSelect={() => setSelectedId(patient.id)}
+                />
+              ))}
+            </div>
+          )}
+          {patients.length > 20 && (
+            <div className="directory-pagination">
+              <Button
+                variant="ghost"
+                disabled={currentPage === 0}
+                onClick={() => setPage(currentPage - 1)}
+              >
+                Previous
+              </Button>
+              <span>
+                {currentPage + 1} / {Math.ceil(patients.length / 20)}
+              </span>
+              <Button
+                variant="ghost"
+                disabled={(currentPage + 1) * 20 >= patients.length}
+                onClick={() => setPage(currentPage + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </Panel>
+        {selected && (
+          <div className="patient-detail-stack" key={selected.id}>
+            <Panel
+              title={selected.name}
+              literalTitle
+              className="directory-detail"
+              action={
+                <span className="avatar large">
+                  {selected.name
+                    .split(" ")
+                    .slice(0, 2)
+                    .map((part) => part[0])
+                    .join("")}
+                </span>
+              }
+            >
+              <div className="directory-detail-body">
+                <p className="muted">
+                  {selected.mrn} · {selected.dob} · {selected.gender}
+                </p>
+                <div className="directory-facts">
+                  <div>
+                    <small>{t("mobile")}</small>
+                    <strong>{selected.phone}</strong>
+                  </div>
+                  <div>
+                    <small>{t("city")}</small>
+                    <strong>{selected.city || "—"}</strong>
+                  </div>
+                </div>
+                <div className="patient-access-note">
+                  <CheckCircle2 size={19} />
+                  <span>
+                    {selected.portal_access_enabled
+                      ? "Mobile access enabled"
+                      : "Mobile access paused"}
+                  </span>
+                </div>
+                <div className="directory-primary-actions">
+                  {doctor && (
+                    <>
+                      <Button
+                        disabled={action.pending}
+                        onClick={() =>
+                          void action.run(
+                            async () => {
+                              const entry = await post<QueueEntry>(
+                                `/patients/${selected.id}/check-in`,
+                                { identity_verified: true },
+                              );
+                              if (entry.status !== "CONSULTATION")
+                                await post(
+                                  `/encounters/${entry.encounter_id}/start`,
+                                  { __v: entry.__v },
+                                );
+                              return entry;
+                            },
+                            (entry) =>
+                              props.openConsultation(
+                                selected.id,
+                                entry.encounter_id,
+                              ),
+                          )
+                        }
+                      >
+                        <Stethoscope size={18} />
+                        Start visit
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          props.openRecord(selected.id, "carePlan")
+                        }
+                      >
+                        Medications & care plan
+                      </Button>
+                    </>
+                  )}
+                  {doctor && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => props.openRecord(selected.id)}
+                    >
+                      Open patient record
+                    </Button>
+                  )}
+                </div>
+                <div className="row-actions">
+                  <Button variant="ghost" onClick={() => setEdit(selected)}>
+                    {t("edit")}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setJourneyId(selected.id)}
+                  >
+                    {t("journey")}
+                  </Button>
+                  {doctor && (
+                    <Button
+                      variant="ghost"
+                      disabled={action.pending}
+                      onClick={() =>
+                        void action.run(() =>
+                          api.patch(`/opd/patients/${selected.id}/access`, {
+                            portal_access_enabled:
+                              !selected.portal_access_enabled,
+                            __v: selected.__v,
+                          }),
+                        )
+                      }
+                    >
+                      {selected.portal_access_enabled
+                        ? "Pause mobile access"
+                        : "Enable mobile access"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Panel>
+            {doctor && (
+              <CarePlanSummary
+                patientId={selected.id}
+                navigate={() => props.openRecord(selected.id, "carePlan")}
+              />
+            )}
           </div>
-        ) : (
-          <Empty />
         )}
-      </Panel>
+      </div>
       {(create || edit) && (
         <PatientForm
           patient={edit || undefined}
@@ -631,7 +916,12 @@ export function QueueTable({
   return (
     <>
       <Alert code={action.error} />
-      {reassign && <ReassignVisitDialog entry={reassign} onClose={() => setReassign(null)} />}
+      {reassign && (
+        <ReassignVisitDialog
+          entry={reassign}
+          onClose={() => setReassign(null)}
+        />
+      )}
       {entries.length ? (
         <div className="table-scroll" tabIndex={0}>
           <table>
@@ -664,7 +954,14 @@ export function QueueTable({
                   </td>
                   <td>
                     <b>{e.doctor_name}</b>
-                    {session.role === "ADMIN" && ["WAITING","WAITING_DOCTOR","DOCTOR_READY"].includes(e.status) && <Button variant="ghost" onClick={() => setReassign(e)}>{t("reassignVisit")}</Button>}
+                    {session.role === "ADMIN" &&
+                      ["WAITING", "WAITING_DOCTOR", "DOCTOR_READY"].includes(
+                        e.status,
+                      ) && (
+                        <Button variant="ghost" onClick={() => setReassign(e)}>
+                          {t("reassignVisit")}
+                        </Button>
+                      )}
                     <small>
                       {e.department_name} · {t("room")} {e.room}
                     </small>
@@ -1031,12 +1328,78 @@ function ResultForm({
   );
 }
 
-function ReassignVisitDialog({entry,onClose}:{entry:QueueEntry;onClose:()=>void}) {
-  const {t}=useI18n();const action=useAction();const [doctor,setDoctor]=useState("");const [reason,setReason]=useState("");
-  const directory=useQuery({queryKey:["opd","directory"],queryFn:()=>get<{doctors:Doctor[]}>("/directory")});
-  return <Modal title="reassignVisit" onClose={onClose}><form className="form-stack" onSubmit={event=>{event.preventDefault();void action.run(()=>post(`/encounters/${entry.encounter_id}/reassign`,{doctor_id:doctor,__v:entry.__v,reason}),onClose);}}>
-    <p>{entry.patient_name} · {t("mrn")} {entry.mrn} · {entry.token}</p><p>{t("reassignHint")}</p>
-    <Select label="receivingDoctor" required value={doctor} onChange={event=>setDoctor(event.target.value)}><option value="">{t("selectDoctor")}</option>{directory.data?.doctors.filter(d=>d.department===entry.department_name&&d.id!==entry.doctor_id).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</Select>
-    <Textarea label="handoverReason" required maxLength={1000} value={reason} onChange={event=>setReason(event.target.value)} /><Alert code={action.error}/><div className="form-actions"><Button type="button" variant="secondary" onClick={onClose}>{t("cancel")}</Button><Button disabled={action.pending||!doctor||!reason.trim()}>{t("confirmTransfer")}</Button></div>
-  </form></Modal>;
+function ReassignVisitDialog({
+  entry,
+  onClose,
+}: {
+  entry: QueueEntry;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const action = useAction();
+  const [doctor, setDoctor] = useState("");
+  const [reason, setReason] = useState("");
+  const directory = useQuery({
+    queryKey: ["opd", "directory"],
+    queryFn: () => get<{ doctors: Doctor[] }>("/directory"),
+  });
+  return (
+    <Modal title="reassignVisit" onClose={onClose}>
+      <form
+        className="form-stack"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void action.run(
+            () =>
+              post(`/encounters/${entry.encounter_id}/reassign`, {
+                doctor_id: doctor,
+                __v: entry.__v,
+                reason,
+              }),
+            onClose,
+          );
+        }}
+      >
+        <p>
+          {entry.patient_name} · {t("mrn")} {entry.mrn} · {entry.token}
+        </p>
+        <p>{t("reassignHint")}</p>
+        <Select
+          label="receivingDoctor"
+          required
+          value={doctor}
+          onChange={(event) => setDoctor(event.target.value)}
+        >
+          <option value="">{t("selectDoctor")}</option>
+          {directory.data?.doctors
+            .filter(
+              (d) =>
+                d.department === entry.department_name &&
+                d.id !== entry.doctor_id,
+            )
+            .map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+        </Select>
+        <Textarea
+          label="handoverReason"
+          required
+          maxLength={1000}
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+        />
+        <Alert code={action.error} />
+        <div className="form-actions">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {t("cancel")}
+          </Button>
+          <Button disabled={action.pending || !doctor || !reason.trim()}>
+            {t("confirmTransfer")}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
 }

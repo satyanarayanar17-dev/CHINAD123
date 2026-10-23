@@ -3,6 +3,8 @@ const { z } = require('zod');
 const { requireAuth } = require('../middleware/auth');
 const { db, transaction, endpoint, parse, now, id, fail, roles, actor, patientAccess, audit, event } = require('../opd/core.ts');
 
+const { measurementNumbers } = require('../lib/measurementNumbers');
+
 const router = express.Router();
 router.use(requireAuth);
 const schema = z.object({
@@ -36,7 +38,8 @@ router.get('/:patientId', endpoint(async (req, res) => {
   roles(req, ['PATIENT', 'DOCTOR', 'NURSE']);
   const patientId = await resolvePatientId(req);
   await patientAccess(req, patientId);
-  res.json(await db.all('SELECT * FROM patient_self_records WHERE patient_id=? ORDER BY observed_at DESC,id DESC LIMIT 500', [patientId]));
+  const rows = await db.all('SELECT * FROM patient_self_records WHERE patient_id=? ORDER BY observed_at DESC,id DESC LIMIT 500', [patientId]);
+  res.json(rows.map(measurementNumbers));
 }));
 
 router.post('/:patientId', endpoint(async (req, res) => {
@@ -54,7 +57,7 @@ router.post('/:patientId', endpoint(async (req, res) => {
     await event(tx, req, patientId, 'PATIENT_SELF_RECORD_CREATED', { record_id: recordId, record_type: value.record_type });
     return tx.get('SELECT * FROM patient_self_records WHERE id=?', [recordId]);
   });
-  res.status(201).json(row);
+  res.status(201).json(measurementNumbers(row));
 }));
 
 module.exports = router;

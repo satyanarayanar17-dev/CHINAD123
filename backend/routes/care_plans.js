@@ -55,16 +55,17 @@ async function doctorContext(req, patientId, tx) {
   return { user, department };
 }
 
-async function taskMedication(tx, patientId, task) {
+async function taskMedication(tx, patientId, task, doctorId) {
   if (!['MEDICATION', 'INSULIN'].includes(task.task_type)) return task;
   const item = await tx.get(
-    `SELECT i.*,d.name AS drug_name,d.strength,d.form,d.route,r.__v AS current_prescription_version
+    `SELECT i.*,d.name AS drug_name,d.strength,d.form,d.route,r.__v AS current_prescription_version,e.assigned_doctor_id
      FROM prescription_items i JOIN prescriptions r ON r.id=i.prescription_id
      JOIN encounters e ON e.id=r.encounter_id JOIN drug_catalog d ON d.id=i.drug_id
      WHERE i.id=? AND e.patient_id=? AND r.status='AUTHORIZED' AND i.prescription_version=r.__v`,
     [task.prescription_item_id, patientId]
   );
   if (!item) fail('PRESCRIPTION_ITEM_NOT_CURRENT', 409);
+  if (item.assigned_doctor_id !== doctorId) fail('NOT_ASSIGNED', 403);
   return {
     ...task,
     title: `${item.drug_name} ${item.strength}`.trim(),
@@ -74,7 +75,7 @@ async function taskMedication(tx, patientId, task) {
 
 async function insertTask(tx, req, plan, rawTask, seriesId = id('care-task-series'), revision = 1, supersedes = null) {
   let task = parse(taskSchema, rawTask);
-  task = await taskMedication(tx, plan.patient_id, task);
+  task = await taskMedication(tx, plan.patient_id, task, req.user.id);
   const taskId = id('care-task');
   const timestamp = now();
   await tx.run(
@@ -90,23 +91,22 @@ async function insertTask(tx, req, plan, rawTask, seriesId = id('care-task-serie
   return tx.get('SELECT * FROM care_plan_tasks WHERE id=?', [taskId]);
 }
 
-async function readModel(tx, patientId) {
+async function readModel(tx, patientId, doctorId = null) {
   const plans = await tx.all('SELECT * FROM care_plans WHERE patient_id=? ORDER BY created_at DESC', [patientId]);
-  if (!plans.length) return { plan: null, plans: [], tasks: [], available_prescription_items: [] };
-  const tasks = await tx.all(
+  const tasks = plans.length ? await tx.all(
     `SELECT t.*,i.prescription_id,i.prescription_version,i.dose,i.frequency,i.duration,i.instructions AS medication_instructions,
             d.name AS drug_name,d.strength,d.form,d.route,r.__v AS current_prescription_version
      FROM care_plan_tasks t LEFT JOIN prescription_items i ON i.id=t.prescription_item_id
      LEFT JOIN drug_catalog d ON d.id=i.drug_id LEFT JOIN prescriptions r ON r.id=i.prescription_id
      WHERE t.plan_id IN (${plans.map(() => '?').join(',')}) ORDER BY t.series_id,t.revision`,
     plans.map(plan => plan.id)
-  );
+  ) : [];
   const items = await tx.all(
     `SELECT i.*,d.name AS drug_name,d.strength,d.form,d.route,r.__v AS current_prescription_version
      FROM prescription_items i JOIN prescriptions r ON r.id=i.prescription_id
      JOIN encounters e ON e.id=r.encounter_id JOIN drug_catalog d ON d.id=i.drug_id
-     WHERE e.patient_id=? AND r.status='AUTHORIZED' ORDER BY r.created_at DESC,i.ordinal`,
-    [patientId]
+     WHERE e.patient_id=? AND r.status='AUTHORIZED'${doctorId ? ' AND e.assigned_doctor_id=?' : ''} ORDER BY r.created_at DESC,i.ordinal`,
+    doctorId ? [patientId,doctorId] : [patientId]
   );
   return {
     plan: plans.find(plan => plan.status === 'ACTIVE') || null,
@@ -122,7 +122,7 @@ router.get('/:patientId', endpoint(async (req, res) => {
   const user = req.user.role === 'PATIENT' && requested === req.user.id ? await actor(req) : null;
   const patientId = user?.patient_id || requested;
   await patientAccess(req, patientId);
-  res.json(await readModel(db, patientId));
+  res.json(await readModel(db, patientId, req.user.role === 'DOCTOR' ? req.user.id : null));
 }));
 
 router.post('/:patientId/review', endpoint(async (req, res) => {

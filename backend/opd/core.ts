@@ -63,7 +63,7 @@ export const phone = z
   .string()
   .trim()
   .transform((v) =>
-    v.replace(/[\s()-]/g, "").replace(/^(?:\+91|91)?([6-9]\d{9})$/, "+91$1"),
+    v.replace(/[\s()-]/g, "").replace(/^(?:\+91|91|0)?([6-9]\d{9})$/, "+91$1"),
   )
   .refine((v) => /^\+91[6-9]\d{9}$/.test(v));
 export const profileSchema = z.object({
@@ -135,7 +135,7 @@ export async function patientAccess(
       "SELECT id FROM encounters WHERE patient_id = ? AND assigned_doctor_id = ? UNION SELECT id FROM appointments WHERE patient_id = ? AND doctor_id = ? AND status IN ('PENDING_CONFIRMATION','CONFIRMED','CHECKED_IN','IN_TRIAGE','READY_FOR_DOCTOR','IN_CONSULTATION')",
       [patientId, user.id, patientId, user.id],
     );
-    if (linked) authorized = true;
+    if (linked || patient!.assigned_doctor_id === user.id) authorized = true;
   }
   
   if (user.role === "NURSE") {
@@ -147,14 +147,9 @@ export async function patientAccess(
   }
   
   if (!authorized && (user.role === "DOCTOR" || user.role === "NURSE")) {
-    const breakGlassReason = req.headers['x-break-glass-reason'];
-    if (breakGlassReason) {
-      authorized = true;
-      await audit(tx, req, "BREAK_GLASS_ACCESSED", patientId, { reason: breakGlassReason });
-      logEvent('admin_alert', { type: 'BREAK_GLASS', patient_id: patientId, actor_id: user.id, reason: breakGlassReason });
-    } else {
-      fail("FORBIDDEN_RECORD", 403);
-    }
+    // A caller-controlled header is not an emergency authorization grant.
+    // Unlinked care requires an approved assignment through hospital operations.
+    fail("FORBIDDEN_RECORD", 403);
   }
 
   if (!authorized) fail("NOT_FOUND", 404);
@@ -268,15 +263,20 @@ export async function event(
   }
 }
 export async function createPatient(tx: DB, req: Req, input: unknown) {
+  roles(req, ["ADMIN", "DOCTOR"]);
   const data = parse(profileSchema, input);
+  const access = parse(z.object({portal_access_enabled: z.boolean().default(true), assigned_doctor_id: z.string().optional()}), input);
+  const assignedDoctor = req.user.role === "DOCTOR" ? req.user.id : access.assigned_doctor_id || null;
+  if (assignedDoctor && !await tx.get("SELECT id FROM users WHERE id=? AND role='DOCTOR' AND is_active=1", [assignedDoctor])) fail("NOT_ASSIGNED", 422);
   if (await tx.get("SELECT id FROM patients WHERE phone = ?", [data.phone]))
     fail("PATIENT_EXISTS", 409);
   const patientId = id("pat");
   const mrn = `CC-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
-  const fields = Object.keys(data);
+  const record = { ...data, allergy_review_status: data.allergies ? 'RECORDED' : 'UNKNOWN', assigned_doctor_id: assignedDoctor, portal_access_enabled: access.portal_access_enabled ? 1 : 0 };
+  const fields = Object.keys(record);
   await tx.run(
     `INSERT INTO patients (id, mrn, ${fields.join(",")}) VALUES (?, ?, ${fields.map(() => "?").join(",")})`,
-    [patientId, mrn, ...Object.values(data)],
+    [patientId, mrn, ...Object.values(record)],
   );
   await audit(tx, req, "PATIENT_REGISTERED", patientId, {
     resource: patientId,

@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap");
+@font-face { font-family: "Manrope"; src: url("../assets/fonts/Manrope.ttf") format("truetype"); font-weight: 400 800; font-display: swap; }
 :root {
   font-family: "DM Sans", Arial, sans-serif;
   color: #203b3c;
@@ -2845,3 +2845,6 @@ pre {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.care-plan-done { color: #15803d; background: #f0fdf4; border-radius: 12px; padding: 12px; }
+.care-plan-done strong, .care-plan-done[role="status"] { display: flex; align-items: center; gap: 8px; }

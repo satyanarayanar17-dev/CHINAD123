@@ -1,3 +1,5 @@
+> Current controlled-pilot release instructions: [CONTROLLED_PILOT_RUNBOOK.md](CONTROLLED_PILOT_RUNBOOK.md). Earlier deployment instructions below are historical; do not apply them to the new pilot.
+
 # Render SQLite Deployment Guide
 
 I have prepared a custom Render blueprint (`render-sqlite.yaml`) that perfectly matches your current architecture. It spins up two services:

@@ -42,7 +42,6 @@ import {
   errorCode,
   Empty,
 } from "./ui";
-import { profileFields } from "./booking";
 import {
   Overview,
   AppointmentsPage,
@@ -115,7 +114,7 @@ const navigation: Record<Session["role"], string[]> = {
     "settings",
   ],
   NURSE: ["queue", "appointments", "laboratory", "settings"],
-  DOCTOR: ["overview", "queue", "appointments", "laboratory", "schedules", "settings"],
+  DOCTOR: ["overview", "patients", "queue", "appointments", "laboratory", "settings"],
 };
 const icons: Record<string, LucideIcon> = {
   overview: LayoutDashboard,
@@ -151,9 +150,15 @@ function Login({
   const [mode, setMode] = useState<"patient" | "staff">("patient");
   const [phone, setPhone] = useState("");
   const [sent, setSent] = useState(false);
+  const [challengeId, setChallengeId] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+  useEffect(() => {
+    if (!cooldown) return;
+    const timer = window.setTimeout(() => setCooldown(cooldown - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [cooldown]);
   const [code, setCode] = useState("");
   const [developmentCode, setDevelopmentCode] = useState("");
-  const [newPatient, setNewPatient] = useState(false);
   const action = useAction();
   const config = useQuery({
     queryKey: ["opd", "public-config"],
@@ -177,8 +182,8 @@ function Login({
     }
     await onLogin(token, generation);
   };
-  const patientSignIn = (profile?: Record<string, string>) =>
-    void action.run(() => signIn("/auth/opd/otp/verify", { phone, code, ...(newPatient ? { profile } : {}) }));
+  const patientSignIn = () =>
+    void action.run(() => signIn("/auth/opd/otp/verify", { phone, code, challenge_id: challengeId || undefined }));
   return (
     <main className="login-page">
       <section className="login-story">
@@ -271,11 +276,14 @@ function Login({
                 onSubmit={(e) => {
                   e.preventDefault();
                   void action.run(async () => {
-                    const r = await api.post<{ development_code?: string }>(
+                    const r = await api.post<{ development_code?: string; challenge_id: string; retry_after: number }>(
                       "/auth/opd/otp/request",
                       { phone },
                     );
                     setDevelopmentCode(r.data.development_code || "");
+                    setChallengeId(r.data.challenge_id);
+                    setCooldown(r.data.retry_after);
+                    setCode('');
                     setSent(true);
                   });
                 }}
@@ -289,12 +297,15 @@ function Login({
                   onChange={(e) => {
                     setPhone(e.target.value);
                     setSent(false);
+                    setCode('');
+                    setDevelopmentCode('');
+                    setChallengeId('');
                   }}
-                  pattern="(?:\+91)?[6-9][0-9]{9}"
+                  pattern="(?:\+91|91|0)?[6-9][0-9]{9}"
                   placeholder="+91"
                 />
-                <Button disabled={action.pending}>
-                  {t("sendOtp")}
+                <Button disabled={action.pending || cooldown > 0}>
+                  {cooldown > 0 ? `${cooldown}s` : t("sendOtp")}
                   <ChevronRight size={17} />
                 </Button>
               </form>
@@ -305,33 +316,15 @@ function Login({
                 )}
               {sent && (
                 <div className="otp-panel">
-                  <p>{t("otpHint")}</p>
+                  <p>{t("otpHint")} ••••••{phone.slice(-4)}</p>
                   {developmentCode && (
                     <div className="demo-code">
                       <small>{t("demoOtp")}</small>
                       <strong>{developmentCode}</strong>
                     </div>
                   )}
-                  <label className="check-label">
-                    <input
-                      type="checkbox"
-                      checked={newPatient}
-                      onChange={(e) => setNewPatient(e.target.checked)}
-                    />
-                    {t("newPatient")}
-                  </label>
-                  <DataForm
-                    key={String(newPatient)}
-                    fields={
-                      newPatient
-                        ? profileFields.filter((f) => f.name !== "phone")
-                        : []
-                    }
-                    initial={{ preferred_language: "en", gender: "Female" }}
-                    submit="verify"
-                    pending={action.pending}
-                    onSubmit={(v) => patientSignIn(v)}
-                  >
+                  <p className="muted">Your doctor creates your profile and enables mobile access. Use the same mobile number.</p>
+                  <DataForm fields={[]} submit="verify" pending={action.pending} onSubmit={() => patientSignIn()}>
                     <Field
                       label="code"
                       inputMode="numeric"

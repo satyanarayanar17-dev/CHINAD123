@@ -32,7 +32,6 @@ import {
 } from "./ui";
 import { PatientHeader, Vitals, Journey, ResultCard } from "./records";
 import { DoctorCarePlanManager } from "./carePlan";
-import { SlotPicker } from "./booking";
 import type { FormField } from "./ui";
 import type {
   RecordBundle,
@@ -102,6 +101,9 @@ export function Triage({
     },
     { name: "complaint", type: "textarea", required: true },
     { name: "allergies", type: "textarea" },
+    { name: 'allergy_review_status', required: true, options: ['UNKNOWN','NONE_REPORTED','RECORDED'].map(value => ({value,label:`allergy_${value}`})) },
+    { name: 'allergy_review_confirmed', required: true, options: [{value:'no',label:'notReviewed'},{value:'yes',label:'allergyReviewConfirmed'}] },
+    { name: 'allergy_change_reason', type: 'textarea' },
     { name: "notes", type: "textarea" },
     ...(previous
       ? [{ name: "amendReason", required: true, type: "textarea" }]
@@ -121,11 +123,8 @@ export function Triage({
           <p className="muted">{t("triageSub")}</p>
           <DataForm
             fields={fields}
-            initial={
-              previous
-                ? { ...previous.data }
-                : { priority: 0, allergies: q.data.patient.allergies }
-            }
+            initial={{ ...(previous ? previous.data : {priority:0,allergies:q.data.patient.allergies}),
+              allergy_review_status:q.data.patient.allergy_review_status || 'UNKNOWN',allergy_review_confirmed:'no',patient__v:q.data.patient.__v }}
             pending={action.pending}
             error={action.error}
             submit="sendDoctor"
@@ -150,6 +149,9 @@ export function Triage({
                     __v: entry.__v,
                     data,
                     reason: v.amendReason,
+                    patient__v: Number(v.patient__v),
+                    allergy_review_confirmed: v.allergy_review_confirmed === 'yes',
+                    allergy_change_reason: v.allergy_change_reason,
                   }),
                 onClose,
               );
@@ -205,7 +207,6 @@ function ConsultationForm({
   catalogue,
   encounterId,
   onClose,
-  session,
   onDirtyChange,
 }: {
   record: RecordBundle;
@@ -215,7 +216,7 @@ function ConsultationForm({
   session: Session;
   onDirtyChange: (dirty: boolean) => void;
 }) {
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const action = useAction();
   const labAction = useAction();
   const note = record.notes.find((n) => n.encounter_id === encounterId);
@@ -224,14 +225,12 @@ function ConsultationForm({
   const [version, setVersion] = useState(note?.__v || 0);
   const [tab, setTab] = useState("consultation");
   const [amendReason, setAmendReason] = useState("");
-  const [followUp, setFollowUp] = useState(!!note?.draft_content.follow_up);
   const [test, setTest] = useState("");
   const [confirmComplete, setConfirmComplete] = useState(false);
   const {
     register,
     handleSubmit,
     control,
-    setValue,
     watch,
     getValues,
     reset,
@@ -263,29 +262,22 @@ function ConsultationForm({
   }, [isDirty, onDirtyChange]);
   const meds = useFieldArray({ control, name: "medications" });
   const selectedDiagnoses = watch("diagnosis_ids");
-  const selectedFollowUp = watch("follow_up");
-  const currentMedications = watch("medications");
   
-  const checkAllergy = (drugId: string) => {
-    if (!drugId || !record.patient.allergies) return false;
-    const drug = catalogue.drugs.find((d) => d.id === drugId);
-    return drug && record.patient.allergies.toLowerCase().includes(drug.name.toLowerCase());
-  };
-
   const complete = !!encounter?.is_discharged;
-  const save = (data: ConsultationData, finalize = false) =>
-    void action.run(
+  const save = (input: ConsultationData, finalize = false) => {
+    const data = complete ? input : {...input, follow_up:null};
+    return void action.run(
       () =>
         complete
           ? post(`/encounters/${encounterId}/amend`, {
               data,
               reason: amendReason,
-              __v: version,
+              __v: version,patient__v:record.patient.__v,
             })
           : finalize
             ? post(`/encounters/${encounterId}/complete`, {
                 data,
-                __v: version,
+                __v: version,patient__v:record.patient.__v,
               })
             : api
                 .put<{ __v: number }>(
@@ -300,6 +292,7 @@ function ConsultationForm({
         else setVersion((res as { __v: number }).__v);
       },
     );
+  };
   return (
     <div className="workspace">
       <div className="workspace-toolbar">
@@ -399,6 +392,78 @@ function ConsultationForm({
                   {t("amendment")} · {t("completeHint")}
                 </div>
               )}
+              <Panel
+                title="medications"
+                action={
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() =>
+                      meds.append({
+                        drug_id: "",
+                        dose: "",
+                        frequency: "",
+                        duration: "",
+                        instructions: "",
+                      })
+                    }
+                  >
+                    <Plus size={15} />
+                    {t("addMedicine")}
+                  </Button>
+                }
+              >
+                <div className="medication-list">
+                  {meds.fields.map((field, index) => (
+                    <div className="medication-editor" key={field.id}>
+                      <div className="medication-number">{index + 1}</div>
+                      <div className="form-grid">
+                        <Select
+                          label="selectDrug"
+                          required
+                          {...register(`medications.${index}.drug_id`)}
+                        >
+                          <option value="">{t("noSelection")}</option>
+                          {catalogue.drugs.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name} — {d.strength} · {d.form} · {d.route}
+                            </option>
+                          ))}
+                        </Select>
+                        <Field
+                          label="dose"
+                          required
+                          {...register(`medications.${index}.dose`)}
+                        />
+                        <Field
+                          label="frequency"
+                          required
+                          {...register(`medications.${index}.frequency`)}
+                        />
+                        <Field
+                          label="duration"
+                          required
+                          {...register(`medications.${index}.duration`)}
+                        />
+                        <div className="full">
+                          <Field
+                            label="instructions"
+                            {...register(`medications.${index}.instructions`)}
+                          />
+                        </div>
+                      </div>
+                      <button
+                        aria-label={`${t("remove")} ${index + 1}`}
+                        type="button"
+                        className="icon-button"
+                        onClick={() => meds.remove(index)}
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
               <Panel title="consultation">
                 <div className="form-grid inset">
                   {[
@@ -438,125 +503,12 @@ function ConsultationForm({
                   ))}
                 </div>
               </Panel>
-              <Panel
-                title="medications"
-                action={
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() =>
-                      meds.append({
-                        drug_id: "",
-                        dose: "",
-                        frequency: "",
-                        duration: "",
-                        instructions: "",
-                      })
-                    }
-                  >
-                    <Plus size={15} />
-                    {t("addMedicine")}
-                  </Button>
-                }
-              >
-                <div className="medication-list">
-                  {meds.fields.map((field, index) => (
-                    <div className="medication-editor" key={field.id}>
-                      <div className="medication-number">{index + 1}</div>
-                      <div className="form-grid">
-                        <Select
-                          label="selectDrug"
-                          required
-                          {...register(`medications.${index}.drug_id`)}
-                        >
-                          <option value="">{t("noSelection")}</option>
-                          {catalogue.drugs.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name} — {d.strength} · {d.form} · {d.route}
-                            </option>
-                          ))}
-                        </Select>
-                        {checkAllergy(currentMedications[index]?.drug_id) && (
-                          <div className="full alert info" style={{ backgroundColor: "var(--bg-error)", color: "var(--fg-error)", marginTop: -10 }}>
-                            Warning: Patient may be allergic to this medication based on their reported allergies ({record.patient.allergies}).
-                          </div>
-                        )}
-                        <Field
-                          label="dose"
-                          required
-                          {...register(`medications.${index}.dose`)}
-                        />
-                        <Field
-                          label="frequency"
-                          required
-                          {...register(`medications.${index}.frequency`)}
-                        />
-                        <Field
-                          label="duration"
-                          required
-                          {...register(`medications.${index}.duration`)}
-                        />
-                        <div className="full">
-                          <Field
-                            label="instructions"
-                            {...register(`medications.${index}.instructions`)}
-                          />
-                        </div>
-                      </div>
-                      <button
-                        aria-label={`${t("remove")} ${index + 1}`}
-                        type="button"
-                        className="icon-button"
-                        onClick={() => meds.remove(index)}
-                      >
-                        <Trash2 size={17} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </Panel>
               <Panel title="advice">
                 <div className="form-grid inset">
                   <Textarea label="treatment" {...register("treatment")} />
                   <Textarea label="advice" {...register("advice")} />
                 </div>
               </Panel>
-              {!complete && (
-                <Panel title="followUp">
-                  <div className="inset">
-                    <label className="check-label">
-                      <input
-                        type="checkbox"
-                        checked={followUp}
-                        onChange={(e) => {
-                          setFollowUp(e.target.checked);
-                          if (!e.target.checked) setValue("follow_up", null, { shouldDirty: true });
-                        }}
-                      />
-                      {t("scheduleFollowUp")}
-                    </label>
-                    {followUp && (
-                      <SlotPicker
-                        doctorId={session.id}
-                        selected={selectedFollowUp?.scheduled_at || ""}
-                        onSelect={(slot) =>
-                          setValue(
-                            "follow_up",
-                            slot.scheduled_at
-                              ? {
-                                  doctor_id: session.id,
-                                  scheduled_at: slot.scheduled_at,
-                                  reason: t("followUp"),
-                                }
-                              : null,
-                            { shouldDirty: true },
-                          )
-                        }
-                      />
-                    )}
-                  </div>
-                </Panel>
-              )}
               {complete && (
                 <Textarea
                   label="amendReason"
@@ -580,7 +532,7 @@ function ConsultationForm({
                     <Button
                       type="button"
                       disabled={
-                        action.pending || (followUp && !selectedFollowUp)
+                        action.pending
                       }
                       onClick={() =>
                         void handleSubmit(() => setConfirmComplete(true))()
@@ -678,14 +630,6 @@ function ConsultationForm({
           onClose={() => setConfirmComplete(false)}
         >
           <p>{t("completeHint")}</p>
-          <div className="follow-up-confirmation">
-            <strong>{t("nextAppointment")}</strong>
-            {selectedFollowUp ? (
-              <span>{formatDate(selectedFollowUp.scheduled_at, language, true)}</span>
-            ) : (
-              <span>{t("noFollowUpSelected")}</span>
-            )}
-          </div>
           <Alert code={action.error} />
           <div className="form-actions">
             <Button
@@ -698,7 +642,7 @@ function ConsultationForm({
               disabled={action.pending}
               onClick={() => save(getValues(), true)}
             >
-              {t(selectedFollowUp ? "completeAndBookFollowUp" : "confirmComplete")}
+              {t("confirmComplete")}
             </Button>
           </div>
         </Modal>

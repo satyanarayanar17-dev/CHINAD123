@@ -1,4 +1,13 @@
+> Current controlled-pilot release instructions: [CONTROLLED_PILOT_RUNBOOK.md](CONTROLLED_PILOT_RUNBOOK.md). Earlier deployment instructions below are historical; do not apply them to the new pilot.
+
 # Hospital Deployment Handoff
+
+## Authentication readiness update — 28 September 2026
+
+Read `OTP_AUTH_IMPLEMENTATION.md` before deployment. OTP delivery now uses an explicit provider boundary, shared database rate limits, challenge-bound hashes and atomic consumption. Production/staging flag combinations cannot enable demo OTP. ADMIN/reception and assigned DOCTOR may book/confirm; NURSE booking/confirmation is denied. Nurse lab access is department-scoped. Configure TRUST_PROXY explicitly for the actual ingress; direct access is the default.
+
+Local automated and clinical regression evidence is not production approval. Real SMS/DLT, production secrets, restore/migration rehearsal, deployment CORS/cookie/TLS verification, monitoring and mobile execution remain external gates. No commits or pushes were made. Stop before Prescription Print QA.
+
 
 ## Overview
 Chettinad Care v2 is functionally ready for deployment. This document outlines the mandatory infrastructure configuration, environment setup, and verification steps that the hospital IT/operations team must complete before initiating the production pilot.

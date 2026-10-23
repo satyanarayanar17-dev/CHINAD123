@@ -62,6 +62,7 @@ async function run(){
  await api(admin,'post','/catalogues/diagnoses',{name:'Synthetic follow-up diagnosis'},201);
  await api(admin,'post','/catalogues/tests',{name:'Synthetic laboratory test',code:'DEMO-CBC',department:'Laboratory',unit:'g/dL',reference_range:'Hospital-configured demo interval'},201);
  pass('Staff boundary, required password change, hospital configuration');
+ await api(doctor,'post','/patients',profile(),201);
  const otp=await call('','post','/api/v1/auth/opd/otp/request',{phone:profile().phone});assert.match(otp.development_code,/^\d{6}$/);
  await call('','post','/api/v1/auth/opd/otp/verify',{phone:profile().phone,code:'000000'},401);
  const patientResponse=await request(app).post('/api/v1/auth/opd/otp/verify').send({phone:profile().phone,code:otp.development_code,profile:profile()});assert.equal(patientResponse.status,200);
@@ -72,7 +73,7 @@ async function run(){
  assert.equal((await api(patient,'get','/patients/'+own.id+'/record')).encounters.length,0);
  const second=await api(admin,'post','/patients',profile(2),201);
  await api(patient,'get','/patients/'+second.id+'/record',undefined,404);
- pass('OTP registration, single use, no premature encounter, patient isolation');
+ pass('Doctor registration, OTP sign-in, single use, no premature encounter, patient isolation');
  const patientClaims=jwt.decode(patient),sessionList=await call(patient,'get','/api/v1/auth/opd/sessions');
  assert.equal(sessionList.length,1);assert.equal(sessionList[0].id,patientClaims.sid);assert.equal(sessionList[0].current,true);assert.notEqual(patientClaims.sid,patientRefresh);
  const storedSession=await db.get('SELECT id,session_key FROM refresh_tokens WHERE user_id=? AND revoked=0',[patientLogin.userId]);
@@ -110,17 +111,18 @@ async function run(){
  const encounterId=checked.encounter_id;
  let q=(await api(nurse,'get','/queue')).find(e=>e.encounter_id===encounterId);
  assert.equal((await api(patient,'get','/queue')).length,1);assert.equal((await api(otherNurse,'get','/queue')).length,0);
- await api(otherNurse,'post','/encounters/'+encounterId+'/start-triage',{__v:q.__v},404);
+ await api(otherNurse,'post','/encounters/'+encounterId+'/start-triage',{__v:q.__v},403);
  // fast-tracking is now allowed, so skipping the 409 check
  await api(nurse,'post','/encounters/'+encounterId+'/start-triage',{__v:q.__v});
  q=(await api(nurse,'get','/queue')).find(e=>e.encounter_id===encounterId);
  const triage={temperature:36.8,systolic:120,diastolic:80,pulse:76,spo2:98,weight:62,height:164,complaint:'Synthetic complaint',allergies:'Synthetic penicillin allergy',pain:2,notes:'Synthetic intake notes',priority:0};
  await api(nurse,'post','/encounters/'+encounterId+'/triage',{__v:q.__v,data:{...triage,spo2:101}},422);
- await api(nurse,'post','/encounters/'+encounterId+'/triage',{__v:q.__v,data:triage});
+ const allergyPatient=await api(nurse,'get','/patients/'+own.id+'/record');
+ await api(nurse,'post','/encounters/'+encounterId+'/triage',{__v:q.__v,data:{...triage,allergy_review_status:'RECORDED'},patient__v:allergyPatient.patient.__v,allergy_review_confirmed:true,allergy_change_reason:'Synthetic reviewed intake'});
  await api(nurse,'post','/encounters/'+encounterId+'/triage',{__v:q.__v,data:triage},409);
  q=(await api(doctor,'get','/queue')).find(e=>e.encounter_id===encounterId);assert.equal(q.status,'WAITING_DOCTOR');
  const record=await api(doctor,'get','/patients/'+own.id+'/record');assert.equal(record.triage[0].data.bmi,23.1);assert.equal(record.patient.allergies,triage.allergies);
- await api(otherDoctor,'get','/patients/'+own.id+'/record',undefined,404);await api(admin,'get','/patients/'+own.id+'/record',undefined,403);
+ await api(otherDoctor,'get','/patients/'+own.id+'/record',undefined,403);await api(admin,'get','/patients/'+own.id+'/record',undefined,403);
  pass('Identity-verified check-in, unique token, assigned triage, vital validation and doctor handoff');
  await api(doctor,'post','/encounters/'+encounterId+'/call',{__v:q.__v});
  q=(await api(doctor,'get','/queue')).find(e=>e.encounter_id===encounterId);

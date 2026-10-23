@@ -62,6 +62,7 @@ async function run(){
  await api(admin,'post','/catalogues/diagnoses',{name:'Synthetic follow-up diagnosis'},201);
  await api(admin,'post','/catalogues/tests',{name:'Synthetic laboratory test',code:'DEMO-CBC',department:'Laboratory',unit:'g/dL',reference_range:'Hospital-configured demo interval'},201);
  pass('Staff boundary, required password change, hospital configuration');
+ await api(doctor,'post','/patients',profile(),201);
  const otp=await call('','post','/api/v1/auth/opd/otp/request',{phone:profile().phone});assert.match(otp.development_code,/^\d{6}$/);
  await call('','post','/api/v1/auth/opd/otp/verify',{phone:profile().phone,code:'000000'},401);
  const patientResponse=await request(app).post('/api/v1/auth/opd/otp/verify').send({phone:profile().phone,code:otp.development_code,profile:profile()});assert.equal(patientResponse.status,200);
@@ -72,7 +73,7 @@ async function run(){
  assert.equal((await api(patient,'get','/patients/'+own.id+'/record')).encounters.length,0);
  const second=await api(admin,'post','/patients',profile(2),201);
  await api(patient,'get','/patients/'+second.id+'/record',undefined,404);
- pass('OTP registration, single use, no premature encounter, patient isolation');
+ pass('Doctor registration, OTP sign-in, single use, no premature encounter, patient isolation');
  const patientClaims=jwt.decode(patient),sessionList=await call(patient,'get','/api/v1/auth/opd/sessions');
  assert.equal(sessionList.length,1);assert.equal(sessionList[0].id,patientClaims.sid);assert.equal(sessionList[0].current,true);assert.notEqual(patientClaims.sid,patientRefresh);
  const storedSession=await db.get('SELECT id,session_key FROM refresh_tokens WHERE user_id=? AND revoked=0',[patientLogin.userId]);

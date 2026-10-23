@@ -78,6 +78,7 @@ export function PatientForm({
 }) {
   const action = useAction();
   const { t } = useI18n();
+  const [mobileAccess, setMobileAccess] = useState(true);
   return (
     <Modal
       title={patient ? "profile" : "newRegistration"}
@@ -92,7 +93,7 @@ export function PatientForm({
         }))}
         initial={
           patient
-            ? { ...patient }
+            ? Object.fromEntries(profileFields.filter(f => f.name !== "allergies").map(f => [f.name, patient[f.name as keyof Patient]]))
             : { preferred_language: "en", gender: "Female" }
         }
         submit={patient ? "save" : "register"}
@@ -106,11 +107,13 @@ export function PatientForm({
                     data: { ...v, phone: patient.phone },
                     __v: patient.__v,
                   })
-                : post("/patients", v),
+                : post("/patients", {...v, portal_access_enabled:mobileAccess}),
             onDone,
           )
         }
-      />
+      >
+        {!patient && <label className="check-label"><input type="checkbox" checked={mobileAccess} onChange={e=>setMobileAccess(e.target.checked)} />Enable mobile access — patient signs in with an OTP sent to this number.</label>}
+      </DataForm>
     </Modal>
   );
 }

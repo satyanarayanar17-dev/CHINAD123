@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
+import { api } from "../api/client";
 import { useQuery } from "@tanstack/react-query";
 import {
-  CalendarPlus,
   Search,
   UserPlus,
   ArrowUpRight,
@@ -29,10 +29,9 @@ import {
   Status,
   Modal,
   Alert,
-  Confirm,
   DataForm,
 } from "./ui";
-import { Booking, PatientForm } from "./booking";
+import { PatientForm } from "./booking";
 import { Journey, ResultCard } from "./records";
 import { Triage } from "./workspace";
 import { CarePlanSummary } from "./carePlan";
@@ -80,7 +79,6 @@ export function Overview(props: PageProps) {
     refetchInterval: 10000,
   });
   const patientRecord = useQuery({ queryKey: ["opd", "home-record", session.patient_id], queryFn: () => get<RecordBundle>(`/patients/${session.patient_id}/record`), enabled: session.role === "PATIENT" && !!session.patient_id });
-  const [booking, setBooking] = useState(false);
   const isPatient = session.role === "PATIENT";
   const upcoming = appointments.data
     ?.filter(
@@ -95,12 +93,7 @@ export function Overview(props: PageProps) {
         title={isPatient ? "patientOverview" : "goodDay"}
         subtitle={isPatient ? "patientOverviewSub" : "overviewSub"}
         action={
-          isPatient ? (
-            <Button onClick={() => setBooking(true)}>
-              <CalendarPlus size={18} />
-              {t("book")}
-            </Button>
-          ) : (
+          isPatient ? null : (
             <span className="date-pill">
               {formatDate(new Date().toISOString())}
             </span>
@@ -133,7 +126,7 @@ export function Overview(props: PageProps) {
           </div>
           <CarePlanSummary patientId={session.patient_id!} navigate={navigate} />
           <Panel title="What do I need to do next?">
-            <div className="row-actions"><Button onClick={() => setBooking(true)}><CalendarPlus size={17} /> Book Appointment</Button><Button variant="secondary" onClick={() => navigate("records")}><ClipboardCheck size={17} /> Upload Report</Button><Button variant="ghost" onClick={() => navigate("carePlan")}><Activity size={17} /> Record a measurement</Button></div>
+            <div className="row-actions"><Button variant="secondary" onClick={() => navigate("records")}><ClipboardCheck size={17} /> Upload Report</Button><Button variant="ghost" onClick={() => navigate("carePlan")}><Activity size={17} /> Record a measurement</Button></div>
             {patientRecord.data?.prescriptions[0] && <p className="muted">Latest prescription: {patientRecord.data.prescriptions[0].rx_content.medications?.map((medication) => medication.name).join(", ") || "Available in My Records"}</p>}
             <p className="muted">Follow-up appointments and Care Plan reminders will appear here when your OBST care team schedules them.</p>
           </Panel>
@@ -313,12 +306,6 @@ export function Overview(props: PageProps) {
           </Panel>
         </>
       )}
-      {booking && (
-        <Booking
-          onClose={() => setBooking(false)}
-          onDone={() => setBooking(false)}
-        />
-      )}
     </div>
   );
 }
@@ -352,17 +339,12 @@ export function TokenCard({ entry }: { entry: QueueEntry }) {
   );
 }
 export function AppointmentsPage(props: PageProps) {
-  const { session, openRecord, openConsultation, navigate } = props;
+  const { session, openRecord, openConsultation } = props;
   const { t, language } = useI18n();
   const [filter, setFilter] = useState(
     session.role === "PATIENT" ? "" : today(),
   );
   const [clockTime] = useState(() => Date.now());
-  const [booking, setBooking] = useState(false);
-  const [reschedule, setReschedule] = useState<Appointment | null>(null);
-  const [cancel, setCancel] = useState<Appointment | null>(null);
-  const [checkIn, setCheckIn] = useState<Appointment | null>(null);
-  const [verified, setVerified] = useState(false);
   const action = useAction();
   const q = useQuery({
     queryKey: ["opd", "appointments", filter],
@@ -382,20 +364,7 @@ export function AppointmentsPage(props: PageProps) {
       <PageHeader
         title="appointments"
         subtitle="overviewSub"
-        action={
-          ["ADMIN", "PATIENT"].includes(session.role) ? (
-            <Button
-              onClick={() =>
-                session.role === "PATIENT"
-                  ? setBooking(true)
-                  : navigate("patients")
-              }
-            >
-              <CalendarPlus size={18} />
-              {t("book")}
-            </Button>
-          ) : undefined
-        }
+
       />
       <Panel>
         <div className="table-toolbar">
@@ -456,60 +425,11 @@ export function AppointmentsPage(props: PageProps) {
                     </td>
                     <td>
                       <div className="row-actions">
-                        {a.status === "PENDING_CONFIRMATION" && ["ADMIN", "DOCTOR"].includes(session.role) && (
-                          <Button disabled={action.pending} onClick={() => void action.run(() => post(`/appointments/${a.id}/confirm`, {__v: a.__v}))}>
-                            Confirm
+                        {["PENDING_CONFIRMATION", "CONFIRMED"].includes(a.status) && ["ADMIN", "DOCTOR"].includes(session.role) && new Date(a.scheduled_at).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) === today() && (
+                          <Button disabled={action.pending} title="Verify the patient name and MRN before checking in" onClick={() => void action.run(() => post(`/appointments/${a.id}/check-in`, {identity_verified: true, __v: a.__v}))}>
+                            {t("checkIn")}
                           </Button>
                         )}
-                        {a.status === "PENDING_CONFIRMATION" && ["ADMIN", "PATIENT"].includes(session.role) && (
-                          <Button variant="ghost" onClick={() => setCancel(a)}>
-                            {t("cancel")}
-                          </Button>
-                        )}
-                        {a.status === "CONFIRMED" &&
-                          ["ADMIN", "PATIENT"].includes(session.role) && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                onClick={() => setReschedule(a)}
-                              >
-                                {t("reschedule")}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                onClick={() => setCancel(a)}
-                              >
-                                {t("cancel")}
-                              </Button>
-                              {session.role === "ADMIN" &&
-                                a.scheduled_at.slice(0, 10) <= today() && (
-                                  <Button
-                                    onClick={() => {
-                                      setVerified(false);
-                                      setCheckIn(a);
-                                    }}
-                                  >
-                                    {t("checkIn")}
-                                  </Button>
-                                )}
-                              {session.role === "ADMIN" &&
-                                new Date(a.ends_at).getTime() < clockTime && (
-                                  <Button
-                                    variant="ghost"
-                                    disabled={action.pending}
-                                    onClick={() =>
-                                      void action.run(() =>
-                                        post(`/appointments/${a.id}/no-show`, {
-                                          __v: a.__v,
-                                        }),
-                                      )
-                                    }
-                                  >
-                                    {t("NO_SHOW")}
-                                  </Button>
-                                )}
-                            </>
-                          )}
                         {["DOCTOR", "NURSE"].includes(session.role) && (
                           <>
                             <Button
@@ -527,20 +447,7 @@ export function AppointmentsPage(props: PageProps) {
                                 a.status === "COMPLETED" && a.encounter_id ? "amend" : "openRecord",
                               )}
                             </Button>
-                            {session.role === "DOCTOR" && a.status === "CONFIRMED" && a.scheduled_at.slice(0, 10) <= today() && (
-                              <Button
-                                disabled={action.pending}
-                                onClick={() => {
-                                  void action.run(async () => {
-                                    const qEntry = await post<QueueEntry>(`/appointments/${a.id}/check-in`, { identity_verified: true });
-                                    await post(`/encounters/${qEntry.encounter_id}/start`, { __v: qEntry.__v });
-                                    openConsultation(a.patient_id, qEntry.encounter_id);
-                                  });
-                                }}
-                              >
-                                {t("startVisit")}
-                              </Button>
-                            )}
+
                           </>
                         )}
                         {session.role === "PATIENT" && a.encounter_id && (
@@ -566,82 +473,15 @@ export function AppointmentsPage(props: PageProps) {
           <Empty />
         )}
       </Panel>
-      {booking && (
-        <Booking
-          onClose={() => setBooking(false)}
-          onDone={() => setBooking(false)}
-        />
-      )}
-      {reschedule && (
-        <Booking
-          appointment={reschedule}
-          onClose={() => setReschedule(null)}
-          onDone={() => setReschedule(null)}
-        />
-      )}
-      {cancel && (
-        <Confirm
-          title="cancelAppointment"
-          text="cancelReason"
-          onClose={() => setCancel(null)}
-          pending={action.pending}
-          error={action.error}
-          onConfirm={() =>
-            void action.run(
-              () =>
-                post(`/appointments/${cancel.id}/cancel`, { __v: cancel.__v }),
-              () => setCancel(null),
-            )
-          }
-        />
-      )}
-      {checkIn && (
-        <Modal title="checkInTitle" onClose={() => setCheckIn(null)}>
-          <div className="patient-strip">
-            <b>{checkIn.patient_name}</b>
-            <span>
-              {checkIn.mrn} · {checkIn.dob}
-            </span>
-          </div>
-          <p>
-            {checkIn.doctor_name} · {formatTime(checkIn.scheduled_at)}
-          </p>
-          <label className="check-label">
-            <input
-              type="checkbox"
-              checked={verified}
-              onChange={(e) => setVerified(e.target.checked)}
-            />
-            {t("verifyIdentity")}
-          </label>
-          <Alert code={action.error} />
-          <div className="form-actions">
-            <Button
-              disabled={!verified || action.pending}
-              onClick={() =>
-                void action.run(
-                  () =>
-                    post(`/appointments/${checkIn.id}/check-in`, {
-                      identity_verified: true,
-                    }),
-                  () => setCheckIn(null),
-                )
-              }
-            >
-              {t("checkIn")}
-            </Button>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }
 export function PatientsPage(props: PageProps) {
   const { t } = useI18n();
+  const action = useAction();
   const [search, setSearch] = useState("");
   const [create, setCreate] = useState(false);
   const [edit, setEdit] = useState<Patient | null>(null);
-  const [book, setBook] = useState<Patient | null>(null);
   const [journeyId, setJourneyId] = useState<string | null>(null);
   const q = useQuery({
     queryKey: ["opd", "patients", search],
@@ -665,6 +505,7 @@ export function PatientsPage(props: PageProps) {
           </Button>
         }
       />
+      <Alert code={action.error} />
       <Panel>
         <div className="table-toolbar">
           <div className="search-field">
@@ -711,14 +552,16 @@ export function PatientsPage(props: PageProps) {
                         </span>
                       </div>
                     </td>
-                    <td>{p.phone}</td>
+                    <td>{p.phone}<small>{p.portal_access_enabled ? "Mobile access enabled" : "Mobile access disabled"}</small></td>
                     <td>{p.dob}</td>
                     <td>{p.city || "—"}</td>
                     <td>
                       <div className="row-actions">
-                        <Button variant="secondary" onClick={() => setBook(p)}>
-                          {t("book")}
-                        </Button>
+                        {props.session.role === "DOCTOR" && <>
+                          <Button disabled={action.pending} onClick={()=>void action.run(async()=>{ const entry=await post<QueueEntry>(`/patients/${p.id}/check-in`,{identity_verified:true}); if(entry.status!=="CONSULTATION") await post(`/encounters/${entry.encounter_id}/start`,{__v:entry.__v}); return entry; },entry=>props.openConsultation(p.id,entry.encounter_id))}>Start visit</Button>
+                          <Button variant="ghost" onClick={()=>props.openRecord(p.id,"carePlan")}>Care plan & medications</Button>
+                          <Button variant="ghost" disabled={action.pending} onClick={()=>void action.run(()=>api.patch(`/opd/patients/${p.id}/access`,{portal_access_enabled:!p.portal_access_enabled,__v:p.__v}))}>{p.portal_access_enabled ? "Disable mobile access" : "Enable mobile access"}</Button>
+                        </>}
                         <Button variant="ghost" onClick={() => setEdit(p)}>
                           {t("edit")}
                         </Button>
@@ -750,13 +593,6 @@ export function PatientsPage(props: PageProps) {
             setCreate(false);
             setEdit(null);
           }}
-        />
-      )}
-      {book && (
-        <Booking
-          patient={book}
-          onClose={() => setBook(null)}
-          onDone={() => setBook(null)}
         />
       )}
       {journeyId && (

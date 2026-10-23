@@ -28,6 +28,8 @@ async function loginStaff(id) {
 async function ensurePatient(scenario) {
   const otp = await call('', 'post', '/api/v1/auth/opd/otp/request', { phone: scenario.phone });
   const profile = { name: scenario.name, phone: scenario.phone, dob: scenario.dob, gender: scenario.gender, email: '', address: '123 Demo Street', city: 'Chennai', state: 'Tamil Nadu', pin_code: '600001', emergency_contact: '+919000000002', preferred_language: 'en', existing_mrn: '', allergies: 'No known allergies' };
+  const existing = await api('ADMIN_A', 'get', '/patients?search='+encodeURIComponent(scenario.phone));
+  if (!existing.some(p=>p.phone===scenario.phone)) await api('ADMIN_A','post','/patients',profile);
   const login = await call('', 'post', '/api/v1/auth/opd/otp/verify', { phone: scenario.phone, code: otp.development_code, profile });
   tokens.set(scenario.phone, login.access_token);
   const patients = await api('ADMIN_A', 'get', '/patients');

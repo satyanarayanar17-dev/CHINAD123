@@ -28,7 +28,8 @@ const migrations = [
   require('./015_patient_documents_and_self_records'),
   require('./016_appointment_requests'),
   require('./017_otp_security'),
-  require('./018_pilot_record_safety')
+  require('./018_pilot_record_safety'),
+  require('./019_doctor_patient_access')
 ];
 
 function migrationTableSql(dialect) {

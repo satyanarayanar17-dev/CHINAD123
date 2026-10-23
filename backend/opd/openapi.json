@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Chettinad Care v2 — Connected OPD API",
+    "title": "Chettinad Care v2 \u2014 Connected OPD API",
     "version": "2.0.0",
     "description": "Implemented Connected OPD REST contract. API URL retains /api/v1 for compatibility; v2 workflows live under /opd. All /opd routes require a role-bound bearer token and active account. Patient access is limited to self, doctors to linked care, nurses to their department. Mutable resources use __v; conflicts return HTTP 409 and require refetch. Timestamps are UTC ISO 8601; schedule dates and times use Asia/Kolkata. See docs/V2_ARCHITECTURE.md for adapter and deployment requirements."
   },
@@ -361,12 +361,12 @@
     },
     "/auth/opd/otp/verify": {
       "post": {
-        "summary": "Verify OTP and register if needed",
+        "summary": "Verify OTP for an existing enabled patient",
         "operationId": "post_auth_opd_otp_verify",
         "tags": [
           "Authentication"
         ],
-        "description": "Non-demo verification requires the current unexpired challenge_id, matching phone and PATIENT_LOGIN purpose. PROFILE_REQUIRED keeps the challenge for confirmed first registration.",
+        "description": "Doctor-led registration: OTP verification never creates a profile. PATIENT_NOT_REGISTERED and PATIENT_ACCESS_DISABLED return 403 after code verification. The phone must match a saved enabled profile. Current challenge and PATIENT_LOGIN purpose are required outside demo mode.",
         "responses": {
           "200": {
             "description": "Success",
@@ -402,9 +402,6 @@
                   "code": {
                     "type": "string",
                     "pattern": "^[0-9]{6}$"
-                  },
-                  "profile": {
-                    "$ref": "#/components/schemas/PatientProfile"
                   },
                   "purpose": {
                     "type": "string",
@@ -835,7 +832,7 @@
         "tags": [
           "Patients"
         ],
-        "description": "Matches name, mobile or MRN, maximum 100 results. Reception cannot access the clinical record endpoint.",
+        "description": "Matches name, mobile or MRN, maximum 100 results. Doctors see their registered or visit-linked patients. Reception cannot access clinical records.",
         "responses": {
           "200": {
             "description": "Success",
@@ -873,7 +870,8 @@
           }
         ],
         "x-roles": [
-          "ADMIN"
+          "ADMIN",
+          "DOCTOR"
         ]
       },
       "post": {
@@ -882,7 +880,7 @@
         "tags": [
           "Patients"
         ],
-        "description": "Issues a unique MRN and prevents duplicate phone registration. Does not create an encounter.",
+        "description": "Creates one MRN and assigns doctor-created profiles to that doctor. Duplicate phones are rejected. Mobile access controls OTP login. Does not create a visit.",
         "responses": {
           "201": {
             "description": "Created",
@@ -906,14 +904,15 @@
           }
         },
         "x-roles": [
-          "ADMIN"
+          "ADMIN",
+          "DOCTOR"
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PatientProfile"
+                "$ref": "#/components/schemas/PatientRegistration"
               }
             }
           }
@@ -998,6 +997,7 @@
         ],
         "x-roles": [
           "ADMIN",
+          "DOCTOR",
           "PATIENT"
         ],
         "requestBody": {
@@ -2001,7 +2001,7 @@
         "tags": [
           "Administration"
         ],
-        "description": "Request schema depends on kind: departments → DepartmentInput, drugs → DrugInput, diagnoses → DiagnosisInput, tests → LabTestInput.",
+        "description": "Request schema depends on kind: departments \u2192 DepartmentInput, drugs \u2192 DrugInput, diagnoses \u2192 DiagnosisInput, tests \u2192 LabTestInput.",
         "responses": {
           "201": {
             "description": "Created",
@@ -2487,6 +2487,146 @@
           }
         }
       }
+    },
+    "/opd/patients/{id}/check-in": {
+      "post": {
+        "summary": "Start or resume a walk-in visit",
+        "operationId": "post_opd_patients_id_check_in",
+        "tags": [
+          "Patients"
+        ],
+        "description": "Identity must be checked. No booking, schedule or availability is required. Repeated calls for the same assigned active visit return the same queue entry; a different doctor\u2019s active visit is rejected.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueEntry"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Structured validation, authorization, conflict or internal error. Common statuses: 401, 403, 404, 409, 422, 429, 503.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "x-roles": [
+          "ADMIN",
+          "DOCTOR"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "identity_verified": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "doctor_id": {
+                    "type": "string",
+                    "description": "Required for reception when the patient has no assigned doctor."
+                  }
+                },
+                "required": [
+                  "identity_verified"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/opd/patients/{id}/access": {
+      "patch": {
+        "summary": "Enable or disable patient mobile access",
+        "operationId": "patch_opd_patients_id_access",
+        "tags": [
+          "Patients"
+        ],
+        "description": "Only the assigned doctor can change mobile access. Requires the current patient version. Disabling access revokes patient sessions.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Structured validation, authorization, conflict or internal error. Common statuses: 401, 403, 404, 409, 422, 429, 503.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "x-roles": [
+          "DOCTOR"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "portal_access_enabled": {
+                    "type": "boolean"
+                  },
+                  "__v": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "portal_access_enabled",
+                  "__v"
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2752,6 +2892,19 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "assigned_doctor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "portal_access_enabled": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
             ]
           }
         },
@@ -3704,7 +3857,7 @@
           "pain",
           "priority"
         ],
-        "description": "Temperature °C, weight kg, height cm. Systolic must exceed diastolic. BMI is computed by the server."
+        "description": "Temperature \u00b0C, weight kg, height cm. Systolic must exceed diastolic. BMI is computed by the server."
       },
       "TriageWrite": {
         "type": "object",
@@ -4381,7 +4534,7 @@
         "required": [
           "__v"
         ],
-        "description": "result requires data, verification and a reason. collect: ORDERED→COLLECTED; process: COLLECTED→PROCESSING; result: PROCESSING/AVAILABLE/REVIEWED→AVAILABLE; review: AVAILABLE→REVIEWED."
+        "description": "result requires data, verification and a reason. collect: ORDERED\u2192COLLECTED; process: COLLECTED\u2192PROCESSING; result: PROCESSING/AVAILABLE/REVIEWED\u2192AVAILABLE; review: AVAILABLE\u2192REVIEWED."
       },
       "LabResult": {
         "type": "object",
@@ -5099,6 +5252,99 @@
             "minimum": 1
           }
         }
+      },
+      "PatientRegistration": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "phone": {
+            "type": "string",
+            "description": "Indian mobile; accepts 10 digits, +91 or 91 prefix and normalizes to +91XXXXXXXXXX."
+          },
+          "dob": {
+            "type": "string",
+            "format": "date"
+          },
+          "gender": {
+            "type": "string",
+            "enum": [
+              "Female",
+              "Male",
+              "Other",
+              "Not specified"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "default": ""
+          },
+          "address": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "city": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "state": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "pin_code": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{5}$"
+          },
+          "emergency_contact": {
+            "type": "string",
+            "description": "Indian mobile normalized to E.164."
+          },
+          "preferred_language": {
+            "type": "string",
+            "enum": [
+              "en",
+              "ta",
+              "te"
+            ]
+          },
+          "existing_mrn": {
+            "type": "string",
+            "maxLength": 3000,
+            "default": ""
+          },
+          "allergies": {
+            "type": "string",
+            "maxLength": 3000,
+            "default": ""
+          },
+          "portal_access_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Grant patient OTP sign-in on the saved phone."
+          },
+          "assigned_doctor_id": {
+            "type": "string",
+            "description": "Administrator selection only. Doctor creation is always assigned to the authenticated doctor."
+          }
+        },
+        "required": [
+          "name",
+          "phone",
+          "dob",
+          "gender",
+          "address",
+          "city",
+          "state",
+          "pin_code",
+          "emergency_contact"
+        ],
+        "description": "DOB must be a real calendar date between 1900-01-01 and today in Asia/Kolkata. Registration does not create an encounter."
       }
     }
   }

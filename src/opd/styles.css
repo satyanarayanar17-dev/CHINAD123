@@ -2845,3 +2845,6 @@ pre {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.care-plan-done { color: #15803d; background: #f0fdf4; border-radius: 12px; padding: 12px; }
+.care-plan-done strong, .care-plan-done[role="status"] { display: flex; align-items: center; gap: 8px; }

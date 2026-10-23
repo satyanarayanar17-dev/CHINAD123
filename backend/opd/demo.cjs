@@ -19,6 +19,7 @@ async function staff(id,name,role){await api('admin','post','/staff',{id,name,ro
  await api('admin','post','/catalogues/drugs',{name:'Paracetamol (Demo)',strength:'500 mg',form:'Tablet',route:'Oral'});
  await api('admin','post','/catalogues/diagnoses',{name:'Synthetic assessment (Demo)'});
  await api('admin','post','/catalogues/tests',{name:'Synthetic laboratory test (Demo)',code:'DEMO-TEST',department:'Demo laboratory',unit:'Demo unit',reference_range:'Synthetic example only'});
+ await api('dr_prabha','post','/patients',{name:'Ananya Demo',phone:'9000000001',dob:'1995-06-15',gender:'Female',address:'Synthetic address',city:'Chennai',state:'Tamil Nadu',pin_code:'600001',emergency_contact:'9000000002',preferred_language:'en',allergies:'',portal_access_enabled:true});
  const otp=await call(null,'post','/api/v1/auth/opd/otp/request',{phone:'9000000001'});
  const login=await call(null,'post','/api/v1/auth/opd/otp/verify',{phone:'9000000001',code:otp.development_code,challenge_id:otp.challenge_id,purpose:'PATIENT_LOGIN',profile:{name:'Ananya Demo',dob:'1995-06-15',gender:'Female',address:'Synthetic address',city:'Chennai',state:'Tamil Nadu',pin_code:'600001',emergency_contact:'9000000002',preferred_language:'en',allergies:''}});
  tokens.patient=login.access_token;

@@ -417,25 +417,23 @@ export async function changeAppointment(req: Req, action: string) {
     return { success: true };
   });
 }
-export async function checkIn(req: Req) {
-  roles(req, ["ADMIN", "DOCTOR"]);
-  if (req.body?.identity_verified !== true) fail("VERIFY_IDENTITY");
-  return transaction(async (tx) => {
+async function checkInVisit(tx: DB, req: Req, appointmentId: string) {
     const apt = await tx.get<Appointment>(
       `SELECT * FROM appointments WHERE id=?${tx.dialect === "postgres" ? " FOR UPDATE" : ""}`,
-      [req.params.id],
+      [appointmentId],
     );
     if (!apt) fail("NOT_FOUND", 404);
     await enforcePilotDepartment(tx, apt!.department_id);
     if (req.user.role === "DOCTOR" && apt!.doctor_id !== req.user.id) fail("NOT_ASSIGNED",403);
-    if (req.body?.__v !== undefined && apt!.__v !== parse(z.number().int().positive(), req.body.__v)) fail("STALE_STATE",409);
+    const reviewedVersion = req.body?.__v === undefined ? undefined : parse(z.number().int().positive(), req.body.__v);
     if (apt!.status === "CHECKED_IN")
       return tx.get<QueueEntry>(
         "SELECT * FROM queue_entries WHERE appointment_id=?",
         [apt!.id],
       );
+    if (reviewedVersion !== undefined && apt!.__v !== reviewedVersion) fail("STALE_STATE",409);
     if (
-      apt!.status !== "CONFIRMED" ||
+      !["CONFIRMED", "PENDING_CONFIRMATION"].includes(apt!.status) ||
       day(new Date(apt!.scheduled_at)) !== day()
     )
       fail("CHECK_IN_NOT_AVAILABLE", 409);
@@ -481,8 +479,8 @@ export async function checkIn(req: Req) {
       ],
     );
     const updated = await tx.run(
-      "UPDATE appointments SET status='CHECKED_IN',encounter_id=?,__v=__v+1 WHERE id=? AND __v=?",
-      [encounterId, apt!.id, apt!.__v],
+      "UPDATE appointments SET status='CHECKED_IN',encounter_id=?,confirmed_at=COALESCE(confirmed_at,?),confirmed_by_user_id=COALESCE(confirmed_by_user_id,?),confirmed_by_role=COALESCE(confirmed_by_role,?),__v=__v+1 WHERE id=? AND __v=?",
+      [encounterId, now(), req.user.id, req.user.role, apt!.id, apt!.__v],
     );
     if (!updated.changes) fail("STALE_STATE", 409);
     await event(
@@ -507,6 +505,45 @@ export async function checkIn(req: Req) {
       "SELECT * FROM queue_entries WHERE encounter_id=?",
       [encounterId],
     );
+
+}
+export async function checkIn(req: Req) {
+  roles(req, ["ADMIN", "DOCTOR"]);
+  if (req.body?.identity_verified !== true) fail("VERIFY_IDENTITY");
+  return transaction(tx => checkInVisit(tx, req, String(req.params.id)));
+}
+
+// Starting a walk-in visit does not require an appointment or a configured schedule.
+async function visitDetails(tx: DB, encounterId: string) {
+  return tx.get<QueueEntry>(`SELECT q.*,e.patient_id,p.name AS patient_name,p.mrn,p.dob,p.gender,a.doctor_id,u.name AS doctor_name,d.name AS department_name,a.room,a.scheduled_at FROM queue_entries q JOIN encounters e ON e.id=q.encounter_id JOIN patients p ON p.id=e.patient_id JOIN appointments a ON a.id=q.appointment_id JOIN users u ON u.id=a.doctor_id JOIN departments d ON d.id=q.department_id WHERE q.encounter_id=?`,[encounterId]);
+}
+export async function checkInPatient(req: Req) {
+  roles(req, ["ADMIN", "DOCTOR"]);
+  if (req.body?.identity_verified !== true) fail("VERIFY_IDENTITY");
+  return transaction(async tx => {
+    const patient = await tx.get<{id:string;assigned_doctor_id:string|null}>("SELECT id,assigned_doctor_id FROM patients WHERE id=?", [req.params.id]);
+    if (!patient) fail("NOT_FOUND", 404);
+    await patientAccess(req, patient!.id, tx, false);
+    const doctorId = req.user.role === "DOCTOR" ? req.user.id : (req.body.doctor_id || patient!.assigned_doctor_id);
+    if (!doctorId) fail("DOCTOR_REQUIRED", 422);
+    if (req.user.role === "DOCTOR" && patient!.assigned_doctor_id && patient!.assigned_doctor_id !== doctorId) fail("NOT_ASSIGNED", 403);
+    const doctor = await doctorLock(tx, doctorId);
+    const department = await tx.get<Department>("SELECT * FROM departments WHERE name=?", [doctor.department]);
+    if (!department) fail("INVALID_DEPARTMENT", 422);
+    await enforcePilotDepartment(tx, department!.id);
+    if (tx.dialect === "postgres") await tx.get("SELECT id FROM patients WHERE id=? FOR UPDATE", [patient!.id]);
+    const active = await tx.get<{id:string;assigned_doctor_id:string}>("SELECT id,assigned_doctor_id FROM encounters WHERE patient_id=? AND is_discharged=0", [patient!.id]);
+    if (active) {
+      if (active.assigned_doctor_id !== doctorId) fail("ACTIVE_ENCOUNTER_EXISTS", 409);
+      const existing = await tx.get<QueueEntry>("SELECT * FROM queue_entries WHERE encounter_id=?", [active.id]);
+      if (existing) return visitDetails(tx, existing.encounter_id);
+      fail("ACTIVE_ENCOUNTER_EXISTS", 409);
+    }
+    const appointmentId = id("apt");
+    const timestamp = now();
+    await tx.run("INSERT INTO appointments (id,patient_id,doctor_id,department_id,scheduled_at,ends_at,room,status,reason,created_by,created_at,confirmed_at,confirmed_by_user_id,confirmed_by_role) VALUES (?,?,?,?,?,?,?,'CONFIRMED',?,?,?,?,?,?)", [appointmentId,patient!.id,doctorId,department!.id,timestamp,new Date(Date.now()+5*60000).toISOString(),"OPD","Walk-in visit",req.user.id,timestamp,timestamp,req.user.id,req.user.role]);
+    const entry = await checkInVisit(tx, req, appointmentId);
+    return visitDetails(tx, entry!.encounter_id);
   });
 }
 export async function queue(req: Req): Promise<QueueEntry[]> {

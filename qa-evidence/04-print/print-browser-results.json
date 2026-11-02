@@ -1,0 +1,200 @@
+{
+  "config": {
+    "argv": [
+      "/Users/siddwork/.nvm/versions/node/v24.15.0/bin/node",
+      "/Users/siddwork/Desktop/chettinad-care-frontend/node_modules/.bin/playwright",
+      "test",
+      "--config",
+      "playwright.print.config.ts"
+    ],
+    "configFile": "/Users/siddwork/Desktop/chettinad-care-frontend/playwright.print.config.ts",
+    "rootDir": "/Users/siddwork/Desktop/chettinad-care-frontend/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/siddwork/Desktop/chettinad-care-frontend/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/Users/siddwork/Desktop/chettinad-care-frontend/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "print.spec.ts"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "qa-evidence/04-print/print-browser-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "print.spec.ts",
+      "file": "print.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Prescription Print QA",
+          "file": "print.spec.ts",
+          "line": 11,
+          "column": 15,
+          "specs": [
+            {
+              "title": "Create complex prescription for print",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/print.spec.ts",
+                        "line": 11,
+                        "column": 15
+                      }
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4303,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-16T12:40:40.395Z",
+                      "annotations": [
+                        {
+                          "type": "serial",
+                          "location": {
+                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/print.spec.ts",
+                            "line": 11,
+                            "column": 15
+                          }
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ba8aae527129bac04f73-38c95c3393f5f9c1e0f7",
+              "file": "print.spec.ts",
+              "line": 28,
+              "column": 3
+            },
+            {
+              "title": "Print Preview & PDF Generation",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/print.spec.ts",
+                        "line": 11,
+                        "column": 15
+                      }
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 63328,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-16T12:40:47.004Z",
+                      "annotations": [
+                        {
+                          "type": "serial",
+                          "location": {
+                            "file": "/Users/siddwork/Desktop/chettinad-care-frontend/tests/print.spec.ts",
+                            "line": 11,
+                            "column": 15
+                          }
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ba8aae527129bac04f73-dc58e0869185813cd5ce",
+              "file": "print.spec.ts",
+              "line": 68,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-09-16T12:40:32.083Z",
+    "duration": 78463.981,
+    "expected": 2,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

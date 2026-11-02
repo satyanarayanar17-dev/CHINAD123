@@ -1,0 +1,39 @@
+{"level":"warn","event":"boot_config_warning","timestamp":"2026-09-15T22:02:18.507Z","warning":"JWT_SECRET is not set. Local dev will fall back to an insecure default. Never use that outside local_dev."}
+[DB] Applied migration 001_initial_schema
+[DB] Applied migration 002_data_integrity_guards
+[DB] Applied migration 003_refresh_token_account_type
+[DB] Applied migration 004_encounter_lifecycle_contract
+[DB] Applied migration 005_patient_phone_identity
+[DB] Applied migration 006_users_must_change_password
+[DB] Applied migration 007_triage_doctor_assignment
+[DB] Applied migration 008_prescription_handover
+[DB] Applied migration 009_staff_user_profiles
+[DB] Applied migration 010_patient_activation_token_hardening
+[DB] Applied migration 011_auth_security_hardening
+[DB] Applied migration 012_connected_opd
+[DB] Applied migration 013_session_and_encounter_integrity
+{"level":"info","event":"bootstrap_admin_created","timestamp":"2026-09-15T22:02:18.748Z","userId":"auth_qa_admin"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:02:18.762Z","correlationId":"SERVER-ea950117-ffdb-4543-b7bf-99fc36521423","method":"POST","path":"/api/v1/auth/login/staff","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:02:18.827Z","correlationId":"SERVER-ea950117-ffdb-4543-b7bf-99fc36521423","method":"POST","path":"/api/v1/auth/login/staff","status":200,"duration_ms":65,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:02:18.830Z","correlationId":"SERVER-63cdf08c-b14d-4b84-9c31-5809e4bb195d","method":"POST","path":"/api/v1/auth/logout","remote_ip":"::ffff:127.0.0.1"}
+{"level":"error","event":"refresh_token_revoke_failed","timestamp":"2026-09-15T22:02:18.830Z","error":"SQLITE_CONSTRAINT: synthetic revocation failure"}
+{"level":"error","event":"request_failed","timestamp":"2026-09-15T22:02:18.830Z","correlationId":"SERVER-63cdf08c-b14d-4b84-9c31-5809e4bb195d","method":"POST","path":"/api/v1/auth/logout","actorId":null,"status":503,"code":"LOGOUT_FAILED","message":"Sign-out could not be confirmed. Please retry.","details":null}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:02:18.830Z","correlationId":"SERVER-63cdf08c-b14d-4b84-9c31-5809e4bb195d","method":"POST","path":"/api/v1/auth/logout","status":503,"duration_ms":0,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:02:18.831Z","correlationId":"SERVER-3e6f704e-c599-4392-9850-77fe19daa932","method":"GET","path":"/api/v1/opd/session","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:02:18.832Z","correlationId":"SERVER-3e6f704e-c599-4392-9850-77fe19daa932","method":"GET","path":"/api/v1/opd/session","status":200,"duration_ms":1,"actorId":"auth_qa_admin"}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:02:18.834Z","correlationId":"SERVER-b7b8d14e-71aa-4192-8d8b-a94760441ebc","method":"POST","path":"/api/v1/auth/logout","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:02:18.836Z","correlationId":"SERVER-b7b8d14e-71aa-4192-8d8b-a94760441ebc","method":"POST","path":"/api/v1/auth/logout","status":200,"duration_ms":2,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:02:18.836Z","correlationId":"SERVER-71572cc2-8b68-4303-9e1f-44599f244e89","method":"GET","path":"/api/v1/opd/session","remote_ip":"::ffff:127.0.0.1"}
+{"level":"warn","event":"request_failed","timestamp":"2026-09-15T22:02:18.838Z","correlationId":"SERVER-71572cc2-8b68-4303-9e1f-44599f244e89","method":"GET","path":"/api/v1/opd/session","actorId":null,"status":401,"code":"SESSION_REVOKED","message":"Session expired or revoked.","details":null}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:02:18.838Z","correlationId":"SERVER-71572cc2-8b68-4303-9e1f-44599f244e89","method":"GET","path":"/api/v1/opd/session","status":401,"duration_ms":2,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:02:18.839Z","correlationId":"SERVER-4cb50854-1423-4530-b952-4b7bde63601c","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:02:18.839Z","correlationId":"SERVER-4cb50854-1423-4530-b952-4b7bde63601c","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":0,"actorId":null}
+✔ failed server revocation reports failure, preserves retry credential, and successful retry invalidates access (206.4415ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 492.580042

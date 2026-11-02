@@ -1,0 +1,500 @@
+[
+  {
+    "operationId": "post_auth_login_staff",
+    "method": "POST",
+    "path": "/auth/login/staff",
+    "auth": true,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_auth_refresh",
+    "method": "POST",
+    "path": "/auth/refresh",
+    "auth": true,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_auth_logout",
+    "method": "POST",
+    "path": "/auth/logout",
+    "auth": true,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_auth_change_password",
+    "method": "POST",
+    "path": "/auth/change-password",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "get_auth_opd_config",
+    "method": "GET",
+    "path": "/auth/opd/config",
+    "auth": true,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_auth_opd_otp_request",
+    "method": "POST",
+    "path": "/auth/opd/otp/request",
+    "auth": true,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_auth_opd_otp_verify",
+    "method": "POST",
+    "path": "/auth/opd/otp/verify",
+    "auth": true,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "get_auth_opd_sessions",
+    "method": "GET",
+    "path": "/auth/opd/sessions",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "delete_auth_opd_sessions_id",
+    "method": "DELETE",
+    "path": "/auth/opd/sessions/{id}",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "get_opd_session",
+    "method": "GET",
+    "path": "/opd/session",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "get_opd_directory",
+    "method": "GET",
+    "path": "/opd/directory",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "get_opd_slots",
+    "method": "GET",
+    "path": "/opd/slots",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_opd_schedules",
+    "method": "POST",
+    "path": "/opd/schedules",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "get_opd_unavailability",
+    "method": "GET",
+    "path": "/opd/unavailability",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_opd_unavailability",
+    "method": "POST",
+    "path": "/opd/unavailability",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "delete_opd_unavailability_id",
+    "method": "DELETE",
+    "path": "/opd/unavailability/{id}",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "get_opd_patients",
+    "method": "GET",
+    "path": "/opd/patients",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_opd_patients",
+    "method": "POST",
+    "path": "/opd/patients",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "get_opd_profile",
+    "method": "GET",
+    "path": "/opd/profile",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "patch_opd_patients_id",
+    "method": "PATCH",
+    "path": "/opd/patients/{id}",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "get_opd_appointments",
+    "method": "GET",
+    "path": "/opd/appointments",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_opd_appointments",
+    "method": "POST",
+    "path": "/opd/appointments",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_opd_appointments_id_check_in",
+    "method": "POST",
+    "path": "/opd/appointments/{id}/check-in",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "post_opd_appointments_id_action",
+    "method": "POST",
+    "path": "/opd/appointments/{id}/{action}",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}",
+      "{action}"
+    ]
+  },
+  {
+    "operationId": "get_opd_queue",
+    "method": "GET",
+    "path": "/opd/queue",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_opd_encounters_id_start_triage",
+    "method": "POST",
+    "path": "/opd/encounters/{id}/start-triage",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "post_opd_encounters_id_call",
+    "method": "POST",
+    "path": "/opd/encounters/{id}/call",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "post_opd_encounters_id_start",
+    "method": "POST",
+    "path": "/opd/encounters/{id}/start",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "post_opd_encounters_id_triage",
+    "method": "POST",
+    "path": "/opd/encounters/{id}/triage",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "put_opd_encounters_id_consultation",
+    "method": "PUT",
+    "path": "/opd/encounters/{id}/consultation",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "post_opd_encounters_id_complete",
+    "method": "POST",
+    "path": "/opd/encounters/{id}/complete",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "post_opd_encounters_id_amend",
+    "method": "POST",
+    "path": "/opd/encounters/{id}/amend",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "post_opd_encounters_id_labs",
+    "method": "POST",
+    "path": "/opd/encounters/{id}/labs",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "get_opd_patients_id_record",
+    "method": "GET",
+    "path": "/opd/patients/{id}/record",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "get_opd_patients_id_journey",
+    "method": "GET",
+    "path": "/opd/patients/{id}/journey",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "get_opd_labs",
+    "method": "GET",
+    "path": "/opd/labs",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_opd_labs_id_action",
+    "method": "POST",
+    "path": "/opd/labs/{id}/{action}",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}",
+      "{action}"
+    ]
+  },
+  {
+    "operationId": "get_opd_catalogues",
+    "method": "GET",
+    "path": "/opd/catalogues",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_opd_catalogues_kind",
+    "method": "POST",
+    "path": "/opd/catalogues/{kind}",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{kind}"
+    ]
+  },
+  {
+    "operationId": "get_opd_staff",
+    "method": "GET",
+    "path": "/opd/staff",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_opd_staff",
+    "method": "POST",
+    "path": "/opd/staff",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "patch_opd_staff_id",
+    "method": "PATCH",
+    "path": "/opd/staff/{id}",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "Yes",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": [
+      "{id}"
+    ]
+  },
+  {
+    "operationId": "get_opd_notifications",
+    "method": "GET",
+    "path": "/opd/notifications",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "post_opd_notifications_read",
+    "method": "POST",
+    "path": "/opd/notifications/read",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "get_opd_audit",
+    "method": "GET",
+    "path": "/opd/audit",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  },
+  {
+    "operationId": "get_opd_dashboard",
+    "method": "GET",
+    "path": "/opd/dashboard",
+    "auth": false,
+    "roles": "Unknown",
+    "requestSchema": "No",
+    "responseSchema": "Yes",
+    "relevantIdentifiers": []
+  }
+]

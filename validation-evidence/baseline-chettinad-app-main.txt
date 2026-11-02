@@ -1,0 +1,44 @@
+ M .gitignore
+ M ANDROID_APP_SPLIT_REPORT.md
+ M ANDROID_V2_INTEGRATION_MATRIX.md
+ M CHETTINAD_ANDROID_BACKEND_INTEGRATION.md
+ M CHETTINAD_ANDROID_LIVE_INTEGRATION_REPORT.md
+ M CHETTINAD_IT_INTEGRATION_REQUEST.md
+ M WEB_ANDROID_CROSS_PLATFORM_QA.md
+ M app-patient/build.gradle.kts
+ M app-patient/src/main/java/com/example/patient/navigation/PatientApp.kt
+ M app-patient/src/main/java/com/example/patient/ui/auth/AuthViewModel.kt
+ M app-patient/src/main/java/com/example/patient/ui/auth/LoginScreen.kt
+ M app-patient/src/main/java/com/example/patient/ui/patient/PatientRecordsScreen.kt
+ M app-patient/src/test/java/com/example/patient/ui/auth/AuthScreenTest.kt
+ M app-staff/build.gradle.kts
+ M app-staff/src/main/java/com/example/staff/navigation/StaffApp.kt
+ M app-staff/src/main/java/com/example/staff/ui/doctor/ClinicalNoteScreen.kt
+ M app-staff/src/main/java/com/example/staff/ui/doctor/ClinicalNoteViewModel.kt
+ M app-staff/src/main/java/com/example/staff/ui/doctor/DoctorCommandCenterScreen.kt
+ M app-staff/src/main/java/com/example/staff/ui/doctor/PrescriptionScreen.kt
+ M app-staff/src/main/java/com/example/staff/ui/doctor/PrescriptionViewModel.kt
+ M app-staff/src/main/java/com/example/staff/ui/nurse/NurseTriageAssessmentScreen.kt
+ M app-staff/src/main/java/com/example/staff/ui/nurse/NurseTriageAssessmentViewModel.kt
+ M app-staff/src/main/java/com/example/staff/ui/nurse/NurseTriageQueueScreen.kt
+ M app-staff/src/test/java/com/example/staff/ui/doctor/ClinicalNoteConflictTest.kt
+ M core/build.gradle.kts
+ M core/src/main/java/com/example/data/api/ChettinadApiService.kt
+ M core/src/main/java/com/example/data/api/TokenAuthenticator.kt
+ M core/src/main/java/com/example/data/repository/AuthRepository.kt
+ M core/src/main/java/com/example/data/repository/DoctorRepository.kt
+ M core/src/main/java/com/example/data/repository/NurseRepository.kt
+ M core/src/main/java/com/example/data/repository/PatientRepository.kt
+ M core/src/main/java/com/example/di/AppContainer.kt
+ M core/src/main/java/com/example/domain/model/Models.kt
+ M core/src/main/java/com/example/util/TokenManager.kt
+ M core/src/test/java/com/example/data/api/AuthRefreshTest.kt
+ M core/src/test/java/com/example/data/api/ChettinadApiContractTest.kt
+?? LOCAL_ANDROID_BACKEND_INTEGRATION_REPORT.md
+?? app-patient/src/staging/
+?? app-staff/src/staging/
+?? gradle/wrapper/gradle-wrapper.jar
+?? gradlew
+?? gradlew.bat
+?? local-integration-apks/
+8d22542ae371e7e8e2fc2437dc0eaf889e9f7962 HEAD -> codex/local-backend-integration, origin/main, origin/HEAD, main

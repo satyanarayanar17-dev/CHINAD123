@@ -163,7 +163,8 @@ export const PatientDossier = () => {
               </div>
             </div>
           </Card>
-
+          {/* BREAK-GLASS DISABLED PENDING BACKEND WORKFLOW */}
+          {/*
           <button
             onClick={() => setBreakGlassOpen(true)}
             className="w-full bg-error text-white py-3 rounded-xl text-xs font-black uppercase tracking-[0.1em] shadow-lg shadow-error/20 hover:bg-red-700 transition-all flex flex-col items-center justify-center gap-1"
@@ -176,6 +177,7 @@ export const PatientDossier = () => {
               Audit recorded · Admin notified
             </span>
           </button>
+          */}
           </ErrorBoundary>
 
           {/* Current Vitals */}

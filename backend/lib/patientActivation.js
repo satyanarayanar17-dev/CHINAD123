@@ -4,6 +4,7 @@ const { generateNumericOTP } = require('./clinicalIntegrity');
 const ACTIVATION_TOKEN_TTL_MS = 20 * 60 * 1000;
 const ACTIVATION_PLACEHOLDER = '__REDACTED__';
 const ACTIVATION_BCRYPT_COST = 10;
+const ACTIVATION_MAX_FAILED_ATTEMPTS = 5;
 
 function resolveActivationDeliveryMode() {
   return process.env.ACTIVATION_OTP_DELIVERY ||
@@ -31,8 +32,18 @@ async function issuePatientActivationToken(context, patientId) {
 
   await context.run(`DELETE FROM patient_activation_tokens WHERE patient_id = ?`, [patientId]);
   await context.run(
-    `INSERT INTO patient_activation_tokens (patient_id, otp, otp_hash, expires_at, created_at, consumed_at)
-     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, NULL)`,
+    `INSERT INTO patient_activation_tokens (
+       patient_id,
+       otp,
+       otp_hash,
+       expires_at,
+       created_at,
+       consumed_at,
+       failed_attempts,
+       last_failed_at,
+       locked_until
+     )
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, NULL, 0, NULL, NULL)`,
     [patientId, ACTIVATION_PLACEHOLDER, otpHash, expiresAt]
   );
 
@@ -55,9 +66,19 @@ async function verifyActivationCode(tokenRecord, otp) {
   return tokenRecord.otp === String(otp);
 }
 
+function activationRetryAfterSeconds(lockedUntil) {
+  if (!lockedUntil) {
+    return 0;
+  }
+
+  return Math.max(1, Math.ceil((new Date(lockedUntil).getTime() - Date.now()) / 1000));
+}
+
 module.exports = {
   issuePatientActivationToken,
   verifyActivationCode,
+  activationRetryAfterSeconds,
   resolveActivationDeliveryMode,
-  ACTIVATION_PLACEHOLDER
+  ACTIVATION_PLACEHOLDER,
+  ACTIVATION_MAX_FAILED_ATTEMPTS
 };

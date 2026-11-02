@@ -1,6 +1,7 @@
 const lockedDeployment =
   process.env.NODE_ENV === 'production' ||
-  process.env.APP_ENV === 'restricted_web_pilot';
+  process.env.APP_ENV === 'restricted_web_pilot' ||
+  process.env.APP_ENV === 'staging';
 
 const REFRESH_COOKIE_NAME = 'cc_refresh_token';
 

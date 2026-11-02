@@ -1,0 +1,73 @@
+
+> chettinad-care-frontend@0.0.0 dev:backend
+> npm --prefix backend run dev
+
+
+> backend@1.0.0 dev
+> npm run migrate && node server.js
+
+
+> backend@1.0.0 migrate
+> node scripts/migrate.js
+
+[DB] Migration check completed for sqlite.
+{"level":"warn","event":"boot_config_warning","timestamp":"2026-09-15T18:16:10.158Z","warning":"JWT_SECRET is not set. Local dev will fall back to an insecure default. Never use that outside local_dev."}
+{"level":"info","event":"server_listening","timestamp":"2026-09-15T18:16:10.409Z","port":"3010","node_env":"development","app_env":"local_dev","db_dialect":"sqlite"}
+{"level":"info","event":"opd_notification_cycle","timestamp":"2026-09-15T18:16:10.414Z","remindersQueued":3,"sent":0,"retried":0,"failed":0,"skipped":0,"deliveryEnabled":false}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:16:19.220Z","correlationId":"211a1fa6-42e3-457d-b8e5-044ffa42cc83","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:16:19.227Z","correlationId":"211a1fa6-42e3-457d-b8e5-044ffa42cc83","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":7,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:16:19.249Z","correlationId":"5672f789-0f7f-4b33-bf1e-1c8d8ab28824","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:16:19.250Z","correlationId":"5672f789-0f7f-4b33-bf1e-1c8d8ab28824","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:16:40.326Z","correlationId":"SERVER-0acf371f-6ce9-446f-9e5a-6f677399567e","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:16:40.335Z","correlationId":"SERVER-0acf371f-6ce9-446f-9e5a-6f677399567e","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":10,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:17:20.882Z","correlationId":"SERVER-30df0355-4da5-4a29-aadd-90d4389f680b","method":"GET","path":"/api/v1/health","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:17:20.901Z","correlationId":"SERVER-30df0355-4da5-4a29-aadd-90d4389f680b","method":"GET","path":"/api/v1/health","status":200,"duration_ms":19,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:21:34.019Z","correlationId":"442eded8-2f18-4cf1-a80c-ef19781e5232","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:21:34.023Z","correlationId":"442eded8-2f18-4cf1-a80c-ef19781e5232","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":4,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:21:34.260Z","correlationId":"64c4d195-689b-4a74-b6e9-73e968928afd","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:21:34.262Z","correlationId":"64c4d195-689b-4a74-b6e9-73e968928afd","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":2,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:27:57.605Z","correlationId":"4f508491-8a6d-4361-bc96-4a9d8b3448f8","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:27:57.606Z","correlationId":"4f508491-8a6d-4361-bc96-4a9d8b3448f8","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:27:57.653Z","correlationId":"e67eb248-bbda-472b-b63f-b49c4baecc61","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:27:57.654Z","correlationId":"e67eb248-bbda-472b-b63f-b49c4baecc61","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:29:47.647Z","correlationId":"1ffa6474-4183-4a16-89ec-c6a08c537461","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:29:47.649Z","correlationId":"1ffa6474-4183-4a16-89ec-c6a08c537461","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":2,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:29:47.695Z","correlationId":"863c9042-51e6-46cf-b217-98c6c0a1d86e","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:29:47.695Z","correlationId":"863c9042-51e6-46cf-b217-98c6c0a1d86e","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":0,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:40:11.671Z","correlationId":"194d9ced-20ea-4565-8801-8f896c992a04","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:40:11.676Z","correlationId":"194d9ced-20ea-4565-8801-8f896c992a04","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":5,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:40:11.757Z","correlationId":"4b0a2fdd-c92c-4ecc-8f1d-d968742fd47c","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:40:11.757Z","correlationId":"4b0a2fdd-c92c-4ecc-8f1d-d968742fd47c","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:44:52.277Z","correlationId":"d84fc6c4-b292-4f05-ac22-1761fec90433","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:44:52.280Z","correlationId":"d84fc6c4-b292-4f05-ac22-1761fec90433","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":3,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:44:52.302Z","correlationId":"e6209cd2-a2bf-40be-b22f-a2e3d9d773ad","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:44:52.303Z","correlationId":"e6209cd2-a2bf-40be-b22f-a2e3d9d773ad","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:49:26.069Z","correlationId":"a8c47834-ef48-4972-ba6e-1e28e91c7dfe","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:49:26.074Z","correlationId":"a8c47834-ef48-4972-ba6e-1e28e91c7dfe","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":5,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T18:49:26.125Z","correlationId":"94d5f6e3-ae0d-43df-8b2e-52eb219d75e0","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T18:49:26.126Z","correlationId":"94d5f6e3-ae0d-43df-8b2e-52eb219d75e0","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T19:09:58.535Z","correlationId":"df5281fd-679c-4ae3-996d-fcbae05b1e0a","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T19:09:58.544Z","correlationId":"df5281fd-679c-4ae3-996d-fcbae05b1e0a","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":10,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T19:09:58.618Z","correlationId":"da2fcb02-9001-4472-a924-992a3660286d","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T19:09:58.620Z","correlationId":"da2fcb02-9001-4472-a924-992a3660286d","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":2,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T19:13:52.689Z","correlationId":"b00ca08e-59d9-42f9-a60a-58c1fa30df0d","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T19:13:52.691Z","correlationId":"b00ca08e-59d9-42f9-a60a-58c1fa30df0d","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":2,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T19:13:52.769Z","correlationId":"dff4344f-7611-4157-97dc-c82c601f74e2","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T19:13:52.770Z","correlationId":"dff4344f-7611-4157-97dc-c82c601f74e2","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T19:49:39.138Z","correlationId":"292160d7-cd30-455c-a7b8-f606eaac2cce","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T19:49:39.142Z","correlationId":"292160d7-cd30-455c-a7b8-f606eaac2cce","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":4,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T19:49:39.199Z","correlationId":"f3225bc5-be1f-45ee-b226-fe52730e13e6","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T19:49:39.200Z","correlationId":"f3225bc5-be1f-45ee-b226-fe52730e13e6","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T20:03:12.540Z","correlationId":"6108b2ff-43d8-4959-9b9a-98ed0bfe67f6","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T20:03:12.546Z","correlationId":"6108b2ff-43d8-4959-9b9a-98ed0bfe67f6","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":7,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T20:03:12.909Z","correlationId":"8382fb4e-48e3-409c-b2b0-d825e1e433c0","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T20:03:12.910Z","correlationId":"8382fb4e-48e3-409c-b2b0-d825e1e433c0","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":1,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:01:53.420Z","correlationId":"54cbf10d-035c-4b82-8c25-7474433680d1","method":"POST","path":"/api/v1/auth/refresh","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:01:53.428Z","correlationId":"54cbf10d-035c-4b82-8c25-7474433680d1","method":"POST","path":"/api/v1/auth/refresh","status":401,"duration_ms":8,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:01:53.698Z","correlationId":"805f2200-c615-477b-ab7d-2e475118af7c","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:01:53.700Z","correlationId":"805f2200-c615-477b-ab7d-2e475118af7c","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":2,"actorId":null}
+{"level":"info","event":"request_received","timestamp":"2026-09-15T22:02:35.068Z","correlationId":"277c85de-1d15-433d-ad85-2c16904f57e7","method":"GET","path":"/api/v1/auth/opd/config","remote_ip":"::ffff:127.0.0.1"}
+{"level":"info","event":"request_completed","timestamp":"2026-09-15T22:02:35.081Z","correlationId":"277c85de-1d15-433d-ad85-2c16904f57e7","method":"GET","path":"/api/v1/auth/opd/config","status":200,"duration_ms":13,"actorId":null}
+{"level":"info","event":"draft_cleanup_ran","timestamp":"2026-09-16T00:16:10.576Z","pruned":0,"cutoff":"2026-09-14T00:16:10.567Z"}
+{"level":"info","event":"draft_cleanup_ran","timestamp":"2026-09-16T06:16:10.475Z","pruned":0,"cutoff":"2026-09-14T06:16:10.455Z"}
+sh: line 1: 44393 Terminated: 15          node server.js

@@ -1,0 +1,69 @@
+# Chettinad Care v2 — Render Blueprint
+# Deploy backend + managed PostgreSQL for staging.
+# Secrets must be set through the Render dashboard, not in this file.
+
+databases:
+  - name: chettinad-staging-db
+    plan: starter
+    databaseName: chettinad_staging
+    user: chettinad
+    region: singapore
+
+services:
+  - type: web
+    name: chettinad-care-api
+    runtime: node
+    region: singapore
+    plan: starter
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_ENV
+        value: staging
+      - key: DB_DIALECT
+        value: postgres
+      - key: DATABASE_URL
+        fromDatabase:
+          name: chettinad-staging-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "true"
+      - key: PGPOOL_MAX
+        value: "10"
+      - key: PG_CONNECT_TIMEOUT_MS
+        value: "10000"
+      - key: COOKIE_SAME_SITE
+        value: none
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: OPD_DEMO_OTP
+        value: "true"
+      - key: OPD_NOTIFICATION_WORKER
+        value: "true"
+      - key: PILOT_AUTH_BYPASS
+        value: "false"
+      - key: ALLOW_SEED_RESET
+        value: "false"
+      - key: ENABLE_LEGACY_API
+        value: "false"
+      # --- Secrets: set through Render Dashboard ---
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        sync: false
+      - key: BOOTSTRAP_ADMIN_ID
+        sync: false
+      - key: BOOTSTRAP_ADMIN_NAME
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      - key: COOKIE_DOMAIN
+        sync: false
+      - key: SMS_WEBHOOK_URL
+        sync: false
+      - key: SMS_WEBHOOK_TOKEN
+        sync: false

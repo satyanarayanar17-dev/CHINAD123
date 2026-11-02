@@ -1,0 +1,175 @@
+
+> chettinad-care-frontend@0.0.0 lint
+> eslint .
+
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/backend/opd/auth.ts
+  6:66  warning  'actor' is defined but never used  @typescript-eslint/no-unused-vars
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/backend/opd/core.ts
+  9:3  warning  'Department' is defined but never used  @typescript-eslint/no-unused-vars
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/backend/opd/router.ts
+  5:72  warning  'QueueEntry' is defined but never used   @typescript-eslint/no-unused-vars
+  5:84  warning  'Appointment' is defined but never used  @typescript-eslint/no-unused-vars
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/api/client.ts
+  31:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/api/clinical.ts
+   7:44  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  40:50  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/api/drafts.ts
+  41:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/api/queue.ts
+  57:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/components/layout/BaseLayout.tsx
+  3:109  warning  'Plus' is defined but never used  @typescript-eslint/no-unused-vars
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/components/ui/Toast.tsx
+  69:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/hooks/queries/useLiveQueue.ts
+  27:52  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  33:20  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/hooks/useAuth.tsx
+   93:17  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  185:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/opd/App.tsx
+  413:5  error  Error: Cannot reassign variables declared outside of the component/hook
+
+Variable `bootstrapPromise` is declared outside of the component/hook. Reassigning this value during render is a form of side effect, which can cause unpredictable behavior depending on when the component happens to re-render. If this variable is used in rendering, use useState instead. Otherwise, consider updating it in an effect. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#side-effects-must-run-outside-of-render).
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/opd/App.tsx:413:5
+  411 |     clearAccessToken();
+  412 |     client.clear();
+> 413 |     bootstrapPromise = null;
+      |     ^^^^^^^^^^^^^^^^ `bootstrapPromise` cannot be reassigned
+  414 |     setSession(null);
+  415 |     setRecord(null);
+  416 |     setConsultation(null);  react-hooks/globals
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/opd/admin.tsx
+  3:31  warning  'ShieldCheck' is defined but never used  @typescript-eslint/no-unused-vars
+  3:52  warning  'LogOut' is defined but never used       @typescript-eslint/no-unused-vars
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/opd/booking.tsx
+  21:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/opd/i18n.tsx
+  1267:17  warning  '_language' is defined but never used                                                                                           @typescript-eslint/no-unused-vars
+  1289:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  1307:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  1319:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  1325:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/opd/operations.tsx
+   13:3   warning  'ClipboardCheck' is defined but never used  @typescript-eslint/no-unused-vars
+  583:30  warning  'props' is defined but never used           @typescript-eslint/no-unused-vars
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/opd/ui.tsx
+  21:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  23:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  25:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  35:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/opd/workspace.tsx
+  262:29  warning  Compilation Skipped: Use of incompatible library
+
+This API returns functions which cannot be memoized without leading to stale UI. To prevent this, by default React Compiler will skip memoizing this component/hook. However, you may see issues if values from this API are passed to other components/hooks that are memoized.
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/opd/workspace.tsx:262:29
+  260 |   }, [isDirty, onDirtyChange]);
+  261 |   const meds = useFieldArray({ control, name: "medications" });
+> 262 |   const selectedDiagnoses = watch("diagnosis_ids");
+      |                             ^^^^^ React Hook Form's `useForm()` API returns a `watch()` function which cannot be memoized safely.
+  263 |   const selectedFollowUp = watch("follow_up");
+  264 |   const complete = !!encounter?.is_discharged;
+  265 |   const save = (data: ConsultationData, finalize = false) =>  react-hooks/incompatible-library
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/AdminDashboard.tsx
+  19:19  warning  'push' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/ChangePassword.tsx
+  42:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/ClinicalNoteEditor.tsx
+   91:39  warning  Unexpected any. Specify a different type                                                                                                      @typescript-eslint/no-explicit-any
+  103:36  warning  Unexpected any. Specify a different type                                                                                                      @typescript-eslint/no-explicit-any
+  182:46  warning  Unexpected any. Specify a different type                                                                                                      @typescript-eslint/no-explicit-any
+  233:6   warning  React Hook useEffect has a missing dependency: 'serializeDraftPayload'. Either include it or remove the dependency array                      react-hooks/exhaustive-deps
+  262:6   warning  React Hook useEffect has missing dependencies: 'patientId' and 'serializeDraftPayload'. Either include them or remove the dependency array    react-hooks/exhaustive-deps
+  292:6   warning  React Hook useEffect has a missing dependency: 'resolveConflictFromLatest'. Either include it or remove the dependency array                  react-hooks/exhaustive-deps
+  311:6   warning  React Hook useEffect has a missing dependency: 'serializeDraftPayload'. Either include it or remove the dependency array                      react-hooks/exhaustive-deps
+  346:19  warning  Unexpected any. Specify a different type                                                                                                      @typescript-eslint/no-explicit-any
+  382:6   warning  React Hook useEffect has missing dependencies: 'executeSave' and 'serializeDraftPayload'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  403:22  warning  Unexpected any. Specify a different type                                                                                                      @typescript-eslint/no-explicit-any
+  639:54  warning  Unexpected any. Specify a different type                                                                                                      @typescript-eslint/no-explicit-any
+  656:48  warning  Unexpected any. Specify a different type                                                                                                      @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/DoctorAppointments.tsx
+  4:10  warning  'Calendar' is defined but never used  @typescript-eslint/no-unused-vars
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/DoctorCommandCenter.tsx
+  30:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/Login.tsx
+  38:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/NursePrescriptionView.tsx
+   61:30  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   96:29  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  144:56  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  235:55  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/NurseTriage.tsx
+  265:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  318:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/PatientDossier.tsx
+   5:35  warning  'FileText' is defined but never used      @typescript-eslint/no-unused-vars
+  65:22  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/PrescriptionBuilder.tsx
+   36:48  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   83:47  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   93:17  warning  'e' is defined but never used             @typescript-eslint/no-unused-vars
+  111:74  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  165:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  202:89  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  240:22  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  285:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  311:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/admin/PatientManagement.tsx
+  63:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/admin/PatientOnboarding.tsx
+  89:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/patient/PatientAppointments.tsx
+  2:28  warning  'Clock' is defined but never used               @typescript-eslint/no-unused-vars
+  9:36  warning  'isLoading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/patient/PatientDashboard.tsx
+  146:48  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/patient/PatientPrescriptions.tsx
+  21:36  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/src/pages/patient/PatientRecords.tsx
+  21:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/tests/opd.spec.ts
+  110:107  warning  'testInfo' is defined but never used  @typescript-eslint/no-unused-vars
+
+/private/var/folders/bh/2t1q6cwn129c8s4x3rmm2phh0000gp/T/chettinad-clean-setup-g_t9qw79/project/tests/start-opd.cjs
+  7:74  error  Parsing error: Expecting Unicode escape sequence \uXXXX
+
+✖ 74 problems (2 errors, 72 warnings)
+

@@ -80,6 +80,13 @@ test('nurse denies real patient and encounter IDs belonging to another departmen
   await db.run("INSERT INTO refresh_tokens (id,session_key,user_id,expires_at,revoked,account_type) VALUES (?,?,?, ?,0,'STAFF')", [credentials.tokenHash, credentials.sessionKey, 'rbac-nurse', new Date(Date.now()+600000).toISOString()]);
   const token = jwt.sign({ id: 'rbac-nurse', role: 'NURSE', account_type: 'STAFF', sid: credentials.sessionKey }, JWT_SECRET, { expiresIn: '10m' });
   const authorization = `Bearer ${token}`;
+  assert.equal((await request(app).post('/api/v1/opd/appointments/nurse-appointment-own/confirm').set('Authorization',authorization).send({__v:1})).status,403);
+  assert.equal((await request(app).post('/api/v1/opd/appointments').set('Authorization',authorization).send({patient_id:'nurse-patient-own',doctor_id:'rbac-doctor',scheduled_at:'2030-01-03T08:00:00.000Z',reason:'Synthetic booking'})).status,403);
+
+  await db.run("INSERT INTO lab_test_catalog(id,name,code,department,unit,reference_range) VALUES ('scope-lab-test','Synthetic scope','SCOPE','Lab','unit','range')");
+  await db.run("INSERT INTO lab_orders(id,encounter_id,test_id,ordered_by,ordered_at,status) VALUES ('scope-other-lab','nurse-encounter-other','scope-lab-test','rbac-doctor','2030-01-02','ORDERED')");
+  const labMutation = await request(app).post('/api/v1/opd/labs/scope-other-lab/collect').set('Authorization',authorization).send({__v:1});
+  assert.equal(labMutation.status,403,'Nurse must not collect another department lab');
   const own = await request(app).get('/api/v1/opd/patients/nurse-patient-own/record').set('Authorization', authorization);
   assert.equal(own.status, 200);
   const other = await request(app).get('/api/v1/opd/patients/nurse-patient-other/record').set('Authorization', authorization);
@@ -90,4 +97,18 @@ test('nurse denies real patient and encounter IDs belonging to another departmen
   assert.equal(clinical.status, 403);
   const queue = await request(app).get('/api/v1/opd/queue').set('Authorization', authorization);
   assert.equal(queue.status, 200); assert.deepEqual(queue.body.map(row => row.patient_id), ['nurse-patient-own']);
+});
+
+test('disabled staff cannot login or use an existing session', async () => {
+  const login = await request(app).post('/api/v1/auth/login/staff').send({username:'auth_qa_admin',password:'SyntheticAuth2026!'});
+  assert.equal(login.status,200);
+  await db.run("UPDATE users SET is_active=0 WHERE id='auth_qa_admin'");
+  assert.equal((await request(app).get('/api/v1/opd/session').auth(login.body.access_token,{type:'bearer'})).status,401);
+  const disabled = await request(app).post('/api/v1/auth/login/staff').send({username:'auth_qa_admin',password:'SyntheticAuth2026!'});
+  assert.ok([401,403].includes(disabled.status));
+});
+
+test('legacy debug identity listing is unavailable when legacy APIs are disabled', async () => {
+  const response = await request(app).get('/api/v1/debug/users');
+  assert.equal(response.status, 404);
 });

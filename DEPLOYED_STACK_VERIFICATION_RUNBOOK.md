@@ -1,3 +1,5 @@
+> Current controlled-pilot release instructions: [CONTROLLED_PILOT_RUNBOOK.md](CONTROLLED_PILOT_RUNBOOK.md). Earlier deployment instructions below are historical; do not apply them to the new pilot.
+
 # DEPLOYED STACK VERIFICATION RUNBOOK
 **Objective:** Final gate runtime proof for Chettinad Care restricted pilot.
 

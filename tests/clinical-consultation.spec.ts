@@ -14,7 +14,7 @@ test.afterEach(async ({ page }) => { expect(errors.get(page)).toEqual([]); });
 async function shot(page: Page, file: string) {
   const target = path.join(process.env.CLINICAL_EVIDENCE_DIR || 'qa-evidence/03-clinical', file);
   mkdirSync(path.dirname(target), { recursive: true });
-  await page.screenshot({ path: target, fullPage: true });
+  await page.screenshot({ path: target, fullPage: true, animations: 'disabled' });
 }
 async function staff(page: Page, id: string) {
   await page.goto('/');
@@ -224,6 +224,10 @@ test.describe.serial('Doctor-provisioned clinical journey', () => {
       await expect(page.locator('.main-content')).toContainText(value);
     await shot(page, '06-doctor-completion.png');
     await page.setViewportSize({ width: 390, height: 844 });
+    await expect.poll(async () => {
+      const bounds = await page.locator('.sidebar').boundingBox();
+      return bounds ? Math.round(bounds.x + bounds.width) : 0;
+    }).toBeLessThanOrEqual(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await shot(page, '06-doctor-completion-mobile.png');
   });

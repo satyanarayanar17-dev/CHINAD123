@@ -46,10 +46,10 @@ export function PatientHeader({ patient }: { patient: Patient }) {
       </div>
       <div>
         <h2>{patient.name}</h2>
-        <p>
-          {Math.max(0, age)} {t("years")} · {t(patient.gender)}{" "}
-          <span className="dot-separator">·</span> {t("mrn")} {patient.mrn}
-          <small>{t("dob")}: {patient.dob}</small>
+        <p className="patient-demographics">
+          <span>{Math.max(0, age)} {t("years")} · {t(patient.gender)}</span>
+          <span>{t("mrn")} {patient.mrn}</span>
+          <span>{t("dob")}: {patient.dob}</span>
         </p>
       </div>
       <span className={`allergy ${patient.allergies ? "has-allergy" : ""}`}>

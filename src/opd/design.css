@@ -166,6 +166,21 @@ label {
 .breadcrumb {
   font-size: 13px;
 }
+.language-select {
+  min-width: 96px;
+  max-width: none;
+  padding: 7px 4px 7px 8px;
+  flex-shrink: 0;
+}
+.patient-header > div:not(.avatar) {
+  min-width: 0;
+}
+.patient-demographics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  overflow-wrap: anywhere;
+}
 .main-content {
   max-width: 1500px;
   padding: 34px 32px 48px;
@@ -452,6 +467,11 @@ th {
   color: #d4e7e2;
   font-size: 13px;
 }
+.care-plan-progress > .care-hero-top:first-child span {
+  color: inherit;
+  font-size: inherit;
+  margin-top: 0;
+}
 .care-hero-main {
   display: flex !important;
   align-items: center;
@@ -565,6 +585,20 @@ th {
   .topbar {
     padding: 0 16px;
     height: 70px;
+    gap: 8px;
+  }
+  .breadcrumb {
+    min-width: 0;
+  }
+  .breadcrumb b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .breadcrumb > svg,
+  .topbar-actions {
+    flex-shrink: 0;
   }
   .page-heading h1 {
     font-size: 27px;

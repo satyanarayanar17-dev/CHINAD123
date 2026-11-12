@@ -643,7 +643,7 @@ function SelfRecordModal({
             onChange={(event) => setType(event.target.value)}
           >
             {types.map((value) => (
-              <option key={value}>{value.replaceAll("_", " ")}</option>
+              <option key={value} value={value}>{value.replaceAll("_", " ")}</option>
             ))}
           </select>
         </label>
@@ -655,7 +655,7 @@ function SelfRecordModal({
               onChange={(event) => setTiming(event.target.value)}
             >
               {timings.map((value) => (
-                <option key={value}>{value.replaceAll("_", " ")}</option>
+                <option key={value} value={value}>{value.replaceAll("_", " ")}</option>
               ))}
             </select>
           </label>

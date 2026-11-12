@@ -383,6 +383,10 @@ function Login({
             <ShieldCheck size={16} />
             {t("secureAccess")}
           </div>
+          <nav className="public-policy-links" aria-label="Privacy and support">
+            <a href="/privacy.html">Privacy</a>
+            <a href="/support.html">Support and access</a>
+          </nav>
         </div>
       </section>
     </main>
@@ -782,6 +786,10 @@ function WorkspaceApp() {
           <span>
             {t("brand")} <span>·</span> {t("connected")}
           </span>
+          <nav className="public-policy-links" aria-label="Privacy and support">
+            <a href="/privacy.html">Privacy</a>
+            <a href="/support.html">Support and access</a>
+          </nav>
           <span>
             <ShieldCheck size={13} />
             {t("secureAccess")}

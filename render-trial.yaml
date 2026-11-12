@@ -1,0 +1,64 @@
+# One-doctor / 25-patient trial. Separate paid resources; existing demo API is untouched.
+# Requires explicit approval of the Render plan, cost and Singapore location before application.
+# Real patient access remains blocked until real OTP and recovery are verified.
+databases:
+  - name: chettinad-trial-db
+    plan: 0.1c-256mb
+    region: singapore
+    postgresMajorVersion: "16"
+    diskSizeGB: 1
+    storageAutoscalingEnabled: false
+    databaseName: chettinad_pilot
+    user: chettinad
+    ipAllowList: []
+services:
+  - type: web
+    name: chettinad-trial-api
+    runtime: node
+    region: singapore
+    plan: 0.5c-512mb
+    branch: codex/real-patient-trial-2026-11-12
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/v1/ready
+    autoDeployTrigger: off
+    disk:
+      name: private-clinical-files
+      mountPath: /var/data
+      sizeGB: 5
+    envVars:
+      - {key: NODE_ENV, value: production}
+      - {key: TRUST_PROXY, value: "1"}
+      - {key: NODE_VERSION, value: "24"}
+      - {key: APP_ENV, value: restricted_web_pilot}
+      - {key: DB_DIALECT, value: postgres}
+      - key: DATABASE_URL
+        fromDatabase: {name: chettinad-trial-db, property: connectionString}
+      - {key: DATABASE_SSL, value: "true"}
+      - {key: DATABASE_TLS_MODE, value: render_private}
+      - {key: PGPOOL_MAX, value: "5"}
+      - {key: PERSISTENT_DATA_ROOT, value: /var/data}
+      - {key: PATIENT_DOCUMENT_STORAGE_PATH, value: /var/data/patient-documents}
+      - {key: COOKIE_SAME_SITE, value: none}
+      - {key: COOKIE_SECURE, value: "true"}
+      - {key: CORS_ORIGIN, value: "https://chettinad-care-web.onrender.com"}
+      - {key: OPD_DEMO_OTP, value: "false"}
+      - {key: OTP_DELIVERY_PROVIDER, value: msg91}
+      - {key: OPD_NOTIFICATION_WORKER, value: "false"}
+      - {key: ENABLE_LEGACY_API, value: "false"}
+      - {key: PILOT_AUTH_BYPASS, value: "false"}
+      - {key: ALLOW_SEED_RESET, value: "false"}
+      - {key: OPD_OG_PILOT_ONLY, value: "true"}
+      - {key: OPD_PILOT_DEPARTMENT_PREFIX, value: OBST}
+      - {key: PILOT_DOCTOR_ID, value: dr_prajwala}
+      - {key: PILOT_PATIENT_LIMIT, value: "25"}
+      - {key: CLINICAL_RULES_APPROVED, value: "false"}
+      - {key: JWT_SECRET, generateValue: true}
+      - {key: BACKUP_ENCRYPTION_KEY, sync: false}
+      - {key: BOOTSTRAP_ADMIN_ID, sync: false}
+      - {key: BOOTSTRAP_ADMIN_NAME, sync: false}
+      - {key: BOOTSTRAP_ADMIN_PASSWORD, sync: false}
+      - {key: MSG91_AUTH_KEY, sync: false}
+      - {key: MSG91_TEMPLATE_ID, sync: false}
+      - {key: MSG91_OTP_VARIABLE, sync: false}

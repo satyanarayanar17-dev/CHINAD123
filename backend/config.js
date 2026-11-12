@@ -319,6 +319,8 @@ function loadRuntimeConfig(env = process.env) {
     pilotAuthBypass: readBoolean(env.PILOT_AUTH_BYPASS, false),
     allowSeedReset: readBoolean(env.ALLOW_SEED_RESET, false),
     pilotDepartmentPrefix: readString(env.OPD_PILOT_DEPARTMENT_PREFIX, 'OBST'),
+    pilotDoctorId: readString(env.PILOT_DOCTOR_ID),
+    pilotPatientLimit: Number(env.PILOT_PATIENT_LIMIT || (env.PILOT_DOCTOR_ID ? 25 : 0)),
     ogPilotOnly: readBoolean(env.OPD_OG_PILOT_ONLY, appEnv === APP_ENVS.PILOT)
   };
 }
@@ -326,6 +328,11 @@ function loadRuntimeConfig(env = process.env) {
 function validateRuntimeConfig(config) {
   const errors = [];
   const warnings = [];
+
+  if (config.pilotDoctorId || config.pilotPatientLimit !== 0) {
+    if (!/^[a-zA-Z0-9_.-]{3,60}$/.test(config.pilotDoctorId || '')) errors.push('PILOT_DOCTOR_ID must identify the single trial doctor.');
+    if (!Number.isSafeInteger(config.pilotPatientLimit) || config.pilotPatientLimit < 1 || config.pilotPatientLimit > 1000) errors.push('PILOT_PATIENT_LIMIT must be an integer between 1 and 1000.');
+  }
 
   if (config.clinicalRulesApproved && !/^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$/.test(config.clinicalProtocolVersion)) {
     errors.push('CLINICAL_PROTOCOL_VERSION is required before enabling hospital-approved clinical rules.');

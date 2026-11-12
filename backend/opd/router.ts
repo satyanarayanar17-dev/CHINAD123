@@ -8,13 +8,15 @@ import * as clinical from './clinical.ts';
 const require = createRequire(import.meta.url);
 const { requireAuth } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
+const { runtimeConfig } = require('../config');
+const { assertPilotDoctor } = require('../lib/pilotCohort');
 export const router = Router();
 router.use(requireAuth);
 router.get('/session', endpoint(async (req,res) => res.json(await actor(req))));
 router.get('/directory', endpoint(async (_req,res) => {
   const pilot = await pilotDepartment(db);
   const departments = await db.all<Department>(`SELECT * FROM departments${pilot ? ' WHERE id=?' : ''} ORDER BY name`,pilot ? [pilot.id] : []);
-  const doctors = await db.all<Doctor>(`SELECT id,name,role,department FROM users WHERE role='DOCTOR' AND is_active=1${pilot ? ' AND department=?' : ''} ORDER BY name`,pilot ? [pilot.name] : []);
+  const doctors = await db.all<Doctor>(`SELECT id,name,role,department FROM users WHERE role='DOCTOR' AND is_active=1${pilot ? ' AND department=?' : ''}${runtimeConfig.pilotDoctorId ? ' AND id=?' : ''} ORDER BY name`,[...(pilot ? [pilot.name] : []), ...(runtimeConfig.pilotDoctorId ? [runtimeConfig.pilotDoctorId] : [])]);
   const schedules = await db.all<Schedule>(`SELECT * FROM practitioner_schedules${pilot ? ' WHERE department_id=?' : ''} ORDER BY weekday`,pilot ? [pilot.id] : []);
   res.json({ departments, doctors: doctors.map(d => ({ ...d, schedules: schedules.filter(s=>s.doctor_id===d.id) })) });
 }));
@@ -140,6 +142,7 @@ router.get('/staff',endpoint(async(req,res)=>{roles(req,['ADMIN']);const pilot=a
 router.post('/staff',endpoint(async(req,res)=>{
   roles(req,['ADMIN']);const data=parse(z.object({id:z.string().regex(/^[a-zA-Z0-9_.-]{3,60}$/),name:text,role:z.enum(['ADMIN','NURSE','DOCTOR']),department:text,password:z.string().min(12).max(72).regex(/[a-z]/).regex(/[A-Z]/).regex(/[0-9]/).regex(/[^a-zA-Z0-9]/)}),req.body);
   const hash=await bcrypt.hash(data.password,12);
+  assertPilotDoctor(data.id, data.role);
   await transaction(async tx=>{
     const department=await tx.get<Department>('SELECT * FROM departments WHERE name=?',[data.department]);if(!department) fail('INVALID_DEPARTMENT');await enforcePilotDepartment(tx,department!.id);
     await tx.run('INSERT INTO users (id,name,role,department,password_hash,must_change_password,is_active,created_at,updated_at) VALUES (?,?,?,?,?,1,1,?,?)',[data.id,data.name,data.role,data.department,hash,now(),now()]);
@@ -156,6 +159,7 @@ router.put('/staff/:id', endpoint(async (req, res) => {
   }), req.body);
   
   await transaction(async tx => {
+    assertPilotDoctor(String(req.params.id), data.role);
     const department = await tx.get('SELECT * FROM departments WHERE name=?', [data.department]);
     if (!department) fail('INVALID_DEPARTMENT');
     await enforcePilotDepartment(tx, (department as any).id);
@@ -174,6 +178,10 @@ router.patch('/staff/:id',endpoint(async(req,res)=>{
   roles(req,['ADMIN']);const active=parse(z.boolean(),req.body.active);
   if(req.params.id===req.user.id) fail('CANNOT_DISABLE_SELF');
   await transaction(async tx=>{
+    if (active) {
+      const staff = await tx.get<Staff>('SELECT id,role FROM users WHERE id=?', [req.params.id]);
+      if (staff) assertPilotDoctor(staff.id, staff.role);
+    }
     const changed=await tx.run("UPDATE users SET is_active=?,updated_at=? WHERE id=? AND role!='PATIENT'",[active?1:0,now(),req.params.id]);
     if(!changed.changes) fail('NOT_FOUND',404);
     if(!active) await tx.run('UPDATE refresh_tokens SET revoked=1 WHERE user_id=?',[req.params.id]);

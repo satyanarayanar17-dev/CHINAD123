@@ -120,3 +120,14 @@ test('Render private TLS is explicit and cannot disable verification for an inte
  assert.deepEqual(check(lockedEnv({DATABASE_TLS_MODE:'render_private',RENDER:'true',DATABASE_SSL:'true',DATABASE_URL:'postgres://u:p@dpg-synthetic-a/database'})).errors,[]);
  assert.equal(loadRuntimeConfig({}).databaseTlsMode,'verify');
 });
+
+
+test('a named-doctor trial requires a bounded patient capacity', () => {
+  const valid = check({ PILOT_DOCTOR_ID: 'dr_prajwala', PILOT_PATIENT_LIMIT: '25' });
+  assert.deepEqual(valid.errors, []);
+  for (const value of ['NaN', '0', '-1', '25.5', '1001']) {
+    assert.ok(check({ PILOT_DOCTOR_ID: 'dr_prajwala', PILOT_PATIENT_LIMIT: value }).errors.some(e => e.includes('PILOT_PATIENT_LIMIT')));
+  }
+  assert.ok(check({ PILOT_PATIENT_LIMIT: '25' }).errors.some(e => e.includes('PILOT_DOCTOR_ID')));
+  assert.ok(check({ PILOT_PATIENT_LIMIT: 'invalid' }).errors.some(e => e.includes('PILOT_PATIENT_LIMIT')));
+});

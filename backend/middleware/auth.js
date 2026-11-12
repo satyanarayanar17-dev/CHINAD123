@@ -251,6 +251,7 @@ async function requireAuth(req, res, next) {
     const token = extractBearerToken(req);
     const decoded = await authenticateToken(token);
     req.user = await enforceCurrentUserState(req, decoded);
+    require('../lib/pilotCohort').assertPilotDoctor(req.user.id, req.user.role);
     next();
   } catch (err) {
     next(err.status ? err : tokenError(500, 'AUTH_FAILURE', err.message));

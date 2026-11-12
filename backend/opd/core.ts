@@ -11,6 +11,7 @@ import type {
 const crypto = require("node:crypto") as typeof import("node:crypto");
 const z = (require("zod") as typeof import("zod")).z;
 const { runtimeConfig } = require("../config");
+const { checkPilotEnrollment } = require('../lib/pilotCohort');
 const { logEvent } = require('../lib/logger');
 
 export interface DB {
@@ -266,10 +267,11 @@ export async function createPatient(tx: DB, req: Req, input: unknown) {
   roles(req, ["ADMIN", "DOCTOR"]);
   const data = parse(profileSchema, input);
   const access = parse(z.object({portal_access_enabled: z.boolean().default(true), assigned_doctor_id: z.string().optional()}), input);
-  const assignedDoctor = req.user.role === "DOCTOR" ? req.user.id : access.assigned_doctor_id || null;
+  const assignedDoctor = req.user.role === "DOCTOR" ? req.user.id : access.assigned_doctor_id || runtimeConfig.pilotDoctorId || null;
   if (assignedDoctor && !await tx.get("SELECT id FROM users WHERE id=? AND role='DOCTOR' AND is_active=1", [assignedDoctor])) fail("NOT_ASSIGNED", 422);
   if (await tx.get("SELECT id FROM patients WHERE phone = ?", [data.phone]))
     fail("PATIENT_EXISTS", 409);
+  await checkPilotEnrollment(tx, assignedDoctor);
   const patientId = id("pat");
   const mrn = `CC-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
   const record = { ...data, allergy_review_status: data.allergies ? 'RECORDED' : 'UNKNOWN', assigned_doctor_id: assignedDoctor, portal_access_enabled: access.portal_access_enabled ? 1 : 0 };

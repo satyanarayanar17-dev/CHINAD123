@@ -630,3 +630,7 @@ th {
     transition: none !important;
   }
 }
+/* Public policy pages remain reachable before and after authentication. */
+.public-policy-links { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 18px; }
+.public-policy-links a { display: inline-flex; align-items: center; min-height: 44px; color: #124749; font-size: .85rem; text-underline-offset: 4px; }
+.app-footer { flex-wrap: wrap; gap: 12px; }
